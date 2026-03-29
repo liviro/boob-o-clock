@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<title>Boob O'Clock</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100dvh;
+    display: flex; flex-direction: column;
+    padding: 12px; padding-top: env(safe-area-inset-top, 12px);
+    padding-bottom: env(safe-area-inset-bottom, 12px);
+    -webkit-user-select: none; user-select: none;
+  }
+
+  #status {
+    text-align: center; padding: 16px 0 8px;
+  }
+  #state-icon { font-size: 48px; display: block; margin-bottom: 4px; }
+  #state-label { font-size: 18px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  #timer { font-size: 14px; color: #666; margin-top: 4px; }
+
+  #actions {
+    flex: 1;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-content: start;
+    padding: 12px 0;
+  }
+
+  .action-btn {
+    background: #1a1a1a; color: #fff;
+    border: 1px solid #333; border-radius: 12px;
+    font-size: 15px; font-weight: 600;
+    min-height: 64px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s;
+  }
+  .action-btn:active { background: #333; }
+  .action-btn .icon { font-size: 24px; }
+
+  .action-btn.primary { background: #1a3a1a; border-color: #2a5a2a; }
+  .action-btn.danger { background: #3a1a1a; border-color: #5a2a2a; }
+  .action-btn.feed { background: #3a2a1a; border-color: #5a4a2a; }
+  .action-btn.sleep { background: #1a1a3a; border-color: #2a2a5a; }
+  .action-btn.full-width { grid-column: 1 / -1; }
+
+  #bottom-bar {
+    display: flex; gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #222;
+  }
+
+  #undo-btn {
+    flex: 1;
+    background: #111; color: #888;
+    border: 1px solid #222; border-radius: 10px;
+    font-size: 13px; min-height: 44px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  #undo-btn:active { background: #222; }
+  #undo-btn:disabled { opacity: 0.3; }
+
+  /* Timestamp adjust modal */
+  #ts-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 100;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px; padding: 20px;
+  }
+  #ts-modal.open { display: flex; }
+  #ts-modal h3 { font-size: 16px; color: #aaa; }
+  .ts-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; width: 100%; max-width: 300px;
+  }
+  .ts-btn {
+    background: #1a1a1a; color: #fff;
+    border: 1px solid #333; border-radius: 10px;
+    font-size: 16px; font-weight: 600;
+    min-height: 56px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ts-btn:active { background: #333; }
+  .ts-btn.now { background: #1a3a1a; border-color: #2a5a2a; grid-column: 1 / -1; }
+  .ts-cancel { background: none; color: #888; border: none; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* Breast picker */
+  #breast-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 100;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px; padding: 20px;
+  }
+  #breast-modal.open { display: flex; }
+  .breast-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; width: 100%; max-width: 300px;
+  }
+  .breast-btn {
+    background: #3a2a1a; color: #fff;
+    border: 2px solid #5a4a2a; border-radius: 16px;
+    font-size: 28px; font-weight: 700;
+    min-height: 100px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .breast-btn:active { background: #5a4a2a; }
+
+  #error-toast {
+    display: none;
+    position: fixed; bottom: 80px; left: 12px; right: 12px;
+    background: #5a2a2a; color: #fff;
+    border-radius: 8px; padding: 12px; text-align: center;
+    font-size: 14px; z-index: 200;
+  }
+  #error-toast.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="status">
+  <span id="state-icon"></span>
+  <span id="state-label">loading...</span>
+  <div id="timer"></div>
+</div>
+
+<div id="actions"></div>
+
+<div id="bottom-bar">
+  <button id="undo-btn" disabled>↩ Undo</button>
+</div>
+
+<div id="ts-modal">
+  <h3 id="ts-title">When?</h3>
+  <div class="ts-grid">
+    <button class="ts-btn now" onclick="confirmTimestamp(0)">Now</button>
+    <button class="ts-btn" onclick="confirmTimestamp(-1)">1 min ago</button>
+    <button class="ts-btn" onclick="confirmTimestamp(-5)">5 min ago</button>
+    <button class="ts-btn" onclick="confirmTimestamp(-10)">10 min ago</button>
+    <button class="ts-btn" onclick="confirmTimestamp(-15)">15 min ago</button>
+  </div>
+  <button class="ts-cancel" onclick="cancelAction()">Cancel</button>
+</div>
+
+<div id="breast-modal">
+  <h3>Which side?</h3>
+  <div class="breast-grid">
+    <button class="breast-btn" onclick="pickBreast('L')">L</button>
+    <button class="breast-btn" onclick="pickBreast('R')">R</button>
+  </div>
+  <button class="ts-cancel" onclick="cancelAction()">Cancel</button>
+</div>
+
+<div id="error-toast"></div>
+
+<script>
+const API = '/api';
+let currentState = null;
+let pendingAction = null;
+let pendingMetadata = null;
+let stateStartTime = null;
+let timerInterval = null;
+
+const STATE_INFO = {
+  night_off:         { icon: '🌙', label: 'Night Off' },
+  awake:             { icon: '👀', label: 'Awake' },
+  feeding:           { icon: '🍼', label: 'Feeding' },
+  sleeping_on_me:    { icon: '🤱', label: 'Sleeping on Me' },
+  transferring:      { icon: '🤞', label: 'Transferring...' },
+  resettling:        { icon: '🤚', label: 'Resettling' },
+  sleeping_crib:     { icon: '😴', label: 'Sleeping in Crib' },
+  strolling:         { icon: '🚶', label: 'Strolling' },
+  sleeping_stroller: { icon: '💤', label: 'Sleeping in Stroller' },
+  poop:              { icon: '💩', label: 'Diaper Change' },
+};
+
+const ACTION_INFO = {
+  start_night:           { icon: '🌙', label: 'Start Night', cls: 'primary full-width' },
+  start_feed:            { icon: '🍼', label: 'Feed', cls: 'feed', needsBreast: true },
+  dislatch_awake:        { icon: '👀', label: 'Dislatch\n(awake)', cls: '' },
+  dislatch_asleep:       { icon: '😴', label: 'Dislatch\n(asleep)', cls: 'sleep' },
+  switch_breast:         { icon: '🔄', label: 'Switch\nSide', cls: 'feed', needsBreast: true },
+  start_transfer:        { icon: '🤞', label: 'Transfer\nto Crib', cls: '' },
+  transfer_success:      { icon: '😴', label: 'Asleep\nin Crib!', cls: 'sleep' },
+  transfer_need_resettle:{ icon: '🤚', label: 'Needs\nResettle', cls: '' },
+  transfer_failed:       { icon: '❌', label: 'Transfer\nFailed', cls: 'danger' },
+  start_resettle:        { icon: '🤚', label: 'Resettle', cls: '' },
+  settled:               { icon: '😴', label: 'Settled!', cls: 'sleep' },
+  resettle_failed:       { icon: '❌', label: 'Resettle\nFailed', cls: 'danger' },
+  baby_woke:             { icon: '👀', label: 'Baby\nWoke', cls: 'danger' },
+  start_strolling:       { icon: '🚶', label: 'Stroller', cls: '' },
+  fell_asleep:           { icon: '💤', label: 'Fell\nAsleep!', cls: 'sleep' },
+  give_up:               { icon: '🏳️', label: 'Give Up', cls: 'danger' },
+  poop_start:            { icon: '💩', label: 'Poop!', cls: '' },
+  poop_done:             { icon: '✅', label: 'Poop\nDone', cls: 'primary full-width' },
+  end_night:             { icon: '☀️', label: 'End Night', cls: 'danger full-width' },
+};
+
+async function loadSession() {
+  try {
+    const resp = await fetch(`${API}/session/current`);
+    const data = await resp.json();
+    render(data);
+  } catch (e) {
+    showError('Failed to connect to server');
+  }
+}
+
+function render(session) {
+  currentState = session.state;
+  const info = STATE_INFO[session.state] || { icon: '?', label: session.state };
+
+  document.getElementById('state-icon').textContent = info.icon;
+  document.getElementById('state-label').textContent = info.label;
+
+  // Update timer
+  if (timerInterval) clearInterval(timerInterval);
+  if (session.lastEvent && session.state !== 'night_off') {
+    stateStartTime = new Date(session.lastEvent.timestamp);
+    updateTimer();
+    timerInterval = setInterval(updateTimer, 1000);
+  } else {
+    document.getElementById('timer').textContent = '';
+    stateStartTime = null;
+  }
+
+  // Render action buttons
+  const grid = document.getElementById('actions');
+  grid.innerHTML = '';
+  for (const action of session.validActions) {
+    const ai = ACTION_INFO[action] || { icon: '?', label: action, cls: '' };
+    const btn = document.createElement('button');
+    btn.className = `action-btn ${ai.cls}`;
+    btn.innerHTML = `<span class="icon">${ai.icon}</span>${ai.label.replace(/\n/g, '<br>')}`;
+    btn.onclick = () => startAction(action);
+    grid.appendChild(btn);
+  }
+
+  // Undo button
+  const undoBtn = document.getElementById('undo-btn');
+  if (session.lastEvent) {
+    const la = ACTION_INFO[session.lastEvent.action];
+    undoBtn.textContent = `↩ Undo ${la ? la.label.replace(/\n/g, ' ') : session.lastEvent.action}`;
+    undoBtn.disabled = false;
+  } else {
+    undoBtn.textContent = '↩ Undo';
+    undoBtn.disabled = true;
+  }
+}
+
+function updateTimer() {
+  if (!stateStartTime) return;
+  const diff = Math.floor((Date.now() - stateStartTime.getTime()) / 1000);
+  const m = Math.floor(diff / 60);
+  const s = diff % 60;
+  document.getElementById('timer').textContent =
+    `${m}:${s.toString().padStart(2, '0')} in this state`;
+}
+
+function startAction(action) {
+  const ai = ACTION_INFO[action];
+  if (ai && ai.needsBreast) {
+    pendingAction = action;
+    document.getElementById('breast-modal').classList.add('open');
+    return;
+  }
+  pendingAction = action;
+  pendingMetadata = null;
+  // Show timestamp picker
+  document.getElementById('ts-title').textContent =
+    `${ai ? ai.label.replace(/\n/g, ' ') : action} — When?`;
+  document.getElementById('ts-modal').classList.add('open');
+}
+
+function pickBreast(side) {
+  document.getElementById('breast-modal').classList.remove('open');
+  pendingMetadata = { breast: side };
+  const ai = ACTION_INFO[pendingAction];
+  document.getElementById('ts-title').textContent =
+    `${ai ? ai.label.replace(/\n/g, ' ') : pendingAction} (${side}) — When?`;
+  document.getElementById('ts-modal').classList.add('open');
+}
+
+function cancelAction() {
+  pendingAction = null;
+  pendingMetadata = null;
+  document.getElementById('ts-modal').classList.remove('open');
+  document.getElementById('breast-modal').classList.remove('open');
+}
+
+async function confirmTimestamp(minutesAgo) {
+  document.getElementById('ts-modal').classList.remove('open');
+  const ts = new Date(Date.now() + minutesAgo * 60000);
+  await sendEvent(pendingAction, pendingMetadata, ts);
+  pendingAction = null;
+  pendingMetadata = null;
+}
+
+async function sendEvent(action, metadata, timestamp) {
+  try {
+    const body = { action };
+    if (metadata) body.metadata = metadata;
+    if (timestamp) body.timestamp = timestamp.toISOString();
+
+    const resp = await fetch(`${API}/session/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      showError(err.error || 'Request failed');
+      return;
+    }
+
+    const data = await resp.json();
+    render(data);
+
+    // Haptic feedback if available
+    if (navigator.vibrate) navigator.vibrate(10);
+  } catch (e) {
+    showError('Failed to connect to server');
+  }
+}
+
+document.getElementById('undo-btn').onclick = async () => {
+  try {
+    const resp = await fetch(`${API}/session/undo`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json();
+      showError(err.error || 'Undo failed');
+      return;
+    }
+    const data = await resp.json();
+    render(data);
+    if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
+  } catch (e) {
+    showError('Failed to connect to server');
+  }
+};
+
+function showError(msg) {
+  const toast = document.getElementById('error-toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// Boot
+loadSession();
+</script>
+</body>
+</html>
