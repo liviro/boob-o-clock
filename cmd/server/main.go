@@ -10,9 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/polina/boob-o-clock/internal/api"
-	"github.com/polina/boob-o-clock/internal/store"
-	"github.com/polina/boob-o-clock/internal/web"
+	"github.com/liviro/boob-o-clock/internal/api"
+	"github.com/liviro/boob-o-clock/internal/store"
+	"github.com/liviro/boob-o-clock/internal/web"
 )
 
 func main() {

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/polina/boob-o-clock/internal/domain"
-	"github.com/polina/boob-o-clock/internal/reports"
-	"github.com/polina/boob-o-clock/internal/store"
+	"github.com/liviro/boob-o-clock/internal/domain"
+	"github.com/liviro/boob-o-clock/internal/reports"
+	"github.com/liviro/boob-o-clock/internal/store"
 )
 
 type Handler struct {

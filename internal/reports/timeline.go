@@ -3,7 +3,7 @@ package reports
 import (
 	"time"
 
-	"github.com/polina/boob-o-clock/internal/domain"
+	"github.com/liviro/boob-o-clock/internal/domain"
 )
 
 // TimelineEntry represents a period spent in a single state.

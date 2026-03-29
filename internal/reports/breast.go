@@ -1,6 +1,6 @@
 package reports
 
-import "github.com/polina/boob-o-clock/internal/domain"
+import "github.com/liviro/boob-o-clock/internal/domain"
 
 // LastBreastUsed returns the breast side from the most recent feed event.
 // Returns empty string if no feed events exist.

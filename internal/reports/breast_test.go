@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/polina/boob-o-clock/internal/domain"
+	"github.com/liviro/boob-o-clock/internal/domain"
 )
 
 func TestLastBreastUsed(t *testing.T) {

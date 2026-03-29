@@ -1,4 +1,4 @@
-module github.com/polina/boob-o-clock
+module github.com/liviro/boob-o-clock
 
 go 1.25.0
 

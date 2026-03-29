@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/polina/boob-o-clock/internal/store"
+	"github.com/liviro/boob-o-clock/internal/store"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
