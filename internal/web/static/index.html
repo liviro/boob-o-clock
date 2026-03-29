@@ -20,8 +20,25 @@
     -webkit-user-select: none; user-select: none;
   }
 
+  /* Tab bar */
+  #tabs {
+    display: flex; gap: 0; margin-bottom: 8px;
+    border-bottom: 1px solid #222;
+  }
+  .tab {
+    flex: 1; background: none; border: none; color: #666;
+    font-size: 13px; font-weight: 600; padding: 8px 0;
+    cursor: pointer; text-align: center;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: #fff; border-bottom-color: #fff; }
+
+  /* Tracker page */
+  #page-tracker, #page-history { display: none; flex-direction: column; flex: 1; }
+  #page-tracker.active, #page-history.active { display: flex; }
+
   #status {
-    text-align: center; padding: 16px 0 8px;
+    text-align: center; padding: 12px 0 4px;
   }
   #state-icon { font-size: 48px; display: block; margin-bottom: 4px; }
   #state-label { font-size: 18px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
@@ -73,8 +90,8 @@
   #undo-btn:active { background: #222; }
   #undo-btn:disabled { opacity: 0.3; }
 
-  /* Timestamp adjust modal */
-  #ts-modal {
+  /* Modals */
+  .modal {
     display: none;
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.85);
@@ -83,8 +100,10 @@
     align-items: center; justify-content: center;
     gap: 12px; padding: 20px;
   }
-  #ts-modal.open { display: flex; }
-  #ts-modal h3 { font-size: 16px; color: #aaa; }
+  .modal.open { display: flex; }
+  .modal h3 { font-size: 16px; color: #aaa; }
+  .modal-cancel { background: none; color: #888; border: none; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
   .ts-grid {
     display: grid; grid-template-columns: 1fr 1fr;
     gap: 10px; width: 100%; max-width: 300px;
@@ -99,19 +118,7 @@
   }
   .ts-btn:active { background: #333; }
   .ts-btn.now { background: #1a3a1a; border-color: #2a5a2a; grid-column: 1 / -1; }
-  .ts-cancel { background: none; color: #888; border: none; font-size: 14px; margin-top: 8px; cursor: pointer; }
 
-  /* Breast picker */
-  #breast-modal {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.85);
-    z-index: 100;
-    flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 16px; padding: 20px;
-  }
-  #breast-modal.open { display: flex; }
   .breast-grid {
     display: grid; grid-template-columns: 1fr 1fr;
     gap: 16px; width: 100%; max-width: 300px;
@@ -126,6 +133,66 @@
   }
   .breast-btn:active { background: #5a4a2a; }
 
+  /* Confirm modal */
+  .confirm-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; width: 100%; max-width: 300px;
+  }
+  .confirm-btn {
+    background: #1a1a1a; color: #fff;
+    border: 1px solid #333; border-radius: 10px;
+    font-size: 16px; font-weight: 600;
+    min-height: 56px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .confirm-btn:active { background: #333; }
+  .confirm-btn.yes { background: #3a1a1a; border-color: #5a2a2a; }
+  .confirm-btn.no { background: #1a1a1a; border-color: #333; }
+
+  /* History page */
+  #history-content { flex: 1; overflow-y: auto; }
+
+  .night-card {
+    background: #111; border: 1px solid #222; border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .night-card h3 {
+    font-size: 14px; color: #aaa; margin-bottom: 10px;
+    display: flex; justify-content: space-between;
+  }
+  .night-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat { text-align: center; }
+  .stat-value { font-size: 20px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: #666; text-transform: uppercase; }
+
+  /* Timeline bar */
+  .timeline-bar {
+    display: flex; height: 24px; border-radius: 6px; overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .tl-segment { min-width: 2px; }
+  .tl-segment.awake { background: #5a2a2a; }
+  .tl-segment.feeding { background: #8a6a2a; }
+  .tl-segment.sleeping_on_me { background: #2a2a5a; }
+  .tl-segment.sleeping_crib { background: #1a3a6a; }
+  .tl-segment.sleeping_stroller { background: #2a4a5a; }
+  .tl-segment.resettling { background: #3a3a5a; }
+  .tl-segment.strolling { background: #3a4a3a; }
+  .tl-segment.transferring { background: #444; }
+  .tl-segment.poop { background: #5a4a2a; }
+
+  .timeline-legend {
+    display: flex; flex-wrap: wrap; gap: 8px; font-size: 10px; color: #666;
+  }
+  .legend-item { display: flex; align-items: center; gap: 3px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  .no-data { text-align: center; color: #444; padding: 40px 0; font-size: 14px; }
+
+  /* Toast */
   #error-toast {
     display: none;
     position: fixed; bottom: 80px; left: 12px; right: 12px;
@@ -138,19 +205,33 @@
 </head>
 <body>
 
-<div id="status">
-  <span id="state-icon"></span>
-  <span id="state-label">loading...</span>
-  <div id="timer"></div>
+<div id="tabs">
+  <button class="tab active" onclick="showPage('tracker')">Tracker</button>
+  <button class="tab" onclick="showPage('history')">History</button>
 </div>
 
-<div id="actions"></div>
+<div id="page-tracker" class="active">
+  <div id="status">
+    <span id="state-icon"></span>
+    <span id="state-label">loading...</span>
+    <div id="timer"></div>
+  </div>
 
-<div id="bottom-bar">
-  <button id="undo-btn" disabled>↩ Undo</button>
+  <div id="actions"></div>
+
+  <div id="bottom-bar">
+    <button id="undo-btn" disabled>↩ Undo</button>
+  </div>
 </div>
 
-<div id="ts-modal">
+<div id="page-history">
+  <div id="history-content">
+    <div class="no-data">Loading...</div>
+  </div>
+</div>
+
+<!-- Timestamp modal -->
+<div id="ts-modal" class="modal">
   <h3 id="ts-title">When?</h3>
   <div class="ts-grid">
     <button class="ts-btn now" onclick="confirmTimestamp(0)">Now</button>
@@ -159,16 +240,26 @@
     <button class="ts-btn" onclick="confirmTimestamp(-10)">10 min ago</button>
     <button class="ts-btn" onclick="confirmTimestamp(-15)">15 min ago</button>
   </div>
-  <button class="ts-cancel" onclick="cancelAction()">Cancel</button>
+  <button class="modal-cancel" onclick="cancelAction()">Cancel</button>
 </div>
 
-<div id="breast-modal">
+<!-- Breast picker modal -->
+<div id="breast-modal" class="modal">
   <h3>Which side?</h3>
   <div class="breast-grid">
     <button class="breast-btn" onclick="pickBreast('L')">L</button>
     <button class="breast-btn" onclick="pickBreast('R')">R</button>
   </div>
-  <button class="ts-cancel" onclick="cancelAction()">Cancel</button>
+  <button class="modal-cancel" onclick="cancelAction()">Cancel</button>
+</div>
+
+<!-- Confirm modal (for End Night) -->
+<div id="confirm-modal" class="modal">
+  <h3 id="confirm-title">Are you sure?</h3>
+  <div class="confirm-grid">
+    <button class="confirm-btn no" onclick="cancelAction()">No</button>
+    <button class="confirm-btn yes" id="confirm-yes-btn">Yes</button>
+  </div>
 </div>
 
 <div id="error-toast"></div>
@@ -180,6 +271,7 @@ let pendingAction = null;
 let pendingMetadata = null;
 let stateStartTime = null;
 let timerInterval = null;
+let currentNightId = null;
 
 const STATE_INFO = {
   night_off:         { icon: '🌙', label: 'Night Off' },
@@ -213,9 +305,21 @@ const ACTION_INFO = {
   give_up:               { icon: '🏳️', label: 'Give Up', cls: 'danger' },
   poop_start:            { icon: '💩', label: 'Poop!', cls: '' },
   poop_done:             { icon: '✅', label: 'Poop\nDone', cls: 'primary full-width' },
-  end_night:             { icon: '☀️', label: 'End Night', cls: 'danger full-width' },
+  end_night:             { icon: '☀️', label: 'End Night', cls: 'danger full-width', confirm: true },
 };
 
+const ACTIONS_NEEDING_CONFIRM = new Set(['end_night']);
+
+// -- Page navigation --
+function showPage(page) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('[id^="page-"]').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${page}"]`).classList.add('active');
+  document.getElementById(`page-${page}`).classList.add('active');
+  if (page === 'history') loadHistory();
+}
+
+// -- Tracker --
 async function loadSession() {
   try {
     const resp = await fetch(`${API}/session/current`);
@@ -228,6 +332,7 @@ async function loadSession() {
 
 function render(session) {
   currentState = session.state;
+  currentNightId = session.nightId;
   const info = STATE_INFO[session.state] || { icon: '?', label: session.state };
 
   document.getElementById('state-icon').textContent = info.icon;
@@ -260,7 +365,7 @@ function render(session) {
   const undoBtn = document.getElementById('undo-btn');
   if (session.lastEvent) {
     const la = ACTION_INFO[session.lastEvent.action];
-    undoBtn.textContent = `↩ Undo ${la ? la.label.replace(/\n/g, ' ') : session.lastEvent.action}`;
+    undoBtn.textContent = `↩ Undo: ${la ? la.label.replace(/\n/g, ' ') : session.lastEvent.action}`;
     undoBtn.disabled = false;
   } else {
     undoBtn.textContent = '↩ Undo';
@@ -271,34 +376,54 @@ function render(session) {
 function updateTimer() {
   if (!stateStartTime) return;
   const diff = Math.floor((Date.now() - stateStartTime.getTime()) / 1000);
-  const m = Math.floor(diff / 60);
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
-  document.getElementById('timer').textContent =
-    `${m}:${s.toString().padStart(2, '0')} in this state`;
+  let text = '';
+  if (h > 0) text = `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  else text = `${m}:${s.toString().padStart(2, '0')}`;
+  document.getElementById('timer').textContent = text + ' in this state';
 }
 
 function startAction(action) {
   const ai = ACTION_INFO[action];
+
+  // Confirmation for dangerous actions
+  if (ACTIONS_NEEDING_CONFIRM.has(action)) {
+    pendingAction = action;
+    pendingMetadata = null;
+    document.getElementById('confirm-title').textContent =
+      `${ai.icon} ${ai.label.replace(/\n/g, ' ')} — are you sure?`;
+    document.getElementById('confirm-yes-btn').onclick = () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      showTimestampPicker(action, null);
+    };
+    document.getElementById('confirm-modal').classList.add('open');
+    return;
+  }
+
   if (ai && ai.needsBreast) {
     pendingAction = action;
     document.getElementById('breast-modal').classList.add('open');
     return;
   }
+
+  showTimestampPicker(action, null);
+}
+
+function showTimestampPicker(action, metadata) {
   pendingAction = action;
-  pendingMetadata = null;
-  // Show timestamp picker
-  document.getElementById('ts-title').textContent =
-    `${ai ? ai.label.replace(/\n/g, ' ') : action} — When?`;
+  pendingMetadata = metadata;
+  const ai = ACTION_INFO[action];
+  let title = ai ? ai.label.replace(/\n/g, ' ') : action;
+  if (metadata && metadata.breast) title += ` (${metadata.breast})`;
+  document.getElementById('ts-title').textContent = title + ' — When?';
   document.getElementById('ts-modal').classList.add('open');
 }
 
 function pickBreast(side) {
   document.getElementById('breast-modal').classList.remove('open');
-  pendingMetadata = { breast: side };
-  const ai = ACTION_INFO[pendingAction];
-  document.getElementById('ts-title').textContent =
-    `${ai ? ai.label.replace(/\n/g, ' ') : pendingAction} (${side}) — When?`;
-  document.getElementById('ts-modal').classList.add('open');
+  showTimestampPicker(pendingAction, { breast: side });
 }
 
 function cancelAction() {
@@ -306,6 +431,7 @@ function cancelAction() {
   pendingMetadata = null;
   document.getElementById('ts-modal').classList.remove('open');
   document.getElementById('breast-modal').classList.remove('open');
+  document.getElementById('confirm-modal').classList.remove('open');
 }
 
 async function confirmTimestamp(minutesAgo) {
@@ -336,8 +462,6 @@ async function sendEvent(action, metadata, timestamp) {
 
     const data = await resp.json();
     render(data);
-
-    // Haptic feedback if available
     if (navigator.vibrate) navigator.vibrate(10);
   } catch (e) {
     showError('Failed to connect to server');
@@ -359,6 +483,150 @@ document.getElementById('undo-btn').onclick = async () => {
     showError('Failed to connect to server');
   }
 };
+
+// -- History --
+async function loadHistory() {
+  const content = document.getElementById('history-content');
+  try {
+    const resp = await fetch(`${API}/nights`);
+    const data = await resp.json();
+
+    if (!data.nights || data.nights.length === 0) {
+      content.innerHTML = '<div class="no-data">No nights recorded yet</div>';
+      return;
+    }
+
+    // Reverse to show most recent first
+    const nights = data.nights.reverse();
+    content.innerHTML = '';
+
+    for (const n of nights) {
+      const card = document.createElement('div');
+      card.className = 'night-card';
+      card.onclick = () => showNightDetail(n.id);
+
+      const date = new Date(n.startedAt);
+      const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+      const s = n.stats;
+      card.innerHTML = `
+        <h3><span>${dateStr}</span><span>${timeStr}</span></h3>
+        <div class="night-stats">
+          <div class="stat">
+            <div class="stat-value">${fmtDur(s.longestSleepBlock)}</div>
+            <div class="stat-label">Longest Sleep</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${s.wakeCount}</div>
+            <div class="stat-label">Wakes</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${s.feedCount}</div>
+            <div class="stat-label">Feeds</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${fmtDur(s.totalSleepTime)}</div>
+            <div class="stat-label">Total Sleep</div>
+          </div>
+        </div>
+      `;
+
+      content.appendChild(card);
+    }
+  } catch (e) {
+    content.innerHTML = '<div class="no-data">Failed to load history</div>';
+  }
+}
+
+async function showNightDetail(nightId) {
+  const content = document.getElementById('history-content');
+  try {
+    const resp = await fetch(`${API}/nights/${nightId}`);
+    const data = await resp.json();
+
+    const night = data.night;
+    const s = data.stats;
+    const tl = data.timeline || [];
+
+    const date = new Date(night.startedAt);
+    const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // Calculate total duration for proportional timeline bar
+    const totalNs = s.nightDuration; // in nanoseconds from Go
+    const totalMs = totalNs / 1e6;
+
+    let html = `
+      <div style="margin-bottom: 12px;">
+        <button class="modal-cancel" onclick="loadHistory()" style="font-size: 16px; padding: 4px 0;">← Back</button>
+      </div>
+      <div class="night-card">
+        <h3><span>${dateStr}</span><span>${fmtDur(s.nightDuration)}</span></h3>
+        <div class="night-stats">
+          <div class="stat">
+            <div class="stat-value">${fmtDur(s.longestSleepBlock)}</div>
+            <div class="stat-label">Longest Sleep</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${s.wakeCount}</div>
+            <div class="stat-label">Wakes</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${fmtDur(s.totalFeedTime)}</div>
+            <div class="stat-label">Feed Time</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${fmtDur(s.totalSleepTime)}</div>
+            <div class="stat-label">Total Sleep</div>
+          </div>
+        </div>
+        <div class="timeline-bar">
+    `;
+
+    for (const entry of tl) {
+      const pct = totalMs > 0 ? (entry.duration / 1e6 / totalMs * 100) : 0;
+      if (pct < 0.5) continue; // skip tiny segments
+      html += `<div class="tl-segment ${entry.state}" style="width:${pct}%" title="${entry.state}: ${fmtDur(entry.duration)}"></div>`;
+    }
+
+    html += `</div>
+        <div class="timeline-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#1a3a6a"></div>Crib</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2a4a5a"></div>Stroller</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2a2a5a"></div>On Me</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#8a6a2a"></div>Feed</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#5a2a2a"></div>Awake</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#3a3a5a"></div>Resettle</div>
+        </div>
+      </div>
+    `;
+
+    // Event log
+    html += '<div class="night-card"><h3><span>Event Log</span></h3><div style="font-size: 12px; color: #888;">';
+    for (const evt of data.events) {
+      const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      const ai = ACTION_INFO[evt.action];
+      const label = ai ? `${ai.icon} ${ai.label.replace(/\n/g, ' ')}` : evt.action;
+      const meta = evt.metadata ? ` (${Object.values(evt.metadata).join(', ')})` : '';
+      html += `<div style="padding: 3px 0; border-bottom: 1px solid #1a1a1a;">${t} — ${label}${meta}</div>`;
+    }
+    html += '</div></div>';
+
+    content.innerHTML = html;
+  } catch (e) {
+    showError('Failed to load night detail');
+  }
+}
+
+// -- Utilities --
+function fmtDur(ns) {
+  // Go durations come as nanoseconds in JSON
+  const totalMin = Math.floor(ns / 1e9 / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h}h${m > 0 ? m + 'm' : ''}`;
+  return `${m}m`;
+}
 
 function showError(msg) {
   const toast = document.getElementById('error-toast');
