@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/polina/boob-o-clock/internal/domain"
+	"github.com/polina/boob-o-clock/internal/reports"
 	"github.com/polina/boob-o-clock/internal/store"
 )
 
@@ -226,7 +227,7 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// GetNightDetail returns a night and its events.
+// GetNightDetail returns a night with its timeline, stats, and raw events.
 func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -245,12 +246,6 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type nightJSON struct {
-		ID        int64      `json:"id"`
-		StartedAt time.Time  `json:"startedAt"`
-		EndedAt   *time.Time `json:"endedAt"`
-	}
-
 	eventJSONs := make([]eventResponse, len(events))
 	for i, e := range events {
 		eventJSONs[i] = eventResponse{
@@ -262,14 +257,86 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	nightEnd := time.Now()
+	if night.EndedAt != nil {
+		nightEnd = *night.EndedAt
+	}
+
+	timeline := reports.BuildTimeline(events)
+	stats := reports.ComputeStats(events, night.StartedAt, nightEnd)
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"night": nightJSON{
+		"night": nightDetailJSON{
 			ID:        night.ID,
 			StartedAt: night.StartedAt,
 			EndedAt:   night.EndedAt,
 		},
-		"events": eventJSONs,
+		"events":   eventJSONs,
+		"timeline": timeline,
+		"stats":    stats,
 	})
+}
+
+// GetNights returns a list of nights with summary stats.
+func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
+	// Default to last 30 days
+	to := time.Now().Add(24 * time.Hour) // include today
+	from := to.Add(-30 * 24 * time.Hour)
+
+	if f := r.URL.Query().Get("from"); f != "" {
+		if parsed, err := time.Parse("2006-01-02", f); err == nil {
+			from = parsed
+		}
+	}
+	if t := r.URL.Query().Get("to"); t != "" {
+		if parsed, err := time.Parse("2006-01-02", t); err == nil {
+			to = parsed.Add(24 * time.Hour) // inclusive end
+		}
+	}
+
+	nights, err := h.store.ListNights(from, to)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	type nightSummary struct {
+		nightDetailJSON
+		Stats reports.NightStats `json:"stats"`
+	}
+
+	summaries := make([]nightSummary, 0, len(nights))
+	for _, n := range nights {
+		_, events, err := h.store.GetNight(n.ID)
+		if err != nil {
+			continue
+		}
+
+		nightEnd := time.Now()
+		if n.EndedAt != nil {
+			nightEnd = *n.EndedAt
+		}
+
+		stats := reports.ComputeStats(events, n.StartedAt, nightEnd)
+		summaries = append(summaries, nightSummary{
+			nightDetailJSON: nightDetailJSON{
+				ID:        n.ID,
+				StartedAt: n.StartedAt,
+				EndedAt:   n.EndedAt,
+			},
+			Stats: stats,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nights": summaries,
+	})
+}
+
+type nightDetailJSON struct {
+	ID        int64      `json:"id"`
+	StartedAt time.Time  `json:"startedAt"`
+	EndedAt   *time.Time `json:"endedAt,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

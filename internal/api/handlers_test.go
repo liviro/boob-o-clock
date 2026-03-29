@@ -280,13 +280,24 @@ func TestGetNightDetail(t *testing.T) {
 	}
 
 	var detail struct {
-		Night  map[string]any   `json:"night"`
-		Events []map[string]any `json:"events"`
+		Night    map[string]any   `json:"night"`
+		Events   []map[string]any `json:"events"`
+		Timeline []map[string]any `json:"timeline"`
+		Stats    map[string]any   `json:"stats"`
 	}
 	decodeJSON(t, resp, &detail)
 
 	if len(detail.Events) != 4 {
 		t.Errorf("got %d events, want 4", len(detail.Events))
+	}
+	if detail.Timeline == nil {
+		t.Error("expected timeline in response")
+	}
+	if detail.Stats == nil {
+		t.Error("expected stats in response")
+	}
+	if fc, ok := detail.Stats["feedCount"].(float64); !ok || fc != 1 {
+		t.Errorf("stats.feedCount = %v, want 1", detail.Stats["feedCount"])
 	}
 }
 
@@ -297,5 +308,58 @@ func TestGetNightDetailNotFound(t *testing.T) {
 	resp := doGet(t, ts, "/api/nights/999")
 	if resp.StatusCode != 404 {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestGetNights(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	// Create a complete night
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "start_feed",
+		"metadata": map[string]string{"breast": "L"},
+	})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_awake"})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "end_night"})
+
+	resp := doGet(t, ts, "/api/nights")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nights []struct {
+			ID    int64          `json:"id"`
+			Stats map[string]any `json:"stats"`
+		} `json:"nights"`
+	}
+	decodeJSON(t, resp, &result)
+
+	if len(result.Nights) != 1 {
+		t.Fatalf("got %d nights, want 1", len(result.Nights))
+	}
+	if fc, ok := result.Nights[0].Stats["feedCount"].(float64); !ok || fc != 1 {
+		t.Errorf("stats.feedCount = %v, want 1", result.Nights[0].Stats["feedCount"])
+	}
+}
+
+func TestGetNightsEmpty(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	resp := doGet(t, ts, "/api/nights")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nights []any `json:"nights"`
+	}
+	decodeJSON(t, resp, &result)
+
+	if len(result.Nights) != 0 {
+		t.Errorf("got %d nights, want 0", len(result.Nights))
 	}
 }
