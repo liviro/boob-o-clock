@@ -1,0 +1,8 @@
+boob-o-clock
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.git
+.DS_Store
+web/node_modules

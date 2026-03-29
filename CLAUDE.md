@@ -44,6 +44,10 @@ cd web && npx tsc --noEmit                 # TypeScript type check
 cd web && npm run build                    # build frontend only
 go build -o boob-o-clock ./cmd/server      # build Go binary only
 ./boob-o-clock -addr :8080 -db ./data.db   # run server
+
+# Docker
+docker build -t boob-o-clock .
+docker run -p 8080:8080 -v boc-data:/data boob-o-clock
 ```
 
 ## Frontend
