@@ -24,7 +24,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   start_feed:             { icon: '🍼', label: 'Feed',                cls: 'feed', needsBreast: true },
   dislatch_awake:         { icon: '👀', label: 'Dislatch\n(awake)',   cls: '' },
   dislatch_asleep:        { icon: '😴', label: 'Dislatch\n(asleep)',  cls: 'sleep' },
-  switch_breast:          { icon: '🔄', label: 'Switch\nSide',        cls: 'feed', needsBreast: true },
+  switch_breast:          { icon: '🔄', label: 'Switch\nSide',        cls: 'feed' },
   start_transfer:         { icon: '🤞', label: 'Transfer\nto Crib',   cls: '' },
   transfer_success:       { icon: '😴', label: 'Asleep\nin Crib!',    cls: 'sleep' },
   transfer_need_resettle: { icon: '🤚', label: 'Needs\nResettle',     cls: '' },

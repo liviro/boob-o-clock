@@ -11,11 +11,10 @@ export function TimestampPicker({ open, title, onPick, onClose }: Props) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <div class="ts-grid">
-        <button class="ts-btn now" onClick={() => onPick(0)}>Now</button>
         <button class="ts-btn" onClick={() => onPick(-1)}>1 min ago</button>
+        <button class="ts-btn" onClick={() => onPick(-3)}>3 min ago</button>
         <button class="ts-btn" onClick={() => onPick(-5)}>5 min ago</button>
         <button class="ts-btn" onClick={() => onPick(-10)}>10 min ago</button>
-        <button class="ts-btn" onClick={() => onPick(-15)}>15 min ago</button>
       </div>
     </Modal>
   );

@@ -32,6 +32,7 @@ type sessionResponse struct {
 	NightID        *int64          `json:"nightId"`
 	LastEvent      *eventResponse  `json:"lastEvent"`
 	SuggestBreast  string          `json:"suggestBreast,omitempty"`
+	CurrentBreast  string          `json:"currentBreast,omitempty"`
 }
 
 type eventResponse struct {
@@ -53,11 +54,13 @@ func toEventResponse(e domain.Event) *eventResponse {
 }
 
 func buildSessionResponse(state domain.State, nightID *int64, events []domain.Event) sessionResponse {
+	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
 		State:         state,
 		ValidActions:  domain.ValidActions(state),
 		NightID:       nightID,
-		SuggestBreast: reports.SuggestedBreast(reports.LastBreastUsed(events)),
+		SuggestBreast: reports.SuggestedBreast(lastBreast),
+		CurrentBreast: lastBreast,
 	}
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])

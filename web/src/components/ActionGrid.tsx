@@ -2,10 +2,12 @@ import { ACTION_INFO } from '../constants';
 
 interface Props {
   actions: string[];
-  onAction: (action: string) => void;
+  onPointerDown: (action: string) => void;
+  onPointerUp: (action: string) => void;
+  onPointerCancel: () => void;
 }
 
-export function ActionGrid({ actions, onAction }: Props) {
+export function ActionGrid({ actions, onPointerDown, onPointerUp, onPointerCancel }: Props) {
   return (
     <div class="action-grid">
       {actions.map(action => {
@@ -14,7 +16,12 @@ export function ActionGrid({ actions, onAction }: Props) {
           <button
             key={action}
             class={`action-btn ${ai.cls}`}
-            onClick={() => onAction(action)}
+            onTouchStart={() => onPointerDown(action)}
+            onTouchEnd={(e) => { e.preventDefault(); onPointerUp(action); }}
+            onTouchCancel={onPointerCancel}
+            onMouseDown={() => onPointerDown(action)}
+            onMouseUp={() => onPointerUp(action)}
+            onMouseLeave={onPointerCancel}
           >
             <span class="action-icon">{ai.icon}</span>
             <span>{ai.label.split('\n').map((line, i) =>

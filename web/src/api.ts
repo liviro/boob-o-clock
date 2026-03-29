@@ -5,6 +5,7 @@ export interface SessionResponse {
   validActions: string[];
   nightId: number | null;
   suggestBreast?: string;
+  currentBreast?: string;
   lastEvent: {
     action: string;
     fromState: string;

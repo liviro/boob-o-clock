@@ -138,6 +138,14 @@ body {
 .undo-btn:active { background: #222; }
 .undo-btn:disabled { opacity: 0.3; }
 
+/* Hint text */
+.hint {
+  text-align: center;
+  font-size: 11px;
+  color: #333;
+  padding: 4px 0;
+}
+
 /* Modal overlay */
 .modal-overlay {
   position: fixed;
@@ -198,7 +206,6 @@ body {
 }
 
 .ts-btn:active { background: #333; }
-.ts-btn.now { background: #1a3a1a; border-color: #2a5a2a; grid-column: 1 / -1; }
 
 /* Breast picker */
 .breast-grid {

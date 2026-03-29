@@ -61,6 +61,7 @@ type SessionResponse struct {
 	ValidActions  []string `json:"validActions"`
 	NightID       *int64   `json:"nightId"`
 	SuggestBreast string   `json:"suggestBreast"`
+	CurrentBreast string   `json:"currentBreast"`
 	LastEvent     *struct {
 		Action    string            `json:"action"`
 		FromState string            `json:"fromState"`
@@ -358,21 +359,27 @@ func TestBreastSuggestion(t *testing.T) {
 		"metadata": map[string]string{"breast": "L"},
 	})
 
-	// While feeding L, should suggest R next
+	// While feeding L: currentBreast=L, suggestBreast=R
 	resp := doGet(t, ts, "/api/session/current")
 	var sr SessionResponse
 	decodeJSON(t, resp, &sr)
+	if sr.CurrentBreast != "L" {
+		t.Errorf("currentBreast = %q, want L", sr.CurrentBreast)
+	}
 	if sr.SuggestBreast != "R" {
 		t.Errorf("suggestBreast = %q, want R", sr.SuggestBreast)
 	}
 
-	// Switch to R, should now suggest L
+	// Switch to R: currentBreast=R, suggestBreast=L
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "switch_breast",
 		"metadata": map[string]string{"breast": "R"},
 	})
 	resp = doGet(t, ts, "/api/session/current")
 	decodeJSON(t, resp, &sr)
+	if sr.CurrentBreast != "R" {
+		t.Errorf("currentBreast after switch = %q, want R", sr.CurrentBreast)
+	}
 	if sr.SuggestBreast != "L" {
 		t.Errorf("suggestBreast after switch = %q, want L", sr.SuggestBreast)
 	}
