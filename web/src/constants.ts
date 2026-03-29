@@ -37,7 +37,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   fell_asleep:            { icon: '💤', label: 'Fell\nAsleep!',       cls: 'sleep' },
   give_up:                { icon: '🏳️', label: 'Give Up',            cls: 'danger' },
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
-  poop_done:              { icon: '✅', label: 'Poop\nDone',          cls: 'primary full-width' },
+  poop_done:              { icon: '✅', label: 'Diaper\nChange Done', cls: 'primary full-width' },
   end_night:              { icon: '☀️', label: 'End Night',           cls: 'danger full-width', confirm: true },
 };
 
