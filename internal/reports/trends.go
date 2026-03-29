@@ -12,7 +12,6 @@ type NightDataPoint struct {
 type TrendPoint struct {
 	Date time.Time `json:"date"`
 
-	// Raw values
 	LongestSleep time.Duration `json:"longestSleep"`
 	TotalSleep   time.Duration `json:"totalSleep"`
 	TotalFeed    time.Duration `json:"totalFeed"`
@@ -28,13 +27,9 @@ type TrendPoint struct {
 }
 
 // ComputeTrends produces trend points with moving averages from night data.
-// The window parameter controls the moving average lookback (e.g., 3 for 3-night average).
 func ComputeTrends(points []NightDataPoint, window int) []TrendPoint {
-	if len(points) == 0 {
-		return nil
-	}
-
 	trends := make([]TrendPoint, len(points))
+
 	for i, p := range points {
 		trends[i] = TrendPoint{
 			Date:         p.Date,
@@ -46,14 +41,22 @@ func ComputeTrends(points []NightDataPoint, window int) []TrendPoint {
 		}
 
 		if i+1 >= window {
-			start := i + 1 - window
-			slice := points[start : i+1]
-
-			avgLS := avgDuration(slice, func(p NightDataPoint) time.Duration { return p.Stats.LongestSleepBlock })
-			avgTS := avgDuration(slice, func(p NightDataPoint) time.Duration { return p.Stats.TotalSleepTime })
-			avgTF := avgDuration(slice, func(p NightDataPoint) time.Duration { return p.Stats.TotalFeedTime })
-			avgWC := avgFloat(slice, func(p NightDataPoint) int { return p.Stats.WakeCount })
-			avgFC := avgFloat(slice, func(p NightDataPoint) int { return p.Stats.FeedCount })
+			// Single-pass accumulation over the window
+			var sumLS, sumTS, sumTF time.Duration
+			var sumWC, sumFC int
+			for _, wp := range points[i+1-window : i+1] {
+				sumLS += wp.Stats.LongestSleepBlock
+				sumTS += wp.Stats.TotalSleepTime
+				sumTF += wp.Stats.TotalFeedTime
+				sumWC += wp.Stats.WakeCount
+				sumFC += wp.Stats.FeedCount
+			}
+			w := time.Duration(window)
+			avgLS := sumLS / w
+			avgTS := sumTS / w
+			avgTF := sumTF / w
+			avgWC := float64(sumWC) / float64(window)
+			avgFC := float64(sumFC) / float64(window)
 
 			trends[i].AvgLongestSleep = &avgLS
 			trends[i].AvgTotalSleep = &avgTS
@@ -64,20 +67,4 @@ func ComputeTrends(points []NightDataPoint, window int) []TrendPoint {
 	}
 
 	return trends
-}
-
-func avgDuration(points []NightDataPoint, get func(NightDataPoint) time.Duration) time.Duration {
-	var sum time.Duration
-	for _, p := range points {
-		sum += get(p)
-	}
-	return sum / time.Duration(len(points))
-}
-
-func avgFloat(points []NightDataPoint, get func(NightDataPoint) int) float64 {
-	var sum int
-	for _, p := range points {
-		sum += get(p)
-	}
-	return float64(sum) / float64(len(points))
 }

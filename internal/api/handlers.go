@@ -242,10 +242,9 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetNights returns a list of nights with summary stats.
-func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
-	to := time.Now().Add(24 * time.Hour)
-	from := to.Add(-30 * 24 * time.Hour)
+func parseDateRange(r *http.Request) (from, to time.Time) {
+	to = time.Now().Add(24 * time.Hour)
+	from = to.Add(-30 * 24 * time.Hour)
 
 	if f := r.URL.Query().Get("from"); f != "" {
 		if parsed, err := time.Parse("2006-01-02", f); err == nil {
@@ -257,8 +256,31 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 			to = parsed.Add(24 * time.Hour)
 		}
 	}
+	return
+}
 
+// loadNightsWithEvents fetches nights and their events for a date range.
+func (h *Handler) loadNightsWithEvents(r *http.Request) ([]domain.Night, map[int64][]domain.Event, error) {
+	from, to := parseDateRange(r)
 	nights, err := h.store.ListNights(from, to)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	nightIDs := make([]int64, len(nights))
+	for i, n := range nights {
+		nightIDs[i] = n.ID
+	}
+	eventsMap, err := h.store.GetEventsForNights(nightIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nights, eventsMap, nil
+}
+
+// GetNights returns a list of nights with summary stats.
+func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
+	nights, eventsMap, err := h.loadNightsWithEvents(r)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -269,21 +291,9 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 		Stats reports.NightStats `json:"stats"`
 	}
 
-	// Batch-fetch all events in a single query instead of N+1
-	nightIDs := make([]int64, len(nights))
-	for i, n := range nights {
-		nightIDs[i] = n.ID
-	}
-	eventsMap, err := h.store.GetEventsForNights(nightIDs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
 	summaries := make([]nightSummary, 0, len(nights))
 	for _, n := range nights {
-		events := eventsMap[n.ID]
-		stats := reports.ComputeStats(events, n.StartedAt, nightEndTime(&n))
+		stats := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n))
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{
 				ID:        n.ID,
@@ -301,31 +311,7 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 
 // GetTrends returns trend data with moving averages for charting.
 func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
-	to := time.Now().Add(24 * time.Hour)
-	from := to.Add(-30 * 24 * time.Hour)
-
-	if f := r.URL.Query().Get("from"); f != "" {
-		if parsed, err := time.Parse("2006-01-02", f); err == nil {
-			from = parsed
-		}
-	}
-	if t := r.URL.Query().Get("to"); t != "" {
-		if parsed, err := time.Parse("2006-01-02", t); err == nil {
-			to = parsed.Add(24 * time.Hour)
-		}
-	}
-
-	nights, err := h.store.ListNights(from, to)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	nightIDs := make([]int64, len(nights))
-	for i, n := range nights {
-		nightIDs[i] = n.ID
-	}
-	eventsMap, err := h.store.GetEventsForNights(nightIDs)
+	nights, eventsMap, err := h.loadNightsWithEvents(r)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -333,10 +319,9 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 
 	points := make([]reports.NightDataPoint, len(nights))
 	for i, n := range nights {
-		events := eventsMap[n.ID]
 		points[i] = reports.NightDataPoint{
 			Date:  n.StartedAt,
-			Stats: reports.ComputeStats(events, n.StartedAt, nightEndTime(&n)),
+			Stats: reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n)),
 		}
 	}
 

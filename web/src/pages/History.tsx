@@ -6,16 +6,9 @@ import { TrendChart } from '../components/TrendChart';
 
 type View = 'nights' | 'trends';
 
-function fmtDurChart(ns: number): string {
-  const h = Math.floor(ns / 1e9 / 3600);
-  const m = Math.floor((ns / 1e9 % 3600) / 60);
-  if (h > 0) return `${h}h${m > 0 ? m + 'm' : ''}`;
-  return `${m}m`;
-}
-
 export function History() {
   const [nights, setNights] = useState<NightSummary[]>([]);
-  const [trends, setTrends] = useState<TrendPoint[]>([]);
+  const [trends, setTrends] = useState<TrendPoint[] | null>(null);
   const [detail, setDetail] = useState<NightDetail | null>(null);
   const [view, setView] = useState<View>('nights');
   const [loading, setLoading] = useState(true);
@@ -26,15 +19,28 @@ export function History() {
     setLoading(true);
     setDetail(null);
     try {
-      const [nightsData, trendsData] = await Promise.all([getNights(), getTrends()]);
-      setNights((nightsData.nights || []).reverse());
-      setTrends(trendsData.trends || []);
+      const data = await getNights();
+      setNights((data.nights || []).reverse());
     } catch {
       setNights([]);
-      setTrends([]);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadTrends() {
+    if (trends !== null) return; // already loaded
+    try {
+      const data = await getTrends();
+      setTrends(data.trends || []);
+    } catch {
+      setTrends([]);
+    }
+  }
+
+  function switchView(v: View) {
+    setView(v);
+    if (v === 'trends') loadTrends();
   }
 
   async function showDetail(id: number) {
@@ -59,10 +65,10 @@ export function History() {
   return (
     <div class="history-content">
       <div class="view-toggle">
-        <button class={`view-btn ${view === 'nights' ? 'active' : ''}`} onClick={() => setView('nights')}>
+        <button class={`view-btn ${view === 'nights' ? 'active' : ''}`} onClick={() => switchView('nights')}>
           Nights
         </button>
-        <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => setView('trends')}>
+        <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => switchView('trends')}>
           Trends
         </button>
       </div>
@@ -74,7 +80,7 @@ export function History() {
         const s = n.stats;
 
         return (
-          <div key={n.id} class="night-card" onClick={() => showDetail(n.id)}>
+          <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
             <h3>
               <span>{dateStr}</span>
               <span>{timeStr}</span>
@@ -89,13 +95,17 @@ export function History() {
         );
       })}
 
-      {view === 'trends' && (
+      {view === 'trends' && trends === null && (
+        <div class="no-data">Loading trends...</div>
+      )}
+
+      {view === 'trends' && trends !== null && (
         <div class="trends-grid">
           <TrendChart
             trends={trends}
             getValue={p => p.longestSleep}
             getAvg={p => p.avgLongestSleep}
-            formatValue={fmtDurChart}
+            formatValue={fmtDur}
             title="Longest Sleep Block"
             color="#4a8aff"
           />
@@ -103,7 +113,7 @@ export function History() {
             trends={trends}
             getValue={p => p.totalSleep}
             getAvg={p => p.avgTotalSleep}
-            formatValue={fmtDurChart}
+            formatValue={fmtDur}
             title="Total Sleep"
             color="#6a5aff"
           />

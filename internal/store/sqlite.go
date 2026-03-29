@@ -270,7 +270,6 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 		return map[int64][]domain.Event{}, nil
 	}
 
-	// Build placeholder string: ?,?,?
 	placeholders := make([]byte, 0, len(nightIDs)*2-1)
 	args := make([]any, len(nightIDs))
 	for i, id := range nightIDs {
@@ -292,20 +291,11 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 
 	result := make(map[int64][]domain.Event)
 	for rows.Next() {
-		var evt domain.Event
-		var ts, createdAt string
-		var metadataJSON sql.NullString
-
-		if err := rows.Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
-			&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
+		evt, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
 		}
-		evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
-		evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-		if metadataJSON.Valid {
-			json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
-		}
-		result[evt.NightID] = append(result[evt.NightID], evt)
+		result[evt.NightID] = append(result[evt.NightID], *evt)
 	}
 	return result, rows.Err()
 }
@@ -322,20 +312,28 @@ func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
 
 	var events []domain.Event
 	for rows.Next() {
-		var evt domain.Event
-		var ts, createdAt string
-		var metadataJSON sql.NullString
-
-		if err := rows.Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
-			&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
+		evt, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
 		}
-		evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
-		evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-		if metadataJSON.Valid {
-			json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
-		}
-		events = append(events, evt)
+		events = append(events, *evt)
 	}
 	return events, rows.Err()
+}
+
+func scanEvent(row scanner) (*domain.Event, error) {
+	var evt domain.Event
+	var ts, createdAt string
+	var metadataJSON sql.NullString
+
+	if err := row.Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
+		&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
+		return nil, fmt.Errorf("scan event: %w", err)
+	}
+	evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
+	evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	if metadataJSON.Valid {
+		json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
+	}
+	return &evt, nil
 }

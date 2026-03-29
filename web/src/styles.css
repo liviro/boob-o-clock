@@ -262,8 +262,9 @@ body {
   border-radius: 12px;
   padding: 14px;
   margin-bottom: 12px;
-  cursor: pointer;
 }
+
+.night-card.clickable { cursor: pointer; }
 
 .night-card h3 {
   font-size: 14px;
