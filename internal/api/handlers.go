@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -352,17 +351,15 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 
 	for _, e := range events {
 		breast := e.Metadata["breast"]
-		meta := ""
-		if len(e.Metadata) > 0 {
-			for k, v := range e.Metadata {
-				if k == "breast" {
-					continue
-				}
-				if meta != "" {
-					meta += ";"
-				}
-				meta += fmt.Sprintf("%s=%s", k, v)
+		var meta string
+		for k, v := range e.Metadata {
+			if k == "breast" {
+				continue
 			}
+			if meta != "" {
+				meta += ";"
+			}
+			meta += k + "=" + v
 		}
 		cw.Write([]string{
 			strconv.FormatInt(e.NightID, 10),

@@ -152,33 +152,19 @@ func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
 	}
 	defer tx.Rollback()
 
-	var evt domain.Event
-	var metadataJSON sql.NullString
-	var ts, createdAt string
-
-	err = tx.QueryRow(
+	evt, err := scanEvent(tx.QueryRow(
 		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
 		 FROM events WHERE night_id = ? ORDER BY seq DESC LIMIT 1`, nightID,
-	).Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
-		&ts, &metadataJSON, &createdAt, &evt.Seq)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no events to undo")
-	}
+	))
 	if err != nil {
 		return nil, fmt.Errorf("query last event: %w", err)
-	}
-
-	evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
-	evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-	if metadataJSON.Valid {
-		json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
 	}
 
 	if _, err = tx.Exec("DELETE FROM events WHERE id = ?", evt.ID); err != nil {
 		return nil, fmt.Errorf("delete event: %w", err)
 	}
 
-	return &evt, tx.Commit()
+	return evt, tx.Commit()
 }
 
 func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {

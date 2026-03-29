@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/polina/boob-o-clock/internal/store"
@@ -429,39 +431,22 @@ func TestExportCSV(t *testing.T) {
 		t.Errorf("Content-Type = %s, want text/csv", ct)
 	}
 
-	body := make([]byte, 4096)
-	n, _ := resp.Body.Read(body)
+	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	csv := string(body[:n])
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	csvBody := string(body)
 
 	// Should have header + 4 data rows
-	lines := 0
-	for _, c := range csv {
-		if c == '\n' {
-			lines++
-		}
-	}
+	lines := strings.Count(csvBody, "\n")
 	if lines < 5 {
 		t.Errorf("expected at least 5 lines (header + 4 events), got %d", lines)
 	}
 
-	// Header should contain expected columns
-	if !contains(csv, "night_id") || !contains(csv, "action") || !contains(csv, "breast") {
+	if !strings.Contains(csvBody, "night_id") || !strings.Contains(csvBody, "action") || !strings.Contains(csvBody, "breast") {
 		t.Error("CSV header missing expected columns")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestExportCSVEmpty(t *testing.T) {
@@ -471,6 +456,14 @@ func TestExportCSVEmpty(t *testing.T) {
 	resp := doGet(t, ts, "/api/export/csv")
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/csv" {
+		t.Errorf("Content-Type = %s, want text/csv", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), "night_id") {
+		t.Error("empty export should still contain CSV header")
 	}
 }
 
