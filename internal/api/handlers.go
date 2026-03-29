@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -332,6 +334,48 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 		"trends": trends,
 		"window": window,
 	})
+}
+
+// ExportCSV streams all events as a CSV file.
+func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
+	events, err := h.store.GetAllEvents()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", `attachment; filename="boob-o-clock-export.csv"`)
+
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"night_id", "seq", "from_state", "action", "to_state", "timestamp", "breast", "metadata"})
+
+	for _, e := range events {
+		breast := e.Metadata["breast"]
+		meta := ""
+		if len(e.Metadata) > 0 {
+			for k, v := range e.Metadata {
+				if k == "breast" {
+					continue
+				}
+				if meta != "" {
+					meta += ";"
+				}
+				meta += fmt.Sprintf("%s=%s", k, v)
+			}
+		}
+		cw.Write([]string{
+			strconv.FormatInt(e.NightID, 10),
+			strconv.Itoa(e.Seq),
+			string(e.FromState),
+			string(e.Action),
+			string(e.ToState),
+			e.Timestamp.Format(time.RFC3339),
+			breast,
+			meta,
+		})
+	}
+	cw.Flush()
 }
 
 type nightDetailJSON struct {

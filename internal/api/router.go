@@ -11,6 +11,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("GET /api/nights/{id}", h.GetNightDetail)
 	mux.HandleFunc("GET /api/nights", h.GetNights)
 	mux.HandleFunc("GET /api/trends", h.GetTrends)
+	mux.HandleFunc("GET /api/export/csv", h.ExportCSV)
 
 	return mux
 }

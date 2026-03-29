@@ -408,6 +408,72 @@ func TestGetTrends(t *testing.T) {
 	}
 }
 
+func TestExportCSV(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	// Create a night with a feed
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "start_feed",
+		"metadata": map[string]string{"breast": "L"},
+	})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_awake"})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "end_night"})
+
+	resp := doGet(t, ts, "/api/export/csv")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/csv" {
+		t.Errorf("Content-Type = %s, want text/csv", ct)
+	}
+
+	body := make([]byte, 4096)
+	n, _ := resp.Body.Read(body)
+	resp.Body.Close()
+	csv := string(body[:n])
+
+	// Should have header + 4 data rows
+	lines := 0
+	for _, c := range csv {
+		if c == '\n' {
+			lines++
+		}
+	}
+	if lines < 5 {
+		t.Errorf("expected at least 5 lines (header + 4 events), got %d", lines)
+	}
+
+	// Header should contain expected columns
+	if !contains(csv, "night_id") || !contains(csv, "action") || !contains(csv, "breast") {
+		t.Error("CSV header missing expected columns")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestExportCSVEmpty(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	resp := doGet(t, ts, "/api/export/csv")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestGetNightsEmpty(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()

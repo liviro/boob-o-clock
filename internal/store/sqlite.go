@@ -263,6 +263,28 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 	return &n, nil
 }
 
+// GetAllEvents returns all events across all nights, ordered by night and sequence.
+func (s *Store) GetAllEvents() ([]domain.Event, error) {
+	rows, err := s.db.Query(
+		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
+		 FROM events ORDER BY night_id, seq`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query all events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []domain.Event
+	for rows.Next() {
+		evt, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, *evt)
+	}
+	return events, rows.Err()
+}
+
 // GetEventsForNights fetches events for multiple nights in a single query,
 // returning them partitioned by night ID.
 func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, error) {
