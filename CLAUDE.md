@@ -14,8 +14,8 @@ Single Go binary serving a REST API and embedded frontend static files.
 - `internal/store/` — SQLite persistence via `modernc.org/sqlite` (pure Go, no CGo). Stores events and nights.
 - `internal/reports/` — Report computation over event data. Pure Go.
 - `internal/api/` — HTTP handlers. Thin orchestration: loads session from store, validates via domain, persists, returns JSON.
-- `cmd/server/` — Entry point. Wires dependencies, embeds frontend via `go:embed`, serves on configurable port.
-- `web/` — Frontend assets (Phase 1: single HTML file; later: Preact PWA build output in `web/dist/`).
+- `internal/web/` — Embedded frontend assets via `go:embed`. Static files live in `internal/web/static/`.
+- `cmd/server/` — Entry point. Wires dependencies, serves API + embedded frontend on configurable port.
 
 ## Core Domain: State Machine
 
