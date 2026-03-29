@@ -4,6 +4,7 @@ export interface SessionResponse {
   state: string;
   validActions: string[];
   nightId: number | null;
+  suggestBreast?: string;
   lastEvent: {
     action: string;
     fromState: string;
@@ -43,6 +44,20 @@ export interface EventEntry {
   toState: string;
   metadata?: Record<string, string>;
   timestamp: string;
+}
+
+export interface TrendPoint {
+  date: string;
+  longestSleep: number;
+  totalSleep: number;
+  totalFeed: number;
+  wakeCount: number;
+  feedCount: number;
+  avgLongestSleep: number | null;
+  avgTotalSleep: number | null;
+  avgTotalFeed: number | null;
+  avgWakeCount: number | null;
+  avgFeedCount: number | null;
 }
 
 export interface NightDetail {
@@ -94,5 +109,10 @@ export async function getNights(): Promise<{ nights: NightSummary[] }> {
 
 export async function getNightDetail(id: number): Promise<NightDetail> {
   const resp = await checkResponse(await fetch(`${API}/nights/${id}`));
+  return resp.json();
+}
+
+export async function getTrends(): Promise<{ trends: TrendPoint[]; window: number }> {
+  const resp = await checkResponse(await fetch(`${API}/trends`));
   return resp.json();
 }

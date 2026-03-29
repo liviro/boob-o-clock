@@ -88,6 +88,7 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
       <BreastPicker
         open={modal.type === 'breast'}
+        suggestSide={session.suggestBreast}
         onPick={handleBreastPick}
         onClose={closeModal}
       />

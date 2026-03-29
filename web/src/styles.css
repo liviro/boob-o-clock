@@ -223,6 +223,7 @@ body {
 }
 
 .breast-btn:active { background: #5a4a2a; }
+.breast-btn.suggested { border-color: #8a7a3a; box-shadow: 0 0 12px rgba(138, 122, 58, 0.4); }
 
 /* Confirm modal */
 .confirm-grid {
@@ -342,6 +343,54 @@ body {
   color: #444;
   padding: 40px 0;
   font-size: 14px;
+}
+
+/* View toggle (Nights / Trends) */
+.view-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  background: #111;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.view-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.view-btn.active {
+  color: #fff;
+  background: #222;
+}
+
+/* Trend charts */
+.trends-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trend-chart {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.trend-title {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
 }
 
 /* Error toast */
