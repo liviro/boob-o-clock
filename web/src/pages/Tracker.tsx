@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'preact/hooks';
+import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import { SessionResponse } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
 import { StateDisplay } from '../components/StateDisplay';
@@ -16,16 +16,20 @@ interface Props {
 
 type ModalState =
   | { type: 'none' }
-  | { type: 'breast'; action: string }
+  | { type: 'breast'; action: string; wantsTimePicker: boolean }
   | { type: 'timestamp'; action: string; metadata?: Record<string, string>; title: string }
-  | { type: 'confirm'; action: string };
+  | { type: 'confirm'; action: string; wantsTimePicker: boolean };
 
 export function Tracker({ session, onDispatch, onUndo }: Props) {
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
 
-  // Resolve an action: fire with "now" or stash for time picker
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
+  }, []);
+
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
     onDispatch(action, metadata, timestamp ?? new Date());
   }
@@ -33,63 +37,44 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   function openTimePicker(action: string, metadata?: Record<string, string>) {
     const label = actionLabel(action);
     const breastSuffix = metadata?.breast ? ` (${metadata.breast})` : '';
-    setModal({
-      type: 'timestamp',
-      action,
-      metadata,
-      title: `${label}${breastSuffix} — When?`,
-    });
+    setModal({ type: 'timestamp', action, metadata, title: `${label}${breastSuffix} — When?` });
   }
 
-  // Action button tap: resolves immediately (with breast picker or confirm if needed)
-  const handleAction = useCallback((action: string) => {
+  // Resolve metadata for switch_breast using the API-provided suggestion
+  function switchBreastMeta(): Record<string, string> | undefined {
+    return session.suggestBreast ? { breast: session.suggestBreast } : undefined;
+  }
+
+  // Shared action resolution: resolves modals/metadata, then calls terminal fn
+  function resolveAction(action: string, wantsTimePicker: boolean) {
     const ai = ACTION_INFO[action];
 
     if (ai?.confirm) {
-      setModal({ type: 'confirm', action });
+      setModal({ type: 'confirm', action, wantsTimePicker });
       return;
     }
 
-    // Switch breast: auto-fill opposite of current, fire immediately
-    if (action === 'switch_breast' && session.currentBreast) {
-      const newSide = session.currentBreast === 'L' ? 'R' : 'L';
-      fireAction(action, { breast: newSide });
-      return;
-    }
-
-    if (ai?.needsBreast) {
-      setModal({ type: 'breast', action });
-      return;
-    }
-
-    fireAction(action);
-  }, [session.currentBreast, onDispatch]);
-
-  // Long-press: open time picker instead of firing immediately
-  const handleLongPress = useCallback((action: string) => {
-    const ai = ACTION_INFO[action];
-
-    // For confirm actions, long-press also needs confirm first
-    if (ai?.confirm) {
-      setModal({ type: 'confirm', action });
-      return;
-    }
-
-    // Switch breast with time picker
-    if (action === 'switch_breast' && session.currentBreast) {
-      const newSide = session.currentBreast === 'L' ? 'R' : 'L';
-      openTimePicker(action, { breast: newSide });
-      return;
+    if (action === 'switch_breast') {
+      const meta = switchBreastMeta();
+      if (meta) {
+        wantsTimePicker ? openTimePicker(action, meta) : fireAction(action, meta);
+        return;
+      }
     }
 
     if (ai?.needsBreast) {
-      // Need breast first, then time picker will follow
-      setModal({ type: 'breast', action });
+      setModal({ type: 'breast', action, wantsTimePicker });
       return;
     }
 
-    openTimePicker(action);
-  }, [session.currentBreast]);
+    wantsTimePicker ? openTimePicker(action) : fireAction(action);
+  }
+
+  const handleAction = useCallback((action: string) => resolveAction(action, false),
+    [session.suggestBreast, onDispatch]);
+
+  const handleLongPress = useCallback((action: string) => resolveAction(action, true),
+    [session.suggestBreast]);
 
   // Touch/mouse handlers for long-press detection
   const handlePointerDown = useCallback((action: string) => {
@@ -120,8 +105,9 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
   const handleBreastPick = useCallback((side: 'L' | 'R') => {
     if (modal.type !== 'breast') return;
+    const meta = { breast: side };
     setModal({ type: 'none' });
-    fireAction(modal.action, { breast: side });
+    modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
   }, [modal, onDispatch]);
 
   const handleTimestampPick = useCallback((minutesAgo: number) => {
@@ -134,7 +120,7 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   const handleConfirm = useCallback(() => {
     if (modal.type !== 'confirm') return;
     setModal({ type: 'none' });
-    fireAction(modal.action);
+    modal.wantsTimePicker ? openTimePicker(modal.action) : fireAction(modal.action);
   }, [modal, onDispatch]);
 
   const closeModal = useCallback(() => setModal({ type: 'none' }), []);
