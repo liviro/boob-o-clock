@@ -263,6 +263,53 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 	return &n, nil
 }
 
+// GetEventsForNights fetches events for multiple nights in a single query,
+// returning them partitioned by night ID.
+func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, error) {
+	if len(nightIDs) == 0 {
+		return map[int64][]domain.Event{}, nil
+	}
+
+	// Build placeholder string: ?,?,?
+	placeholders := make([]byte, 0, len(nightIDs)*2-1)
+	args := make([]any, len(nightIDs))
+	for i, id := range nightIDs {
+		if i > 0 {
+			placeholders = append(placeholders, ',')
+		}
+		placeholders = append(placeholders, '?')
+		args[i] = id
+	}
+
+	rows, err := s.db.Query(
+		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
+		 FROM events WHERE night_id IN (`+string(placeholders)+`) ORDER BY night_id, seq`, args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query events batch: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]domain.Event)
+	for rows.Next() {
+		var evt domain.Event
+		var ts, createdAt string
+		var metadataJSON sql.NullString
+
+		if err := rows.Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
+			&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
+		evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		if metadataJSON.Valid {
+			json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
+		}
+		result[evt.NightID] = append(result[evt.NightID], evt)
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
 	rows, err := s.db.Query(
 		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq

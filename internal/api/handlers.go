@@ -267,14 +267,20 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 		Stats reports.NightStats `json:"stats"`
 	}
 
+	// Batch-fetch all events in a single query instead of N+1
+	nightIDs := make([]int64, len(nights))
+	for i, n := range nights {
+		nightIDs[i] = n.ID
+	}
+	eventsMap, err := h.store.GetEventsForNights(nightIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	summaries := make([]nightSummary, 0, len(nights))
 	for _, n := range nights {
-		// Use GetEvents directly to avoid re-fetching the night row (N+1 fix)
-		events, err := h.store.GetEvents(n.ID)
-		if err != nil {
-			continue
-		}
-
+		events := eventsMap[n.ID]
 		stats := reports.ComputeStats(events, n.StartedAt, nightEndTime(&n))
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{

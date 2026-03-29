@@ -248,6 +248,50 @@ func TestListNights(t *testing.T) {
 	}
 }
 
+func TestGetEventsForNights(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().Truncate(time.Millisecond)
+
+	n1, _ := s.CreateNight(now)
+	s.AddEvent(&domain.Event{
+		NightID: n1.ID, FromState: domain.NightOff,
+		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
+	})
+	s.AddEvent(&domain.Event{
+		NightID: n1.ID, FromState: domain.Awake,
+		Action: domain.EndNight, ToState: domain.NightOff, Timestamp: now.Add(time.Hour),
+	})
+	s.EndNight(n1.ID, now.Add(time.Hour))
+
+	n2, _ := s.CreateNight(now.Add(24 * time.Hour))
+	s.AddEvent(&domain.Event{
+		NightID: n2.ID, FromState: domain.NightOff,
+		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now.Add(24 * time.Hour),
+	})
+	s.EndNight(n2.ID, now.Add(25*time.Hour))
+
+	// Batch fetch
+	eventsMap, err := s.GetEventsForNights([]int64{n1.ID, n2.ID})
+	if err != nil {
+		t.Fatalf("GetEventsForNights: %v", err)
+	}
+	if len(eventsMap[n1.ID]) != 2 {
+		t.Errorf("night 1: got %d events, want 2", len(eventsMap[n1.ID]))
+	}
+	if len(eventsMap[n2.ID]) != 1 {
+		t.Errorf("night 2: got %d events, want 1", len(eventsMap[n2.ID]))
+	}
+
+	// Empty input
+	eventsMap, err = s.GetEventsForNights(nil)
+	if err != nil {
+		t.Fatalf("GetEventsForNights(nil): %v", err)
+	}
+	if len(eventsMap) != 0 {
+		t.Errorf("empty input: got %d entries, want 0", len(eventsMap))
+	}
+}
+
 func TestDeleteNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
