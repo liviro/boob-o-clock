@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { getNights, getNightDetail, NightSummary, NightDetail } from '../api';
-import { fmtDur, ACTION_INFO } from '../constants';
+import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 
 export function History() {
@@ -42,7 +42,7 @@ export function History() {
 
     return (
       <div class="history-content">
-        <button class="back-btn" onClick={loadNights}>← Back</button>
+        <button class="back-btn" onClick={() => setDetail(null)}>← Back</button>
 
         <div class="night-card">
           <h3>
@@ -64,7 +64,7 @@ export function History() {
             {detail.events.map((evt, i) => {
               const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
               const ai = ACTION_INFO[evt.action];
-              const label = ai ? `${ai.icon} ${ai.label.replace(/\n/g, ' ')}` : evt.action;
+              const label = ai ? `${ai.icon} ${actionLabel(evt.action)}` : evt.action;
               const meta = evt.metadata ? ` (${Object.values(evt.metadata).join(', ')})` : '';
               return <div key={i} class="event-row">{t} — {label}{meta}</div>;
             })}

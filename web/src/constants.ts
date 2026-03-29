@@ -41,6 +41,12 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   end_night:              { icon: '☀️', label: 'End Night',           cls: 'danger full-width', confirm: true },
 };
 
+/** Get single-line label for an action */
+export function actionLabel(action: string): string {
+  const ai = ACTION_INFO[action];
+  return ai ? ai.label.replace(/\n/g, ' ') : action;
+}
+
 /** Format Go nanosecond duration to human readable */
 export function fmtDur(ns: number): string {
   const totalMin = Math.floor(ns / 1e9 / 60);

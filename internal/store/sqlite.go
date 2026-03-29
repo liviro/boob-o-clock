@@ -105,9 +105,14 @@ func (s *Store) DeleteNight(nightID int64) error {
 }
 
 func (s *Store) AddEvent(evt *domain.Event) error {
-	// Get next seq for this night
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	var maxSeq sql.NullInt64
-	err := s.db.QueryRow(
+	err = tx.QueryRow(
 		"SELECT MAX(seq) FROM events WHERE night_id = ?", evt.NightID,
 	).Scan(&maxSeq)
 	if err != nil {
@@ -125,7 +130,7 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 	}
 
 	evt.CreatedAt = time.Now()
-	result, err := s.db.Exec(
+	result, err := tx.Exec(
 		`INSERT INTO events (night_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		evt.NightID, string(evt.FromState), string(evt.Action), string(evt.ToState),
@@ -137,15 +142,21 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 	}
 
 	evt.ID, _ = result.LastInsertId()
-	return nil
+	return tx.Commit()
 }
 
 func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	var evt domain.Event
 	var metadataJSON sql.NullString
 	var ts, createdAt string
 
-	err := s.db.QueryRow(
+	err = tx.QueryRow(
 		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
 		 FROM events WHERE night_id = ? ORDER BY seq DESC LIMIT 1`, nightID,
 	).Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
@@ -163,12 +174,11 @@ func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
 		json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
 	}
 
-	_, err = s.db.Exec("DELETE FROM events WHERE id = ?", evt.ID)
-	if err != nil {
+	if _, err = tx.Exec("DELETE FROM events WHERE id = ?", evt.ID); err != nil {
 		return nil, fmt.Errorf("delete event: %w", err)
 	}
 
-	return &evt, nil
+	return &evt, tx.Commit()
 }
 
 func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
@@ -182,7 +192,7 @@ func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
 		return nil, nil, fmt.Errorf("query current night: %w", err)
 	}
 
-	events, err := s.getEvents(night.ID)
+	events, err := s.GetEvents(night.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,7 +211,7 @@ func (s *Store) GetNight(id int64) (*domain.Night, []domain.Event, error) {
 		return nil, nil, fmt.Errorf("query night: %w", err)
 	}
 
-	events, err := s.getEvents(id)
+	events, err := s.GetEvents(id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -221,20 +231,11 @@ func (s *Store) ListNights(from, to time.Time) ([]domain.Night, error) {
 
 	var nights []domain.Night
 	for rows.Next() {
-		var n domain.Night
-		var startedAt, createdAt string
-		var endedAt sql.NullString
-
-		if err := rows.Scan(&n.ID, &startedAt, &endedAt, &createdAt); err != nil {
+		n, err := s.scanNight(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan night: %w", err)
 		}
-		n.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt)
-		n.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-		if endedAt.Valid {
-			t, _ := time.Parse(time.RFC3339Nano, endedAt.String)
-			n.EndedAt = &t
-		}
-		nights = append(nights, n)
+		nights = append(nights, *n)
 	}
 	return nights, rows.Err()
 }
@@ -262,7 +263,7 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 	return &n, nil
 }
 
-func (s *Store) getEvents(nightID int64) ([]domain.Event, error) {
+func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
 	rows, err := s.db.Query(
 		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
 		 FROM events WHERE night_id = ? ORDER BY seq`, nightID,

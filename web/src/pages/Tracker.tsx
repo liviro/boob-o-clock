@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'preact/hooks';
 import { SessionResponse } from '../api';
-import { ACTION_INFO } from '../constants';
+import { ACTION_INFO, actionLabel } from '../constants';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
 import { BreastPicker } from '../components/BreastPicker';
@@ -36,19 +36,16 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       return;
     }
 
-    const label = ai ? ai.label.replace(/\n/g, ' ') : action;
-    setModal({ type: 'timestamp', action, title: `${label} — When?` });
+    setModal({ type: 'timestamp', action, title: `${actionLabel(action)} — When?` });
   }, []);
 
   const handleBreastPick = useCallback((side: 'L' | 'R') => {
     if (modal.type !== 'breast') return;
-    const ai = ACTION_INFO[modal.action];
-    const label = ai ? ai.label.replace(/\n/g, ' ') : modal.action;
     setModal({
       type: 'timestamp',
       action: modal.action,
       metadata: { breast: side },
-      title: `${label} (${side}) — When?`,
+      title: `${actionLabel(modal.action)} (${side}) — When?`,
     });
   }, [modal]);
 
@@ -61,12 +58,10 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
   const handleConfirm = useCallback(() => {
     if (modal.type !== 'confirm') return;
-    const ai = ACTION_INFO[modal.action];
-    const label = ai ? ai.label.replace(/\n/g, ' ') : modal.action;
     setModal({
       type: 'timestamp',
       action: modal.action,
-      title: `${label} — When?`,
+      title: `${actionLabel(modal.action)} — When?`,
     });
   }, [modal]);
 
@@ -107,7 +102,7 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       <ConfirmModal
         open={modal.type === 'confirm'}
         title={modal.type === 'confirm'
-          ? `${ACTION_INFO[modal.action]?.icon || ''} ${ACTION_INFO[modal.action]?.label.replace(/\n/g, ' ') || modal.action} — are you sure?`
+          ? `${ACTION_INFO[modal.action]?.icon || ''} ${actionLabel(modal.action)} — are you sure?`
           : ''}
         onConfirm={handleConfirm}
         onCancel={closeModal}

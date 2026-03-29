@@ -78,10 +78,3 @@ type Night struct {
 	CreatedAt time.Time
 }
 
-// Session is the current state of an active (or inactive) night.
-type Session struct {
-	Night        *Night
-	Events       []Event
-	CurrentState State
-	ValidActions []Action
-}

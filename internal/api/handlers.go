@@ -40,6 +40,35 @@ type eventResponse struct {
 	Timestamp time.Time         `json:"timestamp"`
 }
 
+func toEventResponse(e domain.Event) *eventResponse {
+	return &eventResponse{
+		Action:    e.Action,
+		FromState: e.FromState,
+		ToState:   e.ToState,
+		Metadata:  e.Metadata,
+		Timestamp: e.Timestamp,
+	}
+}
+
+func buildSessionResponse(state domain.State, nightID *int64, events []domain.Event) sessionResponse {
+	resp := sessionResponse{
+		State:        state,
+		ValidActions: domain.ValidActions(state),
+		NightID:      nightID,
+	}
+	if len(events) > 0 {
+		resp.LastEvent = toEventResponse(events[len(events)-1])
+	}
+	return resp
+}
+
+func nightEndTime(n *domain.Night) time.Time {
+	if n.EndedAt != nil {
+		return *n.EndedAt
+	}
+	return time.Now()
+}
+
 // GetCurrentSession returns the current state and valid actions.
 func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	night, events, err := h.store.CurrentSession()
@@ -49,25 +78,12 @@ func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state := domain.DeriveState(events)
-	resp := sessionResponse{
-		State:        state,
-		ValidActions: domain.ValidActions(state),
-	}
+	var nightID *int64
 	if night != nil {
-		resp.NightID = &night.ID
-	}
-	if len(events) > 0 {
-		last := events[len(events)-1]
-		resp.LastEvent = &eventResponse{
-			Action:    last.Action,
-			FromState: last.FromState,
-			ToState:   last.ToState,
-			Metadata:  last.Metadata,
-			Timestamp: last.Timestamp,
-		}
+		nightID = &night.ID
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, buildSessionResponse(state, nightID, events))
 }
 
 // PostEvent records a new event and returns the updated session.
@@ -80,7 +96,6 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 
 	action := domain.Action(req.Action)
 
-	// Parse timestamp (default to now)
 	ts := time.Now()
 	if req.Timestamp != "" {
 		parsed, err := time.Parse(time.RFC3339, req.Timestamp)
@@ -91,7 +106,6 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		ts = parsed
 	}
 
-	// Load current session
 	night, events, err := h.store.CurrentSession()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -100,14 +114,12 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 
 	currentState := domain.DeriveState(events)
 
-	// Validate transition
 	nextState, err := domain.Transition(currentState, action, req.Metadata)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Handle night lifecycle
 	if action == domain.StartNight {
 		night, err = h.store.CreateNight(ts)
 		if err != nil {
@@ -121,7 +133,6 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store event
 	evt := &domain.Event{
 		NightID:   night.ID,
 		FromState: currentState,
@@ -135,7 +146,6 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// End night if applicable
 	if action == domain.EndNight {
 		if err := h.store.EndNight(night.ID, ts); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -143,23 +153,12 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Return updated session
-	resp := sessionResponse{
-		State:        nextState,
-		ValidActions: domain.ValidActions(nextState),
-		LastEvent: &eventResponse{
-			Action:    evt.Action,
-			FromState: evt.FromState,
-			ToState:   evt.ToState,
-			Metadata:  evt.Metadata,
-			Timestamp: evt.Timestamp,
-		},
-	}
+	var nightID *int64
 	if nextState != domain.NightOff {
-		resp.NightID = &night.ID
+		nightID = &night.ID
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, buildSessionResponse(nextState, nightID, append(events, *evt)))
 }
 
 // PostUndo removes the last event and returns the updated session.
@@ -186,45 +185,19 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If we undid start_night, delete the night entirely
 	if popped.Action == domain.StartNight {
 		if err := h.store.DeleteNight(night.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		resp := sessionResponse{
-			State:        domain.NightOff,
-			ValidActions: domain.ValidActions(domain.NightOff),
-		}
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, buildSessionResponse(domain.NightOff, nil, nil))
 		return
 	}
 
-	// Reload events after pop
-	_, events, err = h.store.CurrentSession()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	state := domain.DeriveState(events)
-	resp := sessionResponse{
-		State:        state,
-		ValidActions: domain.ValidActions(state),
-		NightID:      &night.ID,
-	}
-	if len(events) > 0 {
-		last := events[len(events)-1]
-		resp.LastEvent = &eventResponse{
-			Action:    last.Action,
-			FromState: last.FromState,
-			ToState:   last.ToState,
-			Metadata:  last.Metadata,
-			Timestamp: last.Timestamp,
-		}
-	}
-
-	writeJSON(w, http.StatusOK, resp)
+	// Derive state from events minus the popped one
+	remaining := events[:len(events)-1]
+	state := domain.DeriveState(remaining)
+	writeJSON(w, http.StatusOK, buildSessionResponse(state, &night.ID, remaining))
 }
 
 // GetNightDetail returns a night with its timeline, stats, and raw events.
@@ -248,20 +221,10 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 
 	eventJSONs := make([]eventResponse, len(events))
 	for i, e := range events {
-		eventJSONs[i] = eventResponse{
-			Action:    e.Action,
-			FromState: e.FromState,
-			ToState:   e.ToState,
-			Metadata:  e.Metadata,
-			Timestamp: e.Timestamp,
-		}
+		eventJSONs[i] = *toEventResponse(e)
 	}
 
-	nightEnd := time.Now()
-	if night.EndedAt != nil {
-		nightEnd = *night.EndedAt
-	}
-
+	nightEnd := nightEndTime(night)
 	timeline := reports.BuildTimeline(events)
 	stats := reports.ComputeStats(events, night.StartedAt, nightEnd)
 
@@ -279,8 +242,7 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 
 // GetNights returns a list of nights with summary stats.
 func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
-	// Default to last 30 days
-	to := time.Now().Add(24 * time.Hour) // include today
+	to := time.Now().Add(24 * time.Hour)
 	from := to.Add(-30 * 24 * time.Hour)
 
 	if f := r.URL.Query().Get("from"); f != "" {
@@ -290,7 +252,7 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 	}
 	if t := r.URL.Query().Get("to"); t != "" {
 		if parsed, err := time.Parse("2006-01-02", t); err == nil {
-			to = parsed.Add(24 * time.Hour) // inclusive end
+			to = parsed.Add(24 * time.Hour)
 		}
 	}
 
@@ -307,17 +269,13 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]nightSummary, 0, len(nights))
 	for _, n := range nights {
-		_, events, err := h.store.GetNight(n.ID)
+		// Use GetEvents directly to avoid re-fetching the night row (N+1 fix)
+		events, err := h.store.GetEvents(n.ID)
 		if err != nil {
 			continue
 		}
 
-		nightEnd := time.Now()
-		if n.EndedAt != nil {
-			nightEnd = *n.EndedAt
-		}
-
-		stats := reports.ComputeStats(events, n.StartedAt, nightEnd)
+		stats := reports.ComputeStats(events, n.StartedAt, nightEndTime(&n))
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{
 				ID:        n.ID,
@@ -348,4 +306,3 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
-

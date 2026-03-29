@@ -52,8 +52,16 @@ export interface NightDetail {
   stats: NightStats;
 }
 
+async function checkResponse(resp: Response): Promise<Response> {
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Request failed (${resp.status})`);
+  }
+  return resp;
+}
+
 export async function getCurrentSession(): Promise<SessionResponse> {
-  const resp = await fetch(`${API}/session/current`);
+  const resp = await checkResponse(await fetch(`${API}/session/current`));
   return resp.json();
 }
 
@@ -66,34 +74,25 @@ export async function postEvent(
   if (metadata) body.metadata = metadata;
   if (timestamp) body.timestamp = timestamp.toISOString();
 
-  const resp = await fetch(`${API}/session/event`, {
+  const resp = await checkResponse(await fetch(`${API}/session/event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json();
-    throw new Error(err.error || 'Request failed');
-  }
+  }));
   return resp.json();
 }
 
 export async function postUndo(): Promise<SessionResponse> {
-  const resp = await fetch(`${API}/session/undo`, { method: 'POST' });
-  if (!resp.ok) {
-    const err = await resp.json();
-    throw new Error(err.error || 'Undo failed');
-  }
+  const resp = await checkResponse(await fetch(`${API}/session/undo`, { method: 'POST' }));
   return resp.json();
 }
 
 export async function getNights(): Promise<{ nights: NightSummary[] }> {
-  const resp = await fetch(`${API}/nights`);
+  const resp = await checkResponse(await fetch(`${API}/nights`));
   return resp.json();
 }
 
 export async function getNightDetail(id: number): Promise<NightDetail> {
-  const resp = await fetch(`${API}/nights/${id}`);
+  const resp = await checkResponse(await fetch(`${API}/nights/${id}`));
   return resp.json();
 }
