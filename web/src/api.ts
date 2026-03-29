@@ -52,11 +52,15 @@ export interface TrendPoint {
   longestSleep: number;
   totalSleep: number;
   totalFeed: number;
+  feedTimeLeft: number;
+  feedTimeRight: number;
   wakeCount: number;
   feedCount: number;
   avgLongestSleep: number | null;
   avgTotalSleep: number | null;
   avgTotalFeed: number | null;
+  avgFeedTimeLeft: number | null;
+  avgFeedTimeRight: number | null;
   avgWakeCount: number | null;
   avgFeedCount: number | null;
 }

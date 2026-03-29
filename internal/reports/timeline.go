@@ -19,6 +19,8 @@ type NightStats struct {
 	NightDuration     time.Duration `json:"nightDuration"`
 	TotalSleepTime    time.Duration `json:"totalSleepTime"`
 	TotalFeedTime     time.Duration `json:"totalFeedTime"`
+	FeedTimeLeft      time.Duration `json:"feedTimeLeft"`
+	FeedTimeRight     time.Duration `json:"feedTimeRight"`
 	TotalAwakeTime    time.Duration `json:"totalAwakeTime"`
 	FeedCount         int           `json:"feedCount"`
 	WakeCount         int           `json:"wakeCount"`
@@ -116,6 +118,12 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) NightSt
 		}
 		if entry.State == domain.Feeding {
 			stats.TotalFeedTime += entry.Duration
+			switch entry.Metadata["breast"] {
+			case "L":
+				stats.FeedTimeLeft += entry.Duration
+			case "R":
+				stats.FeedTimeRight += entry.Duration
+			}
 		}
 		if entry.State == domain.Awake || entry.State == domain.Poop {
 			stats.TotalAwakeTime += entry.Duration

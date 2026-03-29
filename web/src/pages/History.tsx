@@ -103,35 +103,42 @@ export function History() {
         <div class="trends-grid">
           <TrendChart
             trends={trends}
-            getValue={p => p.longestSleep}
-            getAvg={p => p.avgLongestSleep}
+            series={[{ getValue: p => p.longestSleep, getAvg: p => p.avgLongestSleep, color: '#4a8aff' }]}
             formatValue={fmtDur}
             title="Longest Sleep Block"
-            color="#4a8aff"
           />
           <TrendChart
             trends={trends}
-            getValue={p => p.totalSleep}
-            getAvg={p => p.avgTotalSleep}
+            series={[{ getValue: p => p.totalSleep, getAvg: p => p.avgTotalSleep, color: '#6a5aff' }]}
             formatValue={fmtDur}
             title="Total Sleep"
-            color="#6a5aff"
           />
           <TrendChart
             trends={trends}
-            getValue={p => p.wakeCount}
-            getAvg={p => p.avgWakeCount}
+            series={[{ getValue: p => p.wakeCount, getAvg: p => p.avgWakeCount, color: '#ff5a5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Wake Count"
-            color="#ff5a5a"
           />
           <TrendChart
             trends={trends}
-            getValue={p => p.feedCount}
-            getAvg={p => p.avgFeedCount}
+            series={[{ getValue: p => p.feedCount, getAvg: p => p.avgFeedCount, color: '#ffaa5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Feed Count"
-            color="#ffaa5a"
+          />
+          <TrendChart
+            trends={trends}
+            series={[{ getValue: p => p.totalFeed, getAvg: p => p.avgTotalFeed, color: '#ffaa5a' }]}
+            formatValue={fmtDur}
+            title="Total Feed Time"
+          />
+          <TrendChart
+            trends={trends}
+            series={[
+              { getValue: p => p.feedTimeLeft, getAvg: p => p.avgFeedTimeLeft, color: '#5a9aff', label: 'Left' },
+              { getValue: p => p.feedTimeRight, getAvg: p => p.avgFeedTimeRight, color: '#ff7a5a', label: 'Right' },
+            ]}
+            formatValue={fmtDur}
+            title="Feed Time by Side"
           />
         </div>
       )}

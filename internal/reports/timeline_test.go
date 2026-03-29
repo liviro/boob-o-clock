@@ -93,6 +93,14 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("TotalFeedTime = %v, want 35m", stats.TotalFeedTime)
 	}
 
+	// Per-breast: L=20min (first feed), R=15min (second feed)
+	if stats.FeedTimeLeft != 20*time.Minute {
+		t.Errorf("FeedTimeLeft = %v, want 20m", stats.FeedTimeLeft)
+	}
+	if stats.FeedTimeRight != 15*time.Minute {
+		t.Errorf("FeedTimeRight = %v, want 15m", stats.FeedTimeRight)
+	}
+
 	// Wake count: 2 (both BabyWoke events: at 01:00 and 06:00)
 	if stats.WakeCount != 2 {
 		t.Errorf("WakeCount = %d, want 2", stats.WakeCount)
@@ -191,6 +199,13 @@ func TestStatsWithSwitchBreast(t *testing.T) {
 	// Total feed time: full 20 minutes
 	if stats.TotalFeedTime != 20*time.Minute {
 		t.Errorf("TotalFeedTime = %v, want 20m", stats.TotalFeedTime)
+	}
+	// Per-breast: L=10min (first half), R=10min (after switch)
+	if stats.FeedTimeLeft != 10*time.Minute {
+		t.Errorf("FeedTimeLeft = %v, want 10m", stats.FeedTimeLeft)
+	}
+	if stats.FeedTimeRight != 10*time.Minute {
+		t.Errorf("FeedTimeRight = %v, want 10m", stats.FeedTimeRight)
 	}
 }
 

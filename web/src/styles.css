@@ -393,6 +393,14 @@ body {
   padding: 12px;
 }
 
+.chart-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #888;
+}
+
 .trend-title {
   font-size: 12px;
   color: #888;
