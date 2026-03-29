@@ -26,10 +26,11 @@ type eventRequest struct {
 }
 
 type sessionResponse struct {
-	State        domain.State    `json:"state"`
-	ValidActions []domain.Action `json:"validActions"`
-	NightID      *int64          `json:"nightId"`
-	LastEvent    *eventResponse  `json:"lastEvent"`
+	State          domain.State    `json:"state"`
+	ValidActions   []domain.Action `json:"validActions"`
+	NightID        *int64          `json:"nightId"`
+	LastEvent      *eventResponse  `json:"lastEvent"`
+	SuggestBreast  string          `json:"suggestBreast,omitempty"`
 }
 
 type eventResponse struct {
@@ -52,9 +53,10 @@ func toEventResponse(e domain.Event) *eventResponse {
 
 func buildSessionResponse(state domain.State, nightID *int64, events []domain.Event) sessionResponse {
 	resp := sessionResponse{
-		State:        state,
-		ValidActions: domain.ValidActions(state),
-		NightID:      nightID,
+		State:         state,
+		ValidActions:  domain.ValidActions(state),
+		NightID:       nightID,
+		SuggestBreast: reports.SuggestedBreast(reports.LastBreastUsed(events)),
 	}
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
@@ -294,6 +296,56 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nights": summaries,
+	})
+}
+
+// GetTrends returns trend data with moving averages for charting.
+func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
+	to := time.Now().Add(24 * time.Hour)
+	from := to.Add(-30 * 24 * time.Hour)
+
+	if f := r.URL.Query().Get("from"); f != "" {
+		if parsed, err := time.Parse("2006-01-02", f); err == nil {
+			from = parsed
+		}
+	}
+	if t := r.URL.Query().Get("to"); t != "" {
+		if parsed, err := time.Parse("2006-01-02", t); err == nil {
+			to = parsed.Add(24 * time.Hour)
+		}
+	}
+
+	nights, err := h.store.ListNights(from, to)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	nightIDs := make([]int64, len(nights))
+	for i, n := range nights {
+		nightIDs[i] = n.ID
+	}
+	eventsMap, err := h.store.GetEventsForNights(nightIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	points := make([]reports.NightDataPoint, len(nights))
+	for i, n := range nights {
+		events := eventsMap[n.ID]
+		points[i] = reports.NightDataPoint{
+			Date:  n.StartedAt,
+			Stats: reports.ComputeStats(events, n.StartedAt, nightEndTime(&n)),
+		}
+	}
+
+	window := 3
+	trends := reports.ComputeTrends(points, window)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"trends": trends,
+		"window": window,
 	})
 }
 

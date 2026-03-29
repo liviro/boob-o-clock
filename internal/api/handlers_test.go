@@ -55,10 +55,11 @@ func decodeJSON(t *testing.T, resp *http.Response, v any) {
 
 // SessionResponse matches the JSON returned by GET /api/session/current and POST /api/session/event
 type SessionResponse struct {
-	State        string   `json:"state"`
-	ValidActions []string `json:"validActions"`
-	NightID      *int64   `json:"nightId"`
-	LastEvent    *struct {
+	State         string   `json:"state"`
+	ValidActions  []string `json:"validActions"`
+	NightID       *int64   `json:"nightId"`
+	SuggestBreast string   `json:"suggestBreast"`
+	LastEvent     *struct {
 		Action    string            `json:"action"`
 		FromState string            `json:"fromState"`
 		ToState   string            `json:"toState"`
@@ -342,6 +343,68 @@ func TestGetNights(t *testing.T) {
 	}
 	if fc, ok := result.Nights[0].Stats["feedCount"].(float64); !ok || fc != 1 {
 		t.Errorf("stats.feedCount = %v, want 1", result.Nights[0].Stats["feedCount"])
+	}
+}
+
+func TestBreastSuggestion(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "start_feed",
+		"metadata": map[string]string{"breast": "L"},
+	})
+
+	// While feeding L, should suggest R next
+	resp := doGet(t, ts, "/api/session/current")
+	var sr SessionResponse
+	decodeJSON(t, resp, &sr)
+	if sr.SuggestBreast != "R" {
+		t.Errorf("suggestBreast = %q, want R", sr.SuggestBreast)
+	}
+
+	// Switch to R, should now suggest L
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "switch_breast",
+		"metadata": map[string]string{"breast": "R"},
+	})
+	resp = doGet(t, ts, "/api/session/current")
+	decodeJSON(t, resp, &sr)
+	if sr.SuggestBreast != "L" {
+		t.Errorf("suggestBreast after switch = %q, want L", sr.SuggestBreast)
+	}
+}
+
+func TestGetTrends(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	// Create a complete night
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "start_feed",
+		"metadata": map[string]string{"breast": "L"},
+	})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_awake"})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "end_night"})
+
+	resp := doGet(t, ts, "/api/trends")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Trends []map[string]any `json:"trends"`
+		Window int              `json:"window"`
+	}
+	decodeJSON(t, resp, &result)
+
+	if result.Window != 3 {
+		t.Errorf("window = %d, want 3", result.Window)
+	}
+	if len(result.Trends) != 1 {
+		t.Fatalf("got %d trend points, want 1", len(result.Trends))
 	}
 }
 

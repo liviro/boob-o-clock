@@ -10,6 +10,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/session/undo", h.PostUndo)
 	mux.HandleFunc("GET /api/nights/{id}", h.GetNightDetail)
 	mux.HandleFunc("GET /api/nights", h.GetNights)
+	mux.HandleFunc("GET /api/trends", h.GetTrends)
 
 	return mux
 }
