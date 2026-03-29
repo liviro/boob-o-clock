@@ -16,6 +16,5 @@ boob-o-clock
 # OS
 .DS_Store
 
-# Frontend build output (Phase 3+)
-web/dist/
+# Frontend
 web/node_modules/

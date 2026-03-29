@@ -28,18 +28,32 @@ Single Go binary serving a REST API and embedded frontend static files.
 ## Commands
 
 ```bash
-# Run all tests
-go test ./...
+# Build everything (frontend + Go binary)
+make build
 
-# Run domain tests verbose
-go test ./internal/domain/ -v
+# Run all Go tests
+make test
 
-# Build binary
-go build -o boob-o-clock ./cmd/server
+# Dev mode: Go on :8080, Vite on :5173 (with API proxy)
+make dev
 
-# Run server
-./boob-o-clock -addr :8080 -db ./data.db
+# Or individually:
+go test ./...                              # Go tests
+go test ./internal/domain/ -v              # domain tests verbose
+cd web && npx tsc --noEmit                 # TypeScript type check
+cd web && npm run build                    # build frontend only
+go build -o boob-o-clock ./cmd/server      # build Go binary only
+./boob-o-clock -addr :8080 -db ./data.db   # run server
 ```
+
+## Frontend
+
+Preact + TypeScript + Vite. Source in `web/src/`, builds to `internal/web/static/`.
+- `web/src/api.ts` — typed API client
+- `web/src/constants.ts` — state/action definitions, formatters
+- `web/src/hooks/useSession.ts` — session state management hook
+- `web/src/components/` — reusable UI components
+- `web/src/pages/` — Tracker and History pages
 
 ## Conventions
 
