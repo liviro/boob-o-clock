@@ -49,9 +49,10 @@ docker cp boob-o-clock:/data/boob-o-clock.db ./backup.db
 
 ### Binary
 
-Requires Go 1.23+ and Node 22+.
+Requires Go 1.25+ and Node 22+.
 
 ```bash
+cd web && npm install && cd ..
 make build
 ./boob-o-clock -addr :8080 -db ./boob-o-clock.db
 ```
