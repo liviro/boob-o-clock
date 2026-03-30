@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/liviro/boob-o-clock/internal/api"
 	"github.com/liviro/boob-o-clock/internal/store"
@@ -16,11 +18,16 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "listen address")
-	dbPath := flag.String("db", "boob-o-clock.db", "SQLite database path")
+	addr := ":8080"
+	if p := os.Getenv("PORT"); p != "" {
+		addr = ":" + p
+	}
+	dbPath := "boob-o-clock.db"
+	flag.StringVar(&addr, "addr", addr, "listen address")
+	flag.StringVar(&dbPath, "db", dbPath, "SQLite database path")
 	flag.Parse()
 
-	s, err := store.New(*dbPath)
+	s, err := store.New(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
 	}
@@ -38,12 +45,21 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", router)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Ping(); err != nil {
+			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
 	mux.Handle("/", fileServer)
 
-	fmt.Printf("🕐 boob-o-clock listening on %s\n", *addr)
+	srv := &http.Server{Addr: addr, Handler: mux}
+
+	fmt.Printf("🕐 boob-o-clock listening on %s\n", addr)
 
 	go func() {
-		if err := http.ListenAndServe(*addr, mux); err != nil {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
@@ -52,4 +68,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	fmt.Println("\nshutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP shutdown error: %v", err)
+	}
 }

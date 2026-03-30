@@ -16,10 +16,11 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db, dbPath: path}
 	if err := s.migrate(); err != nil {
@@ -32,6 +33,10 @@ func New(path string) (*Store, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+func (s *Store) Ping() error {
+	return s.db.Ping()
 }
 
 func (s *Store) migrate() error {

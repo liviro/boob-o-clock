@@ -22,6 +22,9 @@ RUN apk add --no-cache ca-certificates tzdata
 COPY --from=backend /boob-o-clock /usr/local/bin/boob-o-clock
 
 VOLUME /data
-EXPOSE 8080
+ENV PORT=8080
+EXPOSE ${PORT}
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:${PORT}/healthz || exit 1
 ENTRYPOINT ["boob-o-clock"]
-CMD ["-addr", ":8080", "-db", "/data/boob-o-clock.db"]
+CMD ["-db", "/data/boob-o-clock.db"]

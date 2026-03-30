@@ -1,5 +1,6 @@
 # Binary
 boob-o-clock
+/server
 
 # SQLite database
 *.db
