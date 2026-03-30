@@ -1,4 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <circle cx="256" cy="256" r="238" fill="#f5e6d3"/>
-  <text x="256" y="265" text-anchor="middle" dominant-baseline="central" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="150" font-weight="700" fill="#d4878f">Z</text>
+  <defs>
+    <radialGradient id="skin" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#fdf5ec"/>
+      <stop offset="60%" stop-color="#f0dcc8"/>
+      <stop offset="100%" stop-color="#d9c0a8"/>
+    </radialGradient>
+    <radialGradient id="highlight" cx="35%" cy="30%" r="35%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <radialGradient id="shadow" cx="50%" cy="75%" r="40%">
+      <stop offset="0%" stop-color="rgba(0,0,0,0.08)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+  </defs>
+  <circle cx="256" cy="256" r="238" fill="url(#skin)"/>
+  <circle cx="256" cy="256" r="238" fill="url(#shadow)"/>
+  <circle cx="256" cy="256" r="238" fill="url(#highlight)"/>
+  <!-- hour hand (3:40) -->
+  <line x1="256" y1="256" x2="320" y2="280" stroke="#c4707a" stroke-width="24" stroke-linecap="round"/>
+  <!-- minute hand (8) -->
+  <line x1="256" y1="256" x2="190" y2="320" stroke="#c4707a" stroke-width="16" stroke-linecap="round"/>
+  <!-- center nipple dot -->
+  <circle cx="256" cy="256" r="30" fill="#c4707a"/>
 </svg>
