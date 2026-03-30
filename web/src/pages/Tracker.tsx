@@ -130,6 +130,7 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       <StateDisplay
         state={session.state}
         lastEventTimestamp={session.lastEvent?.timestamp}
+        currentBreast={session.currentBreast}
       />
 
       <ActionGrid

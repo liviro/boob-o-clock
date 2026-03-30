@@ -30,7 +30,7 @@ body {
   flex: 1;
   background: none;
   border: none;
-  color: #666;
+  color: #999;
   font-size: 13px;
   font-weight: 600;
   padding: 8px 0;
@@ -54,6 +54,11 @@ body {
   font-size: 48px;
   display: block;
   margin-bottom: 4px;
+  transition: transform 0.3s ease;
+}
+
+.state-icon.flip {
+  transform: scaleX(-1);
 }
 
 .state-label {
@@ -64,9 +69,9 @@ body {
 }
 
 .state-timer {
-  font-size: 14px;
-  color: #666;
-  margin-top: 4px;
+  font-size: 20px;
+  color: #999;
+  margin-top: 6px;
 }
 
 /* Page layout */
@@ -290,7 +295,7 @@ body {
 
 .stat { text-align: center; }
 .stat-value { font-size: 20px; font-weight: 700; }
-.stat-label { font-size: 11px; color: #666; text-transform: uppercase; }
+.stat-label { font-size: 11px; color: #999; text-transform: uppercase; }
 
 /* Timeline bar */
 .timeline-bar {
@@ -308,7 +313,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   font-size: 10px;
-  color: #666;
+  color: #999;
 }
 
 .legend-item {
@@ -348,7 +353,7 @@ body {
 /* Shared */
 .no-data {
   text-align: center;
-  color: #444;
+  color: #888;
   padding: 40px 0;
   font-size: 14px;
 }
@@ -367,7 +372,7 @@ body {
   flex: 1;
   background: none;
   border: none;
-  color: #666;
+  color: #999;
   font-size: 13px;
   font-weight: 600;
   padding: 8px 0;

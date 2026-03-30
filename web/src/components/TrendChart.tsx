@@ -76,10 +76,10 @@ export function TrendChart({ trends, series, formatValue, title }: Props) {
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
-        <text x={PAD.left - 4} y={PAD.top + 4} fill="#666" font-size="10" text-anchor="end">
+        <text x={PAD.left - 4} y={PAD.top + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(maxVal)}
         </text>
-        <text x={PAD.left - 4} y={PAD.top + CHART_H + 4} fill="#666" font-size="10" text-anchor="end">
+        <text x={PAD.left - 4} y={PAD.top + CHART_H + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(minVal)}
         </text>
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
@@ -101,7 +101,7 @@ export function TrendChart({ trends, series, formatValue, title }: Props) {
         })}
 
         {dateLabels.map((dl, i) => (
-          <text key={i} x={dl.x} y={H - 2} fill="#666" font-size="9" text-anchor="middle">
+          <text key={i} x={dl.x} y={H - 2} fill="#999" font-size="9" text-anchor="middle">
             {dl.label}
           </text>
         ))}

@@ -92,16 +92,18 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) NightSt
 
 	timeline := BuildTimeline(events)
 
-	// Track whether we're in a feed session (StartFeed started it, not SwitchBreast)
+	// Track whether we're in a feed session. A feed session starts on StartFeed
+	// and only ends when the baby reaches Awake. This means feeding → asleep on me
+	// → feeding counts as one session (baby rooted back to the breast).
 	inFeedSession := false
 	for _, evt := range events {
-		switch evt.Action {
-		case domain.StartFeed:
+		switch {
+		case evt.Action == domain.StartFeed:
 			if !inFeedSession {
 				stats.FeedCount++
 				inFeedSession = true
 			}
-		case domain.DislatchAwake, domain.DislatchAsleep:
+		case evt.ToState == domain.Awake:
 			inFeedSession = false
 		}
 

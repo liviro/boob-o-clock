@@ -71,13 +71,13 @@ function pad(n: number): string {
 
 /** State colors for timeline segments */
 export const STATE_COLORS: Record<string, string> = {
-  awake: '#5a2a2a',
-  feeding: '#8a6a2a',
-  sleeping_on_me: '#2a2a5a',
-  sleeping_crib: '#1a3a6a',
-  sleeping_stroller: '#2a4a5a',
-  resettling: '#3a3a5a',
-  strolling: '#3a4a3a',
-  transferring: '#444',
-  poop: '#5a4a2a',
+  awake: '#7a3030',
+  feeding: '#9a7a20',
+  sleeping_on_me: '#3535a0',
+  sleeping_crib: '#2060a0',
+  sleeping_stroller: '#207080',
+  resettling: '#6a40a0',
+  strolling: '#408040',
+  transferring: '#666',
+  poop: '#8a6030',
 };

@@ -209,6 +209,40 @@ func TestStatsWithSwitchBreast(t *testing.T) {
 	}
 }
 
+func TestStatsWithRootBack(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Feed L: 21:00 - 21:15
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Baby roots back to breast at 21:20 — same feed session
+		mkEvent(4, domain.SleepingOnMe, domain.StartFeed, domain.Feeding, start.Add(20*time.Minute), breast("L")),
+		mkEvent(5, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(30*time.Minute), nil),
+		// Transfer and sleep
+		mkEvent(6, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(35*time.Minute), nil),
+		mkEvent(7, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(35*time.Minute), nil),
+		mkEvent(8, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		// New feed after waking — this IS a new feed
+		mkEvent(9, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
+		mkEvent(10, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+15*time.Minute), nil),
+		mkEvent(11, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(8*time.Hour), nil),
+		mkEvent(12, domain.Awake, domain.EndNight, domain.NightOff, start.Add(8*time.Hour), nil),
+	}
+
+	stats := ComputeStats(events, start, start.Add(8*time.Hour))
+
+	// Feed → asleep on me → feed = 1 session; wake → feed = new session → total 2
+	if stats.FeedCount != 2 {
+		t.Errorf("FeedCount = %d, want 2 (root-back is same feed, post-wake is new)", stats.FeedCount)
+	}
+
+	// Total feed time: 15m + 10m + 15m = 40m
+	if stats.TotalFeedTime != 40*time.Minute {
+		t.Errorf("TotalFeedTime = %v, want 40m", stats.TotalFeedTime)
+	}
+}
+
 func TestTimelineEntries(t *testing.T) {
 	start := t0()
 	events := []domain.Event{
