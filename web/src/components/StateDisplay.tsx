@@ -26,7 +26,7 @@ export function StateDisplay({ state, lastEventTimestamp, currentBreast }: Props
 
   const isFeeding = state === 'feeding' && currentBreast;
   const sideLabel = currentBreast === 'L' ? 'Left' : 'Right';
-  const flipIcon = currentBreast === 'R';
+  const flipIcon = isFeeding && currentBreast === 'R';
 
   return (
     <div class="state-display">
