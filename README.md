@@ -41,6 +41,12 @@ docker run -d \
   boob-o-clock
 ```
 
+To change the port, set the `PORT` environment variable:
+
+```bash
+docker run -d -e PORT=9090 -p 9090:9090 -v boc-data:/data boob-o-clock
+```
+
 The SQLite database is stored in the `/data` volume. Back it up with:
 
 ```bash
@@ -78,7 +84,7 @@ make dev
 ### Test
 
 ```bash
-make test              # Go tests (51 tests across 4 packages)
+make test              # Go tests (109 tests across 4 packages)
 cd web && npx tsc      # TypeScript type check
 ```
 
@@ -106,6 +112,7 @@ cd web && npx tsc      # TypeScript type check
 | GET | `/api/nights/:id` | Night detail with timeline |
 | GET | `/api/trends` | Trend data with moving averages |
 | GET | `/api/export/csv` | Download all events as CSV |
+| GET | `/healthz` | Health check (DB ping) |
 
 ## License
 
