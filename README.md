@@ -25,7 +25,11 @@ The app models your night as a state machine. Depending on the current state, on
 
 ## Screenshots
 
-*(coming soon — add screenshots of tracker and history views)*
+<p align="center">
+  <img src="docs/tracker-awake.png" width="250" alt="Tracker — awake state">
+  <img src="docs/tracker-feeding.png" width="250" alt="Tracker — feeding state">
+  <img src="docs/night-detail.png" width="250" alt="Night detail with timeline">
+</p>
 
 ## Deploy
 
