@@ -77,7 +77,10 @@ func (s *Store) CreateNight(startedAt time.Time) (*domain.Night, error) {
 		return nil, fmt.Errorf("insert night: %w", err)
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("last insert id: %w", err)
+	}
 	return &domain.Night{
 		ID:        id,
 		StartedAt: startedAt,
@@ -131,7 +134,10 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 
 	var metadataJSON []byte
 	if evt.Metadata != nil {
-		metadataJSON, _ = json.Marshal(evt.Metadata)
+		metadataJSON, err = json.Marshal(evt.Metadata)
+		if err != nil {
+			return fmt.Errorf("marshal metadata: %w", err)
+		}
 	}
 
 	evt.CreatedAt = time.Now()
@@ -146,7 +152,10 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 		return fmt.Errorf("insert event: %w", err)
 	}
 
-	evt.ID, _ = result.LastInsertId()
+	evt.ID, err = result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("last insert id: %w", err)
+	}
 	return tx.Commit()
 }
 
@@ -245,10 +254,20 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 	if err := row.Scan(&n.ID, &startedAt, &endedAt, &createdAt); err != nil {
 		return nil, err
 	}
-	n.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt)
-	n.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	var err error
+	n.StartedAt, err = time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse startedAt: %w", err)
+	}
+	n.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse createdAt: %w", err)
+	}
 	if endedAt.Valid {
-		t, _ := time.Parse(time.RFC3339Nano, endedAt.String)
+		t, err := time.Parse(time.RFC3339Nano, endedAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse endedAt: %w", err)
+		}
 		n.EndedAt = &t
 	}
 	return &n, nil
@@ -343,10 +362,19 @@ func scanEvent(row scanner) (*domain.Event, error) {
 		&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
 		return nil, fmt.Errorf("scan event: %w", err)
 	}
-	evt.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
-	evt.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	var err error
+	evt.Timestamp, err = time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		return nil, fmt.Errorf("parse timestamp: %w", err)
+	}
+	evt.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse createdAt: %w", err)
+	}
 	if metadataJSON.Valid {
-		json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata)
+		if err := json.Unmarshal([]byte(metadataJSON.String), &evt.Metadata); err != nil {
+			return nil, fmt.Errorf("unmarshal metadata: %w", err)
+		}
 	}
 	return &evt, nil
 }

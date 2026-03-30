@@ -99,15 +99,14 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 	return to, nil
 }
 
-// validActionsMap is pre-computed from the transition table at init time.
-var validActionsMap map[State][]Action
-
-func init() {
-	validActionsMap = make(map[State][]Action)
+// validActionsMap is pre-computed from the transition table.
+var validActionsMap = func() map[State][]Action {
+	m := make(map[State][]Action)
 	for key := range transitions {
-		validActionsMap[key.From] = append(validActionsMap[key.From], key.Action)
+		m[key.From] = append(m[key.From], key.Action)
 	}
-}
+	return m
+}()
 
 // ValidActions returns all actions available from the given state.
 func ValidActions(state State) []Action {
