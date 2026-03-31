@@ -1,4 +1,5 @@
 import { ComponentChildren } from 'preact';
+import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
 
 interface Props {
   open: boolean;
@@ -8,10 +9,12 @@ interface Props {
 }
 
 export function Modal({ open, onClose, title, children }: Props) {
+  const guard = useGhostClickGuard(open);
+
   if (!open) return null;
 
   return (
-    <div class="modal-overlay" onClick={onClose}>
+    <div class="modal-overlay" onClick={guard(onClose)}>
       <div class="modal-content" onClick={e => e.stopPropagation()}>
         {title && <h3 class="modal-title">{title}</h3>}
         {children}

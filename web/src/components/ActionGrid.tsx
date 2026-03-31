@@ -16,8 +16,8 @@ export function ActionGrid({ actions, onPointerDown, onPointerUp, onPointerCance
           <button
             key={action}
             class={`action-btn ${ai.cls}`}
-            onTouchStart={() => onPointerDown(action)}
-            onTouchEnd={(e) => { e.preventDefault(); onPointerUp(action); }}
+            onTouchStart={(e) => { e.preventDefault(); onPointerDown(action); }}
+            onTouchEnd={() => onPointerUp(action)}
             onTouchCancel={onPointerCancel}
             onMouseDown={() => onPointerDown(action)}
             onMouseUp={() => onPointerUp(action)}

@@ -1,4 +1,5 @@
 import { Modal } from './Modal';
+import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
 
 interface Props {
   open: boolean;
@@ -8,18 +9,20 @@ interface Props {
 }
 
 export function BreastPicker({ open, suggestSide, onPick, onClose }: Props) {
+  const guard = useGhostClickGuard(open);
+
   return (
     <Modal open={open} onClose={onClose} title="Which side?">
       <div class="breast-grid">
         <button
           class={`breast-btn ${suggestSide === 'L' ? 'suggested' : ''}`}
-          onClick={() => onPick('L')}
+          onClick={guard(() => onPick('L'))}
         >
           L{suggestSide === 'L' ? ' ★' : ''}
         </button>
         <button
           class={`breast-btn ${suggestSide === 'R' ? 'suggested' : ''}`}
-          onClick={() => onPick('R')}
+          onClick={guard(() => onPick('R'))}
         >
           R{suggestSide === 'R' ? ' ★' : ''}
         </button>
