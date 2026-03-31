@@ -33,7 +33,30 @@ The app models your night as a state machine. Depending on the current state, on
 
 ## Deploy
 
-### Docker (recommended)
+### Docker Compose (recommended)
+
+```bash
+git clone https://github.com/liviro/boob-o-clock.git
+cd boob-o-clock
+docker compose up -d
+```
+
+That's it. The app is at `http://localhost:8080`.
+
+To update:
+
+```bash
+docker compose pull   # or: docker compose build --no-cache
+docker compose up -d
+```
+
+The SQLite database lives in a named Docker volume (`boc-data`) and survives rebuilds. Back it up with:
+
+```bash
+docker compose cp boob-o-clock:/data/boob-o-clock.db ./backup.db
+```
+
+### Docker (manual)
 
 ```bash
 docker build -t boob-o-clock .
@@ -49,12 +72,6 @@ To change the port, set the `PORT` environment variable:
 
 ```bash
 docker run -d -e PORT=9090 -p 9090:9090 -v boc-data:/data boob-o-clock
-```
-
-The SQLite database is stored in the `/data` volume. Back it up with:
-
-```bash
-docker cp boob-o-clock:/data/boob-o-clock.db ./backup.db
 ```
 
 ### Binary
