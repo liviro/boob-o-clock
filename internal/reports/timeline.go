@@ -36,6 +36,13 @@ var sleepStates = map[domain.State]bool{
 	domain.Strolling:        true,
 }
 
+// independentSleepStates are states where the baby sleeps independently (not on
+// a person). Used to distinguish "real sleep" from contact napping.
+var independentSleepStates = map[domain.State]bool{
+	domain.SleepingCrib:     true,
+	domain.SleepingStroller: true,
+}
+
 // contiguousSleepStates are states that form an unbroken sleep block.
 // A sleep block is broken when the baby transitions to AWAKE, FEEDING, or POOP.
 var contiguousSleepStates = map[domain.State]bool{
@@ -92,17 +99,22 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) NightSt
 
 	timeline := BuildTimeline(events)
 
-	// Track whether we're in a feed session. A feed session starts on StartFeed
-	// and only ends when the baby reaches Awake. This means feeding → asleep on me
-	// → feeding counts as one session (baby rooted back to the breast).
+	// Only count feeds after the first real sleep (crib or stroller, not "on me").
+	// Pre-sleep feeds at night start are excluded — they're part of putting the
+	// baby down, not mid-night wakes.
+	seenRealSleep := false
 	inFeedSession := false
 	for _, evt := range events {
+		if independentSleepStates[evt.ToState] {
+			seenRealSleep = true
+		}
+
 		switch {
 		case evt.Action == domain.StartFeed:
-			if !inFeedSession {
+			if !inFeedSession && seenRealSleep {
 				stats.FeedCount++
-				inFeedSession = true
 			}
+			inFeedSession = true
 		case evt.ToState == domain.Awake:
 			inFeedSession = false
 		}

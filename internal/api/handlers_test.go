@@ -300,8 +300,9 @@ func TestGetNightDetail(t *testing.T) {
 	if detail.Stats == nil {
 		t.Error("expected stats in response")
 	}
-	if fc, ok := detail.Stats["feedCount"].(float64); !ok || fc != 1 {
-		t.Errorf("stats.feedCount = %v, want 1", detail.Stats["feedCount"])
+	// Feed count is 0: no crib/stroller sleep in this night, so pre-sleep feeds are excluded
+	if fc, ok := detail.Stats["feedCount"].(float64); !ok || fc != 0 {
+		t.Errorf("stats.feedCount = %v, want 0", detail.Stats["feedCount"])
 	}
 }
 
@@ -344,8 +345,9 @@ func TestGetNights(t *testing.T) {
 	if len(result.Nights) != 1 {
 		t.Fatalf("got %d nights, want 1", len(result.Nights))
 	}
-	if fc, ok := result.Nights[0].Stats["feedCount"].(float64); !ok || fc != 1 {
-		t.Errorf("stats.feedCount = %v, want 1", result.Nights[0].Stats["feedCount"])
+	// Feed count is 0: no crib/stroller sleep in this night, so pre-sleep feeds are excluded
+	if fc, ok := result.Nights[0].Stats["feedCount"].(float64); !ok || fc != 0 {
+		t.Errorf("stats.feedCount = %v, want 0", result.Nights[0].Stats["feedCount"])
 	}
 }
 

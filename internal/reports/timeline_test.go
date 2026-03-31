@@ -83,9 +83,9 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("NightDuration = %v, want 9h", stats.NightDuration)
 	}
 
-	// Feed count: 2
-	if stats.FeedCount != 2 {
-		t.Errorf("FeedCount = %d, want 2", stats.FeedCount)
+	// Feed count: 1 (only the feed after first crib sleep; initial feed is excluded)
+	if stats.FeedCount != 1 {
+		t.Errorf("FeedCount = %d, want 1", stats.FeedCount)
 	}
 
 	// Total feed time: 20min + 15min = 35min
@@ -170,8 +170,9 @@ func TestStatsWithStroller(t *testing.T) {
 
 	stats := ComputeStats(events, start, start.Add(4*time.Hour))
 
-	if stats.FeedCount != 1 {
-		t.Errorf("FeedCount = %d, want 1", stats.FeedCount)
+	// Feed count: 0 (the only feed happens before first stroller sleep)
+	if stats.FeedCount != 0 {
+		t.Errorf("FeedCount = %d, want 0", stats.FeedCount)
 	}
 	// Longest sleep block: strolling(10m) + sleeping_stroller(3h25m) = 3h35m
 	// Strolling is part of the settling effort, so it's contiguous with the sleep
@@ -192,9 +193,9 @@ func TestStatsWithSwitchBreast(t *testing.T) {
 
 	stats := ComputeStats(events, start, start.Add(20*time.Minute))
 
-	// Switch breast is one feed session, not two
-	if stats.FeedCount != 1 {
-		t.Errorf("FeedCount = %d, want 1 (switch breast is same feed)", stats.FeedCount)
+	// No real sleep in this night, so feed count is 0
+	if stats.FeedCount != 0 {
+		t.Errorf("FeedCount = %d, want 0 (no real sleep, feeds excluded)", stats.FeedCount)
 	}
 	// Total feed time: full 20 minutes
 	if stats.TotalFeedTime != 20*time.Minute {
@@ -232,14 +233,57 @@ func TestStatsWithRootBack(t *testing.T) {
 
 	stats := ComputeStats(events, start, start.Add(8*time.Hour))
 
-	// Feed → asleep on me → feed = 1 session; wake → feed = new session → total 2
-	if stats.FeedCount != 2 {
-		t.Errorf("FeedCount = %d, want 2 (root-back is same feed, post-wake is new)", stats.FeedCount)
+	// Only the feed after first crib sleep counts; pre-sleep feeds excluded
+	if stats.FeedCount != 1 {
+		t.Errorf("FeedCount = %d, want 1 (pre-sleep feeds excluded)", stats.FeedCount)
 	}
 
 	// Total feed time: 15m + 10m + 15m = 40m
 	if stats.TotalFeedTime != 40*time.Minute {
 		t.Errorf("TotalFeedTime = %v, want 40m", stats.TotalFeedTime)
+	}
+}
+
+func TestFeedCountNoRealSleep(t *testing.T) {
+	// If baby never makes it to crib/stroller, feed count is 0
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+	}
+
+	stats := ComputeStats(events, start, start.Add(2*time.Hour))
+
+	if stats.FeedCount != 0 {
+		t.Errorf("FeedCount = %d, want 0 (no real sleep, no feeds counted)", stats.FeedCount)
+	}
+}
+
+func TestFeedCountAfterStrollerSleep(t *testing.T) {
+	// Stroller sleep also counts as "real sleep"
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Pre-sleep feed
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(15*time.Minute), nil),
+		// Stroller sleep — first real sleep
+		mkEvent(4, domain.Awake, domain.StartStrolling, domain.Strolling, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Strolling, domain.FellAsleep, domain.SleepingStroller, start.Add(30*time.Minute), nil),
+		// Wake and feed
+		mkEvent(6, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
+		mkEvent(8, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(4*time.Hour+15*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour+15*time.Minute), nil),
+	}
+
+	stats := ComputeStats(events, start, start.Add(4*time.Hour+15*time.Minute))
+
+	if stats.FeedCount != 1 {
+		t.Errorf("FeedCount = %d, want 1 (only post-stroller feed counts)", stats.FeedCount)
 	}
 }
 
