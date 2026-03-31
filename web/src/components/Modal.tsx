@@ -18,7 +18,7 @@ export function Modal({ open, onClose, title, children }: Props) {
       <div class="modal-content" onClick={e => e.stopPropagation()}>
         {title && <h3 class="modal-title">{title}</h3>}
         {children}
-        <button class="modal-cancel" onClick={onClose}>Cancel</button>
+        <button class="modal-cancel" onClick={guard(onClose)}>Cancel</button>
       </div>
     </div>
   );
