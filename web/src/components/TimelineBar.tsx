@@ -6,17 +6,32 @@ interface Props {
   totalDurationNs: number;
 }
 
-const LEGEND = [
-  { key: 'sleeping_crib', label: 'Crib' },
-  { key: 'sleeping_stroller', label: 'Stroller' },
-  { key: 'sleeping_on_me', label: 'On Me' },
-  { key: 'feeding', label: 'Feed' },
-  { key: 'awake', label: 'Awake' },
-  { key: 'resettling', label: 'Resettle' },
+/** Legend entries grouped by category: sleep, active, transitional */
+const LEGEND_GROUPS: { key: string; label: string }[][] = [
+  [
+    { key: 'sleeping_crib', label: 'Crib' },
+    { key: 'sleeping_on_me', label: 'On Me' },
+    { key: 'sleeping_stroller', label: 'Stroller' },
+  ],
+  [
+    { key: 'feeding', label: 'Feed' },
+    { key: 'awake', label: 'Awake' },
+  ],
+  [
+    { key: 'resettling', label: 'Resettle' },
+    { key: 'transferring', label: 'Transfer' },
+    { key: 'strolling', label: 'Stroll' },
+    { key: 'poop', label: 'Diaper' },
+  ],
 ];
 
 export function TimelineBar({ timeline, totalDurationNs }: Props) {
   const totalMs = totalDurationNs / 1e6;
+  const present = new Set(timeline.map(e => e.state));
+
+  const visibleGroups = LEGEND_GROUPS
+    .map(group => group.filter(({ key }) => present.has(key)))
+    .filter(group => group.length > 0);
 
   return (
     <div>
@@ -34,10 +49,14 @@ export function TimelineBar({ timeline, totalDurationNs }: Props) {
         })}
       </div>
       <div class="timeline-legend">
-        {LEGEND.map(({ key, label }) => (
-          <div key={key} class="legend-item">
-            <div class="legend-dot" style={{ background: STATE_COLORS[key] }} />
-            {label}
+        {visibleGroups.map((group, gi) => (
+          <div key={gi} class="legend-group">
+            {group.map(({ key, label }) => (
+              <div key={key} class="legend-item">
+                <div class="legend-dot" style={{ background: STATE_COLORS[key] }} />
+                {label}
+              </div>
+            ))}
           </div>
         ))}
       </div>

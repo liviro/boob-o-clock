@@ -52,7 +52,7 @@ export function fmtDur(ns: number): string {
   const totalMin = Math.floor(ns / 1e9 / 60);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  if (h > 0) return `${h}h${m > 0 ? m + 'm' : ''}`;
+  if (h > 0) return `${h}h${m > 0 ? ' ' + m + 'm' : ''}`;
   return `${m}m`;
 }
 
@@ -72,7 +72,7 @@ function pad(n: number): string {
 /** State colors for timeline segments */
 export const STATE_COLORS: Record<string, string> = {
   awake: '#7a3030',
-  feeding: '#9a7a20',
+  feeding: '#a09020',
   sleeping_on_me: '#3535a0',
   sleeping_crib: '#2060a0',
   sleeping_stroller: '#207080',

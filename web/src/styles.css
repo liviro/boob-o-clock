@@ -311,9 +311,14 @@ body {
 .timeline-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 12px;
   font-size: 10px;
   color: #999;
+}
+
+.legend-group {
+  display: flex;
+  gap: 8px;
 }
 
 .legend-item {
