@@ -307,6 +307,8 @@ body {
 }
 
 .tl-segment { min-width: 2px; }
+.tl-segment:first-child { border-radius: 6px 0 0 6px; }
+.tl-segment:last-child { border-radius: 0 6px 6px 0; }
 
 .timeline-legend {
   display: flex;
