@@ -152,20 +152,27 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 		}
 	}
 
-	// Sleep blocks: contiguous sequences of sleep-ish states
+	// Sleep blocks: contiguous sequences of sleep-ish states.
+	// Blocks comprised solely of on-me sleep (no crib/stroller) are excluded —
+	// e.g. baby fell asleep at breast but woke on transfer.
 	var currentBlock time.Duration
+	hasIndependentSleep := false
 	flushBlock := func() {
-		if currentBlock > 0 {
+		if currentBlock > 0 && hasIndependentSleep {
 			stats.SleepBlocks = append(stats.SleepBlocks, currentBlock)
 			if currentBlock > stats.LongestSleepBlock {
 				stats.LongestSleepBlock = currentBlock
 			}
-			currentBlock = 0
 		}
+		currentBlock = 0
+		hasIndependentSleep = false
 	}
 	for _, entry := range timeline {
 		if contiguousSleepStates[entry.State] {
 			currentBlock += entry.Duration
+			if !hasIndependentSleep && independentSleepStates[entry.State] {
+				hasIndependentSleep = true
+			}
 		} else {
 			flushBlock()
 		}
