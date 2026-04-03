@@ -273,6 +273,62 @@ func TestFeedCountNoRealSleep(t *testing.T) {
 	}
 }
 
+func TestSleepBlocksExcludeOnMeOnly(t *testing.T) {
+	// Baby falls asleep on breast, brief on-me sleep, then wakes on transfer
+	// and is fed again. The on-me-only interval should NOT count as a sleep block.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Feed R
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("R")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(25*time.Minute), nil),
+		// Transfer fails
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(31*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(33*time.Minute), nil),
+		// Feed L, dislatch asleep, transfer succeeds
+		mkEvent(6, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(33*time.Minute), breast("L")),
+		mkEvent(7, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(55*time.Minute), nil),
+		mkEvent(8, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(1*time.Hour+2*time.Minute), nil),
+		mkEvent(9, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(1*time.Hour+2*time.Minute), nil),
+		// Sleep in crib until wake
+		mkEvent(10, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(11, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+
+	// Only 1 sleep block: the one containing crib sleep.
+	// The first on-me-only interval (6m sleeping_on_me + transfer) should be excluded.
+	if len(stats.SleepBlocks) != 1 {
+		t.Fatalf("SleepBlocks count = %d, want 1 (on-me-only block excluded)", len(stats.SleepBlocks))
+	}
+	// Block: on_me(7m) + crib(1h58m) = 2h5m
+	if stats.SleepBlocks[0] != 2*time.Hour+5*time.Minute {
+		t.Errorf("SleepBlocks[0] = %v, want 2h5m", stats.SleepBlocks[0])
+	}
+}
+
+func TestSleepBlockOnMeOnlyLong(t *testing.T) {
+	// Even a long on-me-only block is excluded from sleep blocks.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+	}
+
+	stats, _ := ComputeStats(events, start, start.Add(2*time.Hour))
+
+	if len(stats.SleepBlocks) != 0 {
+		t.Fatalf("SleepBlocks count = %d, want 0 (on-me-only excluded)", len(stats.SleepBlocks))
+	}
+	if stats.LongestSleepBlock != 0 {
+		t.Errorf("LongestSleepBlock = %v, want 0", stats.LongestSleepBlock)
+	}
+}
+
 func TestFeedCountAfterStrollerSleep(t *testing.T) {
 	// Stroller sleep also counts as "real sleep"
 	start := t0()
