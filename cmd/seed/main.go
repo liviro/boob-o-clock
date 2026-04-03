@@ -41,7 +41,7 @@ func main() {
 			blocks: []block{
 				{feedBreast: "L", feedMins: 20, sleepOnMeMins: 8, cribMins: 90},
 				{feedBreast: "R", feedMins: 15, sleepOnMeMins: 5, cribMins: 60},
-				{stroller: true, strollMins: 12, strollerMins: 45},
+				{stroller: true, poopMins: 8, strollMins: 12, strollerMins: 45},
 				{feedBreast: "R", feedMins: 12, sleepOnMeMins: 6, cribMins: 120},
 			},
 		},
@@ -117,6 +117,7 @@ type block struct {
 	stroller      bool // if true: strolling → sleeping_stroller instead of feed → crib
 	strollMins    int  // time spent strolling before baby falls asleep
 	strollerMins  int  // time spent sleeping in stroller
+	poopMins      int  // if > 0, poop happens before feed/stroller (from awake)
 }
 
 type nightSpec struct {
@@ -158,6 +159,12 @@ func seedNight(s *store.Store, ns nightSpec) error {
 
 	for i, b := range ns.blocks {
 		isLast := i == len(ns.blocks)-1
+
+		if b.poopMins > 0 {
+			add(domain.Awake, domain.PoopStart, domain.Poop, nil)
+			cursor = cursor.Add(time.Duration(b.poopMins) * time.Minute)
+			add(domain.Poop, domain.PoopDone, domain.Awake, nil)
+		}
 
 		if b.stroller {
 			// Nuclear option: stroller walk

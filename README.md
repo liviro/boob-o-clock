@@ -108,6 +108,15 @@ make dev
 # Open http://localhost:5173 — hot reload for frontend, API proxied to Go
 ```
 
+### Seed data
+
+```bash
+go run ./cmd/seed -db ./dev.db          # 8 nights of plausible data
+go run ./cmd/server -addr :8080 -db ./dev.db
+```
+
+Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, and breast alternation.
+
 ### Test
 
 ```bash
