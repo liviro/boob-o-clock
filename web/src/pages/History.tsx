@@ -91,6 +91,7 @@ export function History() {
               <Stat value={String(s.feedCount)} label="Feeds" />
               <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
             </div>
+            <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
           </div>
         );
       })}
@@ -167,6 +168,7 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
           <Stat value={fmtDur(s.totalFeedTime)} label="Feed Time" />
           <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
         </div>
+        <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
         <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
       </div>
 
@@ -181,6 +183,28 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
             return <div key={i} class="event-row">{t} — {label}{meta}</div>;
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SleepBlocksPills({ blocks, longest, active }: { blocks: number[]; longest: number; active?: boolean }) {
+  if (!blocks || blocks.length < 2) return null;
+
+  const longestIdx = blocks.indexOf(longest);
+  return (
+    <div class="sleep-blocks">
+      <div class="sleep-blocks-label">Sleep blocks</div>
+      <div class="sleep-blocks-pills">
+        {blocks.map((b, i) => {
+          const isLast = i === blocks.length - 1;
+          const cls = [
+            'sleep-pill',
+            i === longestIdx ? 'sleep-pill-longest' : '',
+            active && isLast ? 'sleep-pill-live' : '',
+          ].filter(Boolean).join(' ');
+          return <span key={i} class={cls}>{fmtDur(b)}</span>;
+        })}
       </div>
     </div>
   );

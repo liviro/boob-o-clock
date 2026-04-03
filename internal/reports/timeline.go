@@ -24,7 +24,8 @@ type NightStats struct {
 	TotalAwakeTime    time.Duration `json:"totalAwakeTime"`
 	FeedCount         int           `json:"feedCount"`
 	WakeCount         int           `json:"wakeCount"`
-	LongestSleepBlock time.Duration `json:"longestSleepBlock"`
+	LongestSleepBlock time.Duration   `json:"longestSleepBlock"`
+	SleepBlocks       []time.Duration `json:"sleepBlocks"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
@@ -56,7 +57,8 @@ var contiguousSleepStates = map[domain.State]bool{
 
 // BuildTimeline converts events into a sequence of state periods with durations.
 // Instantaneous states (TRANSFERRING) are excluded since their duration is 0.
-func BuildTimeline(events []domain.Event) []TimelineEntry {
+// nightEnd closes the final open state so in-progress nights include the current period.
+func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	if len(events) == 0 {
 		return nil
 	}
@@ -79,25 +81,31 @@ func BuildTimeline(events []domain.Event) []TimelineEntry {
 		currentState = evt.ToState
 		currentStart = evt.Timestamp
 		currentMeta = evt.Metadata
+	}
 
-		// For switch_breast, carry the metadata forward but don't start a new entry
-		// (handled by the normal flow — previous feeding entry ends, new one starts)
+	if currentState != "" && currentState != domain.Transferring && nightEnd.After(currentStart) {
+		entries = append(entries, TimelineEntry{
+			State:    currentState,
+			Start:    currentStart,
+			Duration: nightEnd.Sub(currentStart),
+			Metadata: currentMeta,
+		})
 	}
 
 	return entries
 }
 
-// ComputeStats calculates summary statistics for a night.
-func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) NightStats {
+// ComputeStats calculates summary statistics and returns the timeline it built.
+func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightStats, []TimelineEntry) {
 	if len(events) == 0 {
-		return NightStats{}
+		return NightStats{}, nil
 	}
 
 	stats := NightStats{
 		NightDuration: nightEnd.Sub(nightStart),
 	}
 
-	timeline := BuildTimeline(events)
+	timeline := BuildTimeline(events, nightEnd)
 
 	// Only count feeds after the first real sleep (crib or stroller, not "on me").
 	// Pre-sleep feeds at night start are excluded — they're part of putting the
@@ -144,22 +152,25 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) NightSt
 		}
 	}
 
-	// Longest sleep block: contiguous sequence of sleep-ish states
+	// Sleep blocks: contiguous sequences of sleep-ish states
 	var currentBlock time.Duration
-	for _, entry := range timeline {
-		if contiguousSleepStates[entry.State] {
-			currentBlock += entry.Duration
-		} else {
+	flushBlock := func() {
+		if currentBlock > 0 {
+			stats.SleepBlocks = append(stats.SleepBlocks, currentBlock)
 			if currentBlock > stats.LongestSleepBlock {
 				stats.LongestSleepBlock = currentBlock
 			}
 			currentBlock = 0
 		}
 	}
-	// Check final block
-	if currentBlock > stats.LongestSleepBlock {
-		stats.LongestSleepBlock = currentBlock
+	for _, entry := range timeline {
+		if contiguousSleepStates[entry.State] {
+			currentBlock += entry.Duration
+		} else {
+			flushBlock()
+		}
 	}
+	flushBlock()
 
-	return stats
+	return stats, timeline
 }

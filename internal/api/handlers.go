@@ -232,8 +232,7 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nightEnd := nightEndTime(night)
-	timeline := reports.BuildTimeline(events)
-	stats := reports.ComputeStats(events, night.StartedAt, nightEnd)
+	stats, timeline := reports.ComputeStats(events, night.StartedAt, nightEnd)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"night": nightDetailJSON{
@@ -298,7 +297,7 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]nightSummary, 0, len(nights))
 	for _, n := range nights {
-		stats := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n))
+		stats, _ := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n))
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{
 				ID:        n.ID,
@@ -324,9 +323,10 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 
 	points := make([]reports.NightDataPoint, len(nights))
 	for i, n := range nights {
+		stats, _ := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n))
 		points[i] = reports.NightDataPoint{
 			Date:  n.StartedAt,
-			Stats: reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n)),
+			Stats: stats,
 		}
 	}
 

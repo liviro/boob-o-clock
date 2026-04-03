@@ -58,9 +58,9 @@ func realisticNight() ([]domain.Event, time.Time, time.Time) {
 }
 
 func TestTimelineFromEvents(t *testing.T) {
-	events, _, _ := realisticNight()
+	events, _, end := realisticNight()
 
-	tl := BuildTimeline(events)
+	tl := BuildTimeline(events, end)
 	if len(tl) == 0 {
 		t.Fatal("expected non-empty timeline")
 	}
@@ -76,7 +76,7 @@ func TestTimelineFromEvents(t *testing.T) {
 func TestNightStats(t *testing.T) {
 	events, start, end := realisticNight()
 
-	stats := ComputeStats(events, start, end)
+	stats, _ := ComputeStats(events, start, end)
 
 	// Total night duration: 9 hours
 	if stats.NightDuration != 9*time.Hour {
@@ -112,6 +112,17 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("LongestSleepBlock = %v, want 4h45m", stats.LongestSleepBlock)
 	}
 
+	// Sleep blocks: first block (on_me 5m + crib 3h35m = 3h40m), second block (on_me 5m + resettling 10m + crib 4h30m = 4h45m)
+	if len(stats.SleepBlocks) != 2 {
+		t.Fatalf("SleepBlocks count = %d, want 2", len(stats.SleepBlocks))
+	}
+	if stats.SleepBlocks[0] != 3*time.Hour+40*time.Minute {
+		t.Errorf("SleepBlocks[0] = %v, want 3h40m", stats.SleepBlocks[0])
+	}
+	if stats.SleepBlocks[1] != 4*time.Hour+45*time.Minute {
+		t.Errorf("SleepBlocks[1] = %v, want 4h45m", stats.SleepBlocks[1])
+	}
+
 	// Total sleep: sleeping_on_me (5min) + sleeping_crib (3h35m) + sleeping_on_me (5min) + resettling (10min) + sleeping_crib (4h30m)
 	// sleeping_on_me: 21:00+20m to 21:00+25m = 5min, and 01:15 to 01:20 = 5min
 	// sleeping_crib: 21:25 to 01:00 = 3h35m, and 01:30 to 06:00 = 4h30m
@@ -124,7 +135,7 @@ func TestNightStats(t *testing.T) {
 }
 
 func TestEmptyNightStats(t *testing.T) {
-	stats := ComputeStats(nil, t0(), t0())
+	stats, _ := ComputeStats(nil, t0(), t0())
 	if stats.FeedCount != 0 {
 		t.Error("empty night should have 0 feeds")
 	}
@@ -142,7 +153,7 @@ func TestStatsWithPoop(t *testing.T) {
 		mkEvent(4, domain.Awake, domain.EndNight, domain.NightOff, start.Add(10*time.Minute), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(10*time.Minute))
+	stats, _ := ComputeStats(events, start, start.Add(10*time.Minute))
 	if stats.FeedCount != 0 {
 		t.Errorf("FeedCount = %d, want 0", stats.FeedCount)
 	}
@@ -168,7 +179,7 @@ func TestStatsWithStroller(t *testing.T) {
 		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(4*time.Hour))
+	stats, _ := ComputeStats(events, start, start.Add(4*time.Hour))
 
 	// Feed count: 0 (the only feed happens before first stroller sleep)
 	if stats.FeedCount != 0 {
@@ -191,7 +202,7 @@ func TestStatsWithSwitchBreast(t *testing.T) {
 		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(20*time.Minute), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(20*time.Minute))
+	stats, _ := ComputeStats(events, start, start.Add(20*time.Minute))
 
 	// No real sleep in this night, so feed count is 0
 	if stats.FeedCount != 0 {
@@ -231,7 +242,7 @@ func TestStatsWithRootBack(t *testing.T) {
 		mkEvent(12, domain.Awake, domain.EndNight, domain.NightOff, start.Add(8*time.Hour), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(8*time.Hour))
+	stats, _ := ComputeStats(events, start, start.Add(8*time.Hour))
 
 	// Only the feed after first crib sleep counts; pre-sleep feeds excluded
 	if stats.FeedCount != 1 {
@@ -255,7 +266,7 @@ func TestFeedCountNoRealSleep(t *testing.T) {
 		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(2*time.Hour))
+	stats, _ := ComputeStats(events, start, start.Add(2*time.Hour))
 
 	if stats.FeedCount != 0 {
 		t.Errorf("FeedCount = %d, want 0 (no real sleep, no feeds counted)", stats.FeedCount)
@@ -280,7 +291,7 @@ func TestFeedCountAfterStrollerSleep(t *testing.T) {
 		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour+15*time.Minute), nil),
 	}
 
-	stats := ComputeStats(events, start, start.Add(4*time.Hour+15*time.Minute))
+	stats, _ := ComputeStats(events, start, start.Add(4*time.Hour+15*time.Minute))
 
 	if stats.FeedCount != 1 {
 		t.Errorf("FeedCount = %d, want 1 (only post-stroller feed counts)", stats.FeedCount)
@@ -296,7 +307,7 @@ func TestTimelineEntries(t *testing.T) {
 		mkEvent(4, domain.Awake, domain.EndNight, domain.NightOff, start.Add(15*time.Minute), nil),
 	}
 
-	tl := BuildTimeline(events)
+	tl := BuildTimeline(events, start.Add(15*time.Minute))
 
 	// Should have 3 entries: awake(2m), feeding(10m), awake(3m)
 	if len(tl) != 3 {
@@ -311,5 +322,67 @@ func TestTimelineEntries(t *testing.T) {
 	}
 	if tl[2].State != domain.Awake || tl[2].Duration != 3*time.Minute {
 		t.Errorf("entry 2: state=%s dur=%v, want awake 3m", tl[2].State, tl[2].Duration)
+	}
+}
+
+func TestTimelineClosesOpenState(t *testing.T) {
+	// In-progress night: baby is sleeping in crib, no closing event yet.
+	// nightEnd (time.Now) should close the final state.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(20*time.Minute), nil),
+	}
+
+	nightEnd := start.Add(2 * time.Hour)
+	tl := BuildTimeline(events, nightEnd)
+
+	// Last entry should be sleeping_crib closed at nightEnd: 20m to 2h = 1h40m
+	last := tl[len(tl)-1]
+	if last.State != domain.SleepingCrib {
+		t.Errorf("last state = %s, want sleeping_crib", last.State)
+	}
+	if last.Duration != 1*time.Hour+40*time.Minute {
+		t.Errorf("last duration = %v, want 1h40m", last.Duration)
+	}
+}
+
+func TestStatsInProgressNight(t *testing.T) {
+	// Baby sleeping in crib with no EndNight — sleep blocks should include the open block.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(20*time.Minute), nil),
+		// Wake, feed, back to crib
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(3*time.Hour), breast("R")),
+		mkEvent(8, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(3*time.Hour+10*time.Minute), nil),
+		mkEvent(9, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(3*time.Hour+15*time.Minute), nil),
+		mkEvent(10, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(3*time.Hour+15*time.Minute), nil),
+		// Still sleeping — no EndNight
+	}
+
+	nightEnd := start.Add(5 * time.Hour) // "now"
+	stats, _ := ComputeStats(events, start, nightEnd)
+
+	// Block 1: on_me(5m) + crib(2h40m) = 2h45m
+	// Block 2: on_me(5m) + crib(1h45m) = 1h50m (open, closed by nightEnd)
+	if len(stats.SleepBlocks) != 2 {
+		t.Fatalf("SleepBlocks count = %d, want 2", len(stats.SleepBlocks))
+	}
+	if stats.SleepBlocks[0] != 2*time.Hour+45*time.Minute {
+		t.Errorf("SleepBlocks[0] = %v, want 2h45m", stats.SleepBlocks[0])
+	}
+	if stats.SleepBlocks[1] != 1*time.Hour+50*time.Minute {
+		t.Errorf("SleepBlocks[1] = %v, want 1h50m", stats.SleepBlocks[1])
+	}
+	if stats.LongestSleepBlock != 2*time.Hour+45*time.Minute {
+		t.Errorf("LongestSleepBlock = %v, want 2h45m", stats.LongestSleepBlock)
 	}
 }
