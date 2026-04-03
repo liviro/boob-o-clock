@@ -297,6 +297,42 @@ body {
 .stat-value { font-size: 20px; font-weight: 700; }
 .stat-label { font-size: 11px; color: #999; text-transform: uppercase; }
 
+/* Sleep blocks pills */
+.sleep-blocks { margin-bottom: 12px; }
+.sleep-blocks-label {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.sleep-blocks-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sleep-pill {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #8888cc;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.sleep-pill-longest {
+  background: #1a2a1a;
+  border-color: #2a4a2a;
+  color: #88cc88;
+}
+.sleep-pill-live {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Timeline bar */
 .timeline-bar {
   display: flex;

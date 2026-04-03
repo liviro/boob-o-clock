@@ -32,6 +32,7 @@ export interface NightStats {
   feedCount: number;
   wakeCount: number;
   longestSleepBlock: number;
+  sleepBlocks: number[];
 }
 
 export interface TimelineEntry {
