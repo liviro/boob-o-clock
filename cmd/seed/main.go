@@ -35,13 +35,13 @@ func main() {
 				{feedBreast: "R", feedMins: 12, sleepOnMeMins: 3, resettleMins: 8, cribMins: 180},
 			},
 		},
-		// 6 nights ago — rough night, 4 short blocks
+		// 6 nights ago — rough night, 4 short blocks (3rd one needed the stroller)
 		{
 			start: now.Add(-6 * 24 * time.Hour).Truncate(time.Hour).Add(21 * time.Hour),
 			blocks: []block{
 				{feedBreast: "L", feedMins: 20, sleepOnMeMins: 8, cribMins: 90},
 				{feedBreast: "R", feedMins: 15, sleepOnMeMins: 5, cribMins: 60},
-				{feedBreast: "L", feedMins: 10, sleepOnMeMins: 4, cribMins: 45},
+				{stroller: true, strollMins: 12, strollerMins: 45},
 				{feedBreast: "R", feedMins: 12, sleepOnMeMins: 6, cribMins: 120},
 			},
 		},
@@ -112,8 +112,11 @@ type block struct {
 	feedBreast    string
 	feedMins      int
 	sleepOnMeMins int
-	resettleMins  int // 0 = no resettle, transfer succeeds directly
+	resettleMins  int  // 0 = no resettle, transfer succeeds directly
 	cribMins      int
+	stroller      bool // if true: strolling → sleeping_stroller instead of feed → crib
+	strollMins    int  // time spent strolling before baby falls asleep
+	strollerMins  int  // time spent sleeping in stroller
 }
 
 type nightSpec struct {
@@ -155,6 +158,21 @@ func seedNight(s *store.Store, ns nightSpec) error {
 
 	for i, b := range ns.blocks {
 		isLast := i == len(ns.blocks)-1
+
+		if b.stroller {
+			// Nuclear option: stroller walk
+			add(domain.Awake, domain.StartStrolling, domain.Strolling, nil)
+			cursor = cursor.Add(time.Duration(b.strollMins) * time.Minute)
+			add(domain.Strolling, domain.FellAsleep, domain.SleepingStroller, nil)
+
+			if ns.inProgress && isLast {
+				break
+			}
+
+			cursor = cursor.Add(time.Duration(b.strollerMins) * time.Minute)
+			add(domain.SleepingStroller, domain.BabyWoke, domain.Awake, nil)
+			continue
+		}
 
 		// Feed
 		add(domain.Awake, domain.StartFeed, domain.Feeding, breast(b.feedBreast))
