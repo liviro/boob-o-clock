@@ -170,7 +170,7 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 	for _, entry := range timeline {
 		if contiguousSleepStates[entry.State] {
 			currentBlock += entry.Duration
-			if independentSleepStates[entry.State] {
+			if !hasIndependentSleep && independentSleepStates[entry.State] {
 				hasIndependentSleep = true
 			}
 		} else {
