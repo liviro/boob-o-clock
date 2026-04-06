@@ -1,0 +1,128 @@
+import { NightSummary } from '../api';
+
+interface Props {
+  nights: NightSummary[];
+}
+
+const W = 320;
+const H = 160;
+const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
+const CHART_W = W - PAD.left - PAD.right;
+const CHART_H = H - PAD.top - PAD.bottom;
+const MIN_RANGE_H = 2; // minimum 2-hour Y axis range
+const NIGHT_EPOCH_H = 18; // 6 PM — times before this are treated as next-day
+
+/** Convert a timestamp to "hours since 6 PM". E.g. 9 PM = 3, 1 AM = 7. */
+function toNightHour(ts: string): number {
+  const d = new Date(ts);
+  let h = d.getHours() + d.getMinutes() / 60;
+  if (h < NIGHT_EPOCH_H) h += 24; // after midnight: wrap into next-day range
+  return h - NIGHT_EPOCH_H;
+}
+
+/** Format a night-hour back to a clock time string. */
+function fmtHour(nightHour: number): string {
+  let h = Math.round(nightHour + NIGHT_EPOCH_H);
+  if (h >= 24) h -= 24;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${display} ${ampm}`;
+}
+
+export function FeedScatterChart({ nights }: Props) {
+  // Collect all feed points: { nightIndex, nightHour }
+  const completedNights = nights.filter(n => n.endedAt);
+  const points: { ni: number; nh: number }[] = [];
+
+  for (let i = 0; i < completedNights.length; i++) {
+    const ft = completedNights[i].stats.feedTimes;
+    if (!ft) continue;
+    for (const ts of ft) {
+      points.push({ ni: i, nh: toNightHour(ts) });
+    }
+  }
+
+  if (points.length === 0) return null;
+
+  // Dynamic Y range from data
+  const allHours = points.map(p => p.nh);
+  let minH = Math.floor(Math.min(...allHours));
+  let maxH = Math.ceil(Math.max(...allHours));
+  // Enforce minimum range
+  if (maxH - minH < MIN_RANGE_H) {
+    const mid = (minH + maxH) / 2;
+    minH = mid - MIN_RANGE_H / 2;
+    maxH = mid + MIN_RANGE_H / 2;
+  }
+  // Add a little padding
+  minH = Math.max(0, minH - 0.5);
+  maxH = maxH + 0.5;
+  const rangeH = maxH - minH;
+
+  const n = completedNights.length;
+
+  function x(ni: number): number {
+    if (n === 1) return PAD.left + CHART_W / 2;
+    return PAD.left + (ni / (n - 1)) * CHART_W;
+  }
+
+  // Y is inverted: early night (low nightHour) at top, late night at bottom
+  function y(nh: number): number {
+    return PAD.top + ((nh - minH) / rangeH) * CHART_H;
+  }
+
+  // Date labels
+  const dateLabels: { x: number; label: string }[] = [];
+  if (n <= 7) {
+    completedNights.forEach((night, i) => {
+      const d = new Date(night.startedAt);
+      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+    });
+  } else {
+    for (const i of [0, Math.floor(n / 2), n - 1]) {
+      const d = new Date(completedNights[i].startedAt);
+      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+    }
+  }
+
+  // Y axis labels: show ~3-4 evenly spaced clock times
+  const yStepH = rangeH <= 4 ? 1 : 2;
+  const yLabels: { y: number; label: string }[] = [];
+  for (let h = Math.ceil(minH); h <= Math.floor(maxH); h += yStepH) {
+    yLabels.push({ y: y(h), label: fmtHour(h) });
+  }
+
+  return (
+    <div class="trend-chart">
+      <div class="trend-title">Feed Times</div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
+        {/* Y axis labels */}
+        {yLabels.map((yl, i) => (
+          <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
+            {yl.label}
+          </text>
+        ))}
+
+        {/* Horizontal grid lines */}
+        {yLabels.map((yl, i) => (
+          <line key={`g${i}`} x1={PAD.left} y1={yl.y} x2={PAD.left + CHART_W} y2={yl.y} stroke="#222" />
+        ))}
+
+        {/* Bottom axis */}
+        <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
+
+        {/* Feed dots */}
+        {points.map((p, i) => (
+          <circle key={i} cx={x(p.ni)} cy={y(p.nh)} r="4" fill="#c0b040" opacity="0.85" />
+        ))}
+
+        {/* Date labels */}
+        {dateLabels.map((dl, i) => (
+          <text key={i} x={dl.x} y={H - 2} fill="#999" font-size="9" text-anchor="middle">
+            {dl.label}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}

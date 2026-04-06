@@ -26,6 +26,7 @@ type NightStats struct {
 	WakeCount         int           `json:"wakeCount"`
 	LongestSleepBlock time.Duration   `json:"longestSleepBlock"`
 	SleepBlocks       []time.Duration `json:"sleepBlocks"`
+	FeedTimes         []time.Time    `json:"feedTimes"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
@@ -123,6 +124,7 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 		case evt.Action == domain.StartFeed:
 			if !inFeedSession && seenRealSleep {
 				stats.FeedCount++
+				stats.FeedTimes = append(stats.FeedTimes, evt.Timestamp)
 			}
 			inFeedSession = true
 		case evt.ToState == domain.Awake:

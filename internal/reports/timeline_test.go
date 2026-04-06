@@ -101,6 +101,14 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("FeedTimeRight = %v, want 15m", stats.FeedTimeRight)
 	}
 
+	// Feed times: only the 01:00 feed (pre-sleep feed excluded)
+	if len(stats.FeedTimes) != 1 {
+		t.Fatalf("FeedTimes count = %d, want 1", len(stats.FeedTimes))
+	}
+	if !stats.FeedTimes[0].Equal(start.Add(4 * time.Hour)) {
+		t.Errorf("FeedTimes[0] = %v, want %v", stats.FeedTimes[0], start.Add(4*time.Hour))
+	}
+
 	// Wake count: 2 (both BabyWoke events: at 01:00 and 06:00)
 	if stats.WakeCount != 2 {
 		t.Errorf("WakeCount = %d, want 2", stats.WakeCount)
@@ -138,6 +146,9 @@ func TestEmptyNightStats(t *testing.T) {
 	stats, _ := ComputeStats(nil, t0(), t0())
 	if stats.FeedCount != 0 {
 		t.Error("empty night should have 0 feeds")
+	}
+	if len(stats.FeedTimes) != 0 {
+		t.Errorf("empty night should have 0 feed times, got %d", len(stats.FeedTimes))
 	}
 	if stats.WakeCount != 0 {
 		t.Error("empty night should have 0 wakes")
@@ -248,6 +259,12 @@ func TestStatsWithRootBack(t *testing.T) {
 	if stats.FeedCount != 1 {
 		t.Errorf("FeedCount = %d, want 1 (pre-sleep feeds excluded)", stats.FeedCount)
 	}
+	if len(stats.FeedTimes) != 1 {
+		t.Fatalf("FeedTimes count = %d, want 1", len(stats.FeedTimes))
+	}
+	if !stats.FeedTimes[0].Equal(start.Add(4 * time.Hour)) {
+		t.Errorf("FeedTimes[0] = %v, want %v", stats.FeedTimes[0], start.Add(4*time.Hour))
+	}
 
 	// Total feed time: 15m + 10m + 15m = 40m
 	if stats.TotalFeedTime != 40*time.Minute {
@@ -351,6 +368,12 @@ func TestFeedCountAfterStrollerSleep(t *testing.T) {
 
 	if stats.FeedCount != 1 {
 		t.Errorf("FeedCount = %d, want 1 (only post-stroller feed counts)", stats.FeedCount)
+	}
+	if len(stats.FeedTimes) != 1 {
+		t.Fatalf("FeedTimes count = %d, want 1", len(stats.FeedTimes))
+	}
+	if !stats.FeedTimes[0].Equal(start.Add(4 * time.Hour)) {
+		t.Errorf("FeedTimes[0] = %v, want %v", stats.FeedTimes[0], start.Add(4*time.Hour))
 	}
 }
 

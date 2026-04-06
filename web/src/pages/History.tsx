@@ -3,6 +3,7 @@ import { getNights, getNightDetail, getTrends, NightSummary, NightDetail, TrendP
 import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { TrendChart } from '../components/TrendChart';
+import { FeedScatterChart } from '../components/FeedScatterChart';
 
 type View = 'nights' | 'trends';
 
@@ -92,6 +93,7 @@ export function History() {
               <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
             </div>
             <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
+            <FeedTimesPills times={s.feedTimes} />
           </div>
         );
       })}
@@ -141,6 +143,7 @@ export function History() {
             formatValue={fmtDur}
             title="Feed Time by Side"
           />
+          <FeedScatterChart nights={nights} />
         </div>
       )}
     </div>
@@ -169,6 +172,7 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
           <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
         </div>
         <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
+        <FeedTimesPills times={s.feedTimes} />
         <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
       </div>
 
@@ -193,18 +197,34 @@ function SleepBlocksPills({ blocks, longest, active }: { blocks: number[]; longe
 
   const longestIdx = blocks.indexOf(longest);
   return (
-    <div class="sleep-blocks">
-      <div class="sleep-blocks-label">Sleep blocks</div>
-      <div class="sleep-blocks-pills">
+    <div class="pill-group">
+      <div class="pill-group-label">Sleep blocks</div>
+      <div class="pill-group-pills">
         {blocks.map((b, i) => {
           const isLast = i === blocks.length - 1;
           const cls = [
-            'sleep-pill',
-            i === longestIdx ? 'sleep-pill-longest' : '',
-            active && isLast ? 'sleep-pill-live' : '',
+            'pill',
+            i === longestIdx ? 'pill-sleep-longest' : '',
+            active && isLast ? 'pill-sleep-live' : '',
           ].filter(Boolean).join(' ');
           return <span key={i} class={cls}>{fmtDur(b)}</span>;
         })}
+      </div>
+    </div>
+  );
+}
+
+function FeedTimesPills({ times }: { times: string[] | null }) {
+  if (!times || times.length === 0) return null;
+  return (
+    <div class="pill-group">
+      <div class="pill-group-label">Feeds at</div>
+      <div class="pill-group-pills">
+        {times.map((t, i) => (
+          <span key={i} class="pill pill-feed">
+            {new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        ))}
       </div>
     </div>
   );
