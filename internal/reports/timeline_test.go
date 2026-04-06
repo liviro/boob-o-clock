@@ -465,3 +465,37 @@ func TestStatsInProgressNight(t *testing.T) {
 		t.Errorf("LongestSleepBlock = %v, want 2h45m", stats.LongestSleepBlock)
 	}
 }
+
+// TestEveryStateClassified ensures that every state in AllStates is explicitly
+// accounted for in the sleep classification maps. Adding a new state without
+// classifying it here will fail this test.
+func TestEveryStateClassified(t *testing.T) {
+	// States that are explicitly not sleep-related.
+	// When adding a new state, put it here OR in the appropriate sleep map.
+	nonSleepStates := map[domain.State]bool{
+		domain.NightOff: true,
+		domain.Awake:    true,
+		domain.Feeding:  true,
+		domain.Poop:     true,
+	}
+
+	for _, state := range domain.AllStates {
+		inSleep := sleepStates[state]
+		inContiguous := contiguousSleepStates[state]
+		inNonSleep := nonSleepStates[state]
+
+		if !inSleep && !inContiguous && !inNonSleep {
+			t.Errorf("state %s is unclassified — add it to the sleep or non-sleep group in timeline.go and this test", state)
+		}
+		if (inSleep || inContiguous) && inNonSleep {
+			t.Errorf("state %s is in both a sleep map and nonSleepStates — pick one", state)
+		}
+	}
+
+	// independentSleepStates must be a subset of sleepStates
+	for state := range independentSleepStates {
+		if !sleepStates[state] {
+			t.Errorf("state %s is in independentSleepStates but not sleepStates", state)
+		}
+	}
+}

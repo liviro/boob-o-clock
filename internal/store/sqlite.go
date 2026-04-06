@@ -96,17 +96,21 @@ func (s *Store) EndNight(nightID int64, endedAt time.Time) error {
 	return err
 }
 
-func (s *Store) DeleteNight(nightID int64) error {
+func (s *Store) DeleteNight(nightID int64) (err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 
-	if _, err := tx.Exec("DELETE FROM events WHERE night_id = ?", nightID); err != nil {
+	if _, err = tx.Exec("DELETE FROM events WHERE night_id = ?", nightID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("DELETE FROM nights WHERE id = ?", nightID); err != nil {
+	if _, err = tx.Exec("DELETE FROM nights WHERE id = ?", nightID); err != nil {
 		return err
 	}
 	return tx.Commit()

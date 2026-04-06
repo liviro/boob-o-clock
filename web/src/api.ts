@@ -76,6 +76,18 @@ export interface NightDetail {
   stats: NightStats;
 }
 
+/** Format a Date as RFC3339 with local timezone offset (not UTC). */
+function toLocalISO(d: Date): string {
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
+  const mm = String(Math.abs(off) % 60).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+    `${sign}${hh}:${mm}`;
+}
+
 async function checkResponse(resp: Response): Promise<Response> {
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -96,7 +108,7 @@ export async function postEvent(
 ): Promise<SessionResponse> {
   const body: Record<string, unknown> = { action };
   if (metadata) body.metadata = metadata;
-  if (timestamp) body.timestamp = timestamp.toISOString();
+  if (timestamp) body.timestamp = toLocalISO(timestamp);
 
   const resp = await checkResponse(await fetch(`${API}/session/event`, {
     method: 'POST',

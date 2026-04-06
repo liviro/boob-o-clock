@@ -193,7 +193,7 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
 }
 
 function SleepBlocksPills({ blocks, longest, active }: { blocks: number[]; longest: number; active?: boolean }) {
-  if (!blocks || blocks.length < 2) return null;
+  if (!blocks || blocks.length === 0) return null;
 
   const longestIdx = blocks.indexOf(longest);
   return (

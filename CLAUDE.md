@@ -13,16 +13,17 @@ Single Go binary serving a REST API and embedded frontend static files.
 - `internal/domain/` — Pure state machine and types. **Zero external dependencies.** This is the source of truth for all state transitions. State is always derived from the event log, never stored separately.
 - `internal/store/` — SQLite persistence via `modernc.org/sqlite` (pure Go, no CGo). Stores events and nights.
 - `internal/reports/` — Report computation over event data. Pure Go.
-- `internal/api/` — HTTP handlers. Thin orchestration: loads session from store, validates via domain, persists, returns JSON.
+- `internal/api/` — HTTP handlers. Orchestration: loads session from store, validates via domain, persists, enriches response with report data (e.g. breast suggestion), returns JSON.
 - `internal/web/` — Embedded frontend assets via `go:embed`. Static files live in `internal/web/static/`.
 - `cmd/server/` — Entry point. Wires dependencies, serves API + embedded frontend on configurable port.
 
 ## Core Domain: State Machine
 
-10 states, 28 transitions. The transition table lives in `internal/domain/machine.go`. Key properties:
+11 states, 32 transitions. The transition table lives in `internal/domain/machine.go`. Key properties:
 - AWAKE is the hub state — every state can reach it, and it's the only state that can end the night
 - TRANSFERRING is instantaneous (deferred outcome — user picks result when hands are free)
-- POOP is reachable from 6 states (everything except FEEDING, TRANSFERRING, NIGHT_OFF)
+- SELF_SOOTHING is reachable from SLEEPING_CRIB (baby stirred) and AWAKE (put down awake)
+- POOP is reachable from 7 states (everything except FEEDING, TRANSFERRING, NIGHT_OFF)
 - FEEDING supports a self-transition (switch breast) that logs dislatch + restart
 
 ## Commands
@@ -68,3 +69,4 @@ Preact + TypeScript + Vite. Source in `web/src/`, builds to `internal/web/static
 - **Dark mode only**: No light theme. Background #000, designed for nighttime use.
 - **Tap targets**: Minimum 48px, prefer 64px for primary actions. Design for iPhone SE (375px wide).
 - **Metadata**: Stored as `map[string]string` serialized to JSON. Feed events carry `{"breast": "L"}` or `{"breast": "R"}`.
+- **Versioning**: Version is defined in `web/package.json`. When bumping: update `package.json`, run `npm install --package-lock-only` in `web/` to sync `package-lock.json`, commit and push both, then create a GitHub release with `gh release create`.

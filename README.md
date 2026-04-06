@@ -129,7 +129,7 @@ cd web && npx tsc      # TypeScript type check
 ```
 ├── cmd/server/          Entry point, wiring, embed
 ├── internal/
-│   ├── domain/          State machine (10 states, 28 transitions, zero deps)
+│   ├── domain/          State machine (11 states, 32 transitions, zero deps)
 │   ├── store/           SQLite persistence (pure Go, no CGo)
 │   ├── reports/         Stats, timelines, trends, breast tracking
 │   ├── api/             REST handlers

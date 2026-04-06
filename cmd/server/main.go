@@ -58,15 +58,20 @@ func main() {
 
 	fmt.Printf("🕐 boob-o-clock listening on %s\n", addr)
 
+	errCh := make(chan error, 1)
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			errCh <- err
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case err := <-errCh:
+		log.Fatalf("server error: %v", err)
+	case <-quit:
+	}
 	fmt.Println("\nshutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
