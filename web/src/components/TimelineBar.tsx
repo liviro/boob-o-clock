@@ -19,6 +19,7 @@ const LEGEND_GROUPS: { key: string; label: string }[][] = [
   ],
   [
     { key: 'resettling', label: 'Resettle' },
+    { key: 'self_soothing', label: 'Self-Soothe' },
     { key: 'transferring', label: 'Transfer' },
     { key: 'strolling', label: 'Stroll' },
     { key: 'poop', label: 'Diaper' },

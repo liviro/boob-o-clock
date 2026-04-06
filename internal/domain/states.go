@@ -15,13 +15,14 @@ const (
 	SleepingCrib     State = "sleeping_crib"
 	Strolling        State = "strolling"
 	SleepingStroller State = "sleeping_stroller"
+	SelfSoothing     State = "self_soothing"
 	Poop             State = "poop"
 )
 
 // AllStates is the complete set of valid states.
 var AllStates = []State{
 	NightOff, Awake, Feeding, SleepingOnMe, Transferring,
-	Resettling, SleepingCrib, Strolling, SleepingStroller, Poop,
+	Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing, Poop,
 }
 
 // Action represents a user action that triggers a state transition.
@@ -44,6 +45,8 @@ const (
 	StartStrolling       Action = "start_strolling"
 	FellAsleep           Action = "fell_asleep"
 	GiveUp               Action = "give_up"
+	PutDownAwake         Action = "put_down_awake"
+	BabyStirred          Action = "baby_stirred"
 	PoopStart            Action = "poop_start"
 	PoopDone             Action = "poop_done"
 	EndNight             Action = "end_night"

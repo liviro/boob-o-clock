@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 type transitionKey struct {
 	From   State
@@ -14,14 +17,14 @@ var transitions = map[transitionKey]State{
 
 	// 2: AWAKE → FEEDING
 	{Awake, StartFeed}: Feeding,
-	// 3: AWAKE → TRANSFERRING
-	{Awake, StartTransfer}: Transferring,
-	// 4: AWAKE → RESETTLING
+	// 3: AWAKE → RESETTLING
 	{Awake, StartResettle}: Resettling,
-	// 5: AWAKE → STROLLING
+	// 4: AWAKE → STROLLING
 	{Awake, StartStrolling}: Strolling,
-	// 6: AWAKE → POOP
+	// 5: AWAKE → POOP
 	{Awake, PoopStart}: Poop,
+	// 6: AWAKE → SELF_SOOTHING
+	{Awake, PutDownAwake}: SelfSoothing,
 	// 7: AWAKE → NIGHT_OFF
 	{Awake, EndNight}: NightOff,
 
@@ -59,20 +62,29 @@ var transitions = map[transitionKey]State{
 	{SleepingCrib, BabyWoke}: Awake,
 	// 22: SLEEPING_CRIB → POOP
 	{SleepingCrib, PoopStart}: Poop,
+	// 23: SLEEPING_CRIB → SELF_SOOTHING
+	{SleepingCrib, BabyStirred}: SelfSoothing,
 
-	// 23: STROLLING → SLEEPING_STROLLER
+	// 24: SELF_SOOTHING → SLEEPING_CRIB
+	{SelfSoothing, Settled}: SleepingCrib,
+	// 25: SELF_SOOTHING → AWAKE
+	{SelfSoothing, BabyWoke}: Awake,
+	// 26: SELF_SOOTHING → POOP
+	{SelfSoothing, PoopStart}: Poop,
+
+	// 27: STROLLING → SLEEPING_STROLLER
 	{Strolling, FellAsleep}: SleepingStroller,
-	// 24: STROLLING → AWAKE
+	// 28: STROLLING → AWAKE
 	{Strolling, GiveUp}: Awake,
-	// 25: STROLLING → POOP
+	// 29: STROLLING → POOP
 	{Strolling, PoopStart}: Poop,
 
-	// 26: SLEEPING_STROLLER → AWAKE
+	// 30: SLEEPING_STROLLER → AWAKE
 	{SleepingStroller, BabyWoke}: Awake,
-	// 27: SLEEPING_STROLLER → POOP
+	// 31: SLEEPING_STROLLER → POOP
 	{SleepingStroller, PoopStart}: Poop,
 
-	// 28: POOP → AWAKE
+	// 32: POOP → AWAKE
 	{Poop, PoopDone}: Awake,
 }
 
@@ -99,11 +111,33 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 	return to, nil
 }
 
-// validActionsMap is pre-computed from the transition table.
+// actionOrder defines the canonical display order for actions.
+var actionOrder = func() map[Action]int {
+	all := []Action{
+		StartNight, StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
+		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
+		StartResettle, Settled, ResettleFailed, BabyWoke,
+		StartStrolling, FellAsleep, GiveUp,
+		PutDownAwake, BabyStirred,
+		PoopStart, PoopDone, EndNight,
+	}
+	m := make(map[Action]int, len(all))
+	for i, a := range all {
+		m[a] = i
+	}
+	return m
+}()
+
+// validActionsMap is pre-computed from the transition table, sorted by canonical order.
 var validActionsMap = func() map[State][]Action {
 	m := make(map[State][]Action)
 	for key := range transitions {
 		m[key.From] = append(m[key.From], key.Action)
+	}
+	for _, actions := range m {
+		sort.Slice(actions, func(i, j int) bool {
+			return actionOrder[actions[i]] < actionOrder[actions[j]]
+		})
 	}
 	return m
 }()

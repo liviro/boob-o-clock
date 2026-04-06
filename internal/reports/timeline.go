@@ -35,6 +35,7 @@ var sleepStates = map[domain.State]bool{
 	domain.SleepingStroller: true,
 	domain.Resettling:       true,
 	domain.Strolling:        true,
+	domain.SelfSoothing:     true,
 }
 
 // independentSleepStates are states where the baby sleeps independently (not on
@@ -52,6 +53,7 @@ var contiguousSleepStates = map[domain.State]bool{
 	domain.SleepingStroller: true,
 	domain.Resettling:       true,
 	domain.Strolling:        true,
+	domain.SelfSoothing:     true,
 	domain.Transferring:     true, // instantaneous, doesn't break a sleep block
 }
 

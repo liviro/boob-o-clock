@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestAllValidTransitions verifies every row of the 28-transition table.
+// TestAllValidTransitions verifies every row of the 32-transition table.
 func TestAllValidTransitions(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -18,14 +18,14 @@ func TestAllValidTransitions(t *testing.T) {
 		// Row 2: AWAKE → FEEDING
 		{"start feed left", Awake, StartFeed, Feeding, map[string]string{"breast": "L"}},
 		{"start feed right", Awake, StartFeed, Feeding, map[string]string{"breast": "R"}},
-		// Row 3: AWAKE → TRANSFERRING
-		{"start transfer from awake", Awake, StartTransfer, Transferring, nil},
-		// Row 4: AWAKE → RESETTLING
+		// Row 3: AWAKE → RESETTLING
 		{"start resettle", Awake, StartResettle, Resettling, nil},
-		// Row 5: AWAKE → STROLLING
+		// Row 4: AWAKE → STROLLING
 		{"start strolling", Awake, StartStrolling, Strolling, nil},
-		// Row 6: AWAKE → POOP
+		// Row 5: AWAKE → POOP
 		{"poop from awake", Awake, PoopStart, Poop, nil},
+		// Row 6: AWAKE → SELF_SOOTHING
+		{"put down awake", Awake, PutDownAwake, SelfSoothing, nil},
 		// Row 7: AWAKE → NIGHT_OFF
 		{"end night", Awake, EndNight, NightOff, nil},
 		// Row 8: FEEDING → AWAKE
@@ -58,17 +58,25 @@ func TestAllValidTransitions(t *testing.T) {
 		{"baby woke from crib", SleepingCrib, BabyWoke, Awake, nil},
 		// Row 22: SLEEPING_CRIB → POOP
 		{"poop from crib", SleepingCrib, PoopStart, Poop, nil},
-		// Row 23: STROLLING → SLEEPING_STROLLER
+		// Row 23: SLEEPING_CRIB → SELF_SOOTHING
+		{"baby stirred in crib", SleepingCrib, BabyStirred, SelfSoothing, nil},
+		// Row 24: SELF_SOOTHING → SLEEPING_CRIB
+		{"self soothe settled", SelfSoothing, Settled, SleepingCrib, nil},
+		// Row 25: SELF_SOOTHING → AWAKE
+		{"self soothe failed", SelfSoothing, BabyWoke, Awake, nil},
+		// Row 26: SELF_SOOTHING → POOP
+		{"poop from self soothing", SelfSoothing, PoopStart, Poop, nil},
+		// Row 27: STROLLING → SLEEPING_STROLLER
 		{"fell asleep in stroller", Strolling, FellAsleep, SleepingStroller, nil},
-		// Row 24: STROLLING → AWAKE
+		// Row 28: STROLLING → AWAKE
 		{"give up strolling", Strolling, GiveUp, Awake, nil},
-		// Row 25: STROLLING → POOP
+		// Row 29: STROLLING → POOP
 		{"poop from strolling", Strolling, PoopStart, Poop, nil},
-		// Row 26: SLEEPING_STROLLER → AWAKE
+		// Row 30: SLEEPING_STROLLER → AWAKE
 		{"baby woke from stroller", SleepingStroller, BabyWoke, Awake, nil},
-		// Row 27: SLEEPING_STROLLER → POOP
+		// Row 31: SLEEPING_STROLLER → POOP
 		{"poop from stroller sleep", SleepingStroller, PoopStart, Poop, nil},
-		// Row 28: POOP → AWAKE
+		// Row 32: POOP → AWAKE
 		{"poop done", Poop, PoopDone, Awake, nil},
 	}
 
@@ -97,6 +105,7 @@ func TestInvalidTransitions(t *testing.T) {
 		{"dislatch from awake", Awake, DislatchAwake},
 		{"settle from awake", Awake, Settled},
 		{"transfer success from awake", Awake, TransferSuccess},
+		{"transfer from awake", Awake, StartTransfer},
 		{"start night while awake", Awake, StartNight},
 		{"start night while feeding", Feeding, StartNight},
 		{"end night from feeding", Feeding, EndNight},
@@ -127,12 +136,13 @@ func TestValidActions(t *testing.T) {
 		actions []Action
 	}{
 		{NightOff, []Action{StartNight}},
-		{Awake, []Action{StartFeed, StartTransfer, StartResettle, StartStrolling, PoopStart, EndNight}},
+		{Awake, []Action{StartFeed, StartResettle, StartStrolling, PutDownAwake, PoopStart, EndNight}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
-		{SleepingOnMe, []Action{StartTransfer, StartFeed, BabyWoke, PoopStart}},
+		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},
 		{Resettling, []Action{Settled, ResettleFailed, PoopStart}},
-		{SleepingCrib, []Action{BabyWoke, PoopStart}},
+		{SleepingCrib, []Action{BabyWoke, BabyStirred, PoopStart}},
+		{SelfSoothing, []Action{Settled, BabyWoke, PoopStart}},
 		{Strolling, []Action{FellAsleep, GiveUp, PoopStart}},
 		{SleepingStroller, []Action{BabyWoke, PoopStart}},
 		{Poop, []Action{PoopDone}},
@@ -142,16 +152,11 @@ func TestValidActions(t *testing.T) {
 		t.Run(string(tt.state), func(t *testing.T) {
 			got := ValidActions(tt.state)
 			if len(got) != len(tt.actions) {
-				t.Fatalf("ValidActions(%s) returned %d actions %v, want %d actions %v",
-					tt.state, len(got), got, len(tt.actions), tt.actions)
+				t.Fatalf("ValidActions(%s) = %v, want %v", tt.state, got, tt.actions)
 			}
-			gotSet := make(map[Action]bool)
-			for _, a := range got {
-				gotSet[a] = true
-			}
-			for _, want := range tt.actions {
-				if !gotSet[want] {
-					t.Errorf("ValidActions(%s) missing %s", tt.state, want)
+			for i := range got {
+				if got[i] != tt.actions[i] {
+					t.Fatalf("ValidActions(%s) = %v, want %v", tt.state, got, tt.actions)
 				}
 			}
 		})
@@ -222,9 +227,9 @@ func TestDeriveState(t *testing.T) {
 	})
 }
 
-// TestPoopReachableFromExactlySixStates confirms the "shit happens" design.
-func TestPoopReachableFromExactlySixStates(t *testing.T) {
-	poopStates := []State{Awake, SleepingOnMe, Resettling, SleepingCrib, Strolling, SleepingStroller}
+// TestPoopReachableFromExactlySevenStates confirms the "shit happens" design.
+func TestPoopReachableFromExactlySevenStates(t *testing.T) {
+	poopStates := []State{Awake, SleepingOnMe, Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing}
 	noPoopStates := []State{NightOff, Feeding, Transferring, Poop}
 
 	for _, s := range poopStates {
@@ -238,6 +243,20 @@ func TestPoopReachableFromExactlySixStates(t *testing.T) {
 		_, err := Transition(s, PoopStart, nil)
 		if err == nil {
 			t.Errorf("PoopStart should NOT be valid from %s", s)
+		}
+	}
+}
+
+// TestActionOrderCoversAllActions verifies that every action in the transition
+// table has an entry in actionOrder, so new actions can't silently mis-sort.
+func TestActionOrderCoversAllActions(t *testing.T) {
+	seen := make(map[Action]bool)
+	for key := range transitions {
+		seen[key.Action] = true
+	}
+	for action := range seen {
+		if _, ok := actionOrder[action]; !ok {
+			t.Errorf("action %s is in the transition table but missing from actionOrder", action)
 		}
 	}
 }

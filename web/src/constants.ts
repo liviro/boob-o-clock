@@ -8,6 +8,7 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   sleeping_crib:     { icon: '😴', label: 'Sleeping in Crib' },
   strolling:         { icon: '🚶', label: 'Strolling' },
   sleeping_stroller: { icon: '💤', label: 'Sleeping in Stroller' },
+  self_soothing:     { icon: '🤫', label: 'Self-Soothing' },
   poop:              { icon: '💩', label: 'Diaper Change' },
 };
 
@@ -36,6 +37,8 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   start_strolling:        { icon: '🚶', label: 'Stroller',            cls: '' },
   fell_asleep:            { icon: '💤', label: 'Fell\nAsleep!',       cls: 'sleep' },
   give_up:                { icon: '🏳️', label: 'Give Up',            cls: 'danger' },
+  put_down_awake:         { icon: '🙌', label: 'Put Down\nAwake',     cls: '' },
+  baby_stirred:           { icon: '🤫', label: 'Baby\nStirred',       cls: '' },
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
   poop_done:              { icon: '✅', label: 'Diaper\nChange Done', cls: 'primary full-width' },
   end_night:              { icon: '☀️', label: 'End Night',           cls: 'danger full-width', confirm: true },
@@ -79,5 +82,6 @@ export const STATE_COLORS: Record<string, string> = {
   resettling: '#6a40a0',
   strolling: '#408040',
   transferring: '#666',
+  self_soothing: '#4a6090',
   poop: '#8a6030',
 };
