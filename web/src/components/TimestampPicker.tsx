@@ -4,6 +4,7 @@ import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
 interface Props {
   open: boolean;
   title: string;
+  /** Negative value = minutes in the past (e.g. -3 means "3 min ago"). */
   onPick: (minutesAgo: number) => void;
   onClose: () => void;
 }

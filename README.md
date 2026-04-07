@@ -120,7 +120,7 @@ Generates completed and in-progress nights with varied scenarios: long stretches
 ### Test
 
 ```bash
-make test              # Go tests (109 tests across 4 packages)
+make test              # Go tests (123 tests across 4 packages)
 cd web && npx tsc      # TypeScript type check
 ```
 

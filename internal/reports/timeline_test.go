@@ -498,4 +498,11 @@ func TestEveryStateClassified(t *testing.T) {
 			t.Errorf("state %s is in independentSleepStates but not sleepStates", state)
 		}
 	}
+
+	// instantaneousStates must be a subset of contiguousSleepStates
+	for state := range instantaneousStates {
+		if !contiguousSleepStates[state] {
+			t.Errorf("state %s is in instantaneousStates but not contiguousSleepStates", state)
+		}
+	}
 }

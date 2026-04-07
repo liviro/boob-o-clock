@@ -58,8 +58,13 @@ var contiguousSleepStates = map[domain.State]bool{
 	domain.Transferring:     true, // instantaneous, doesn't break a sleep block
 }
 
+// instantaneousStates have zero duration and are excluded from the timeline.
+var instantaneousStates = map[domain.State]bool{
+	domain.Transferring: true,
+}
+
 // BuildTimeline converts events into a sequence of state periods with durations.
-// Instantaneous states (TRANSFERRING) are excluded since their duration is 0.
+// Instantaneous states are excluded since their duration is 0.
 // nightEnd closes the final open state so in-progress nights include the current period.
 func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	if len(events) == 0 {
@@ -72,7 +77,7 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	var currentMeta map[string]string
 
 	for _, evt := range events {
-		if currentState != "" && evt.Timestamp.After(currentStart) && currentState != domain.Transferring {
+		if currentState != "" && evt.Timestamp.After(currentStart) && !instantaneousStates[currentState] {
 			entries = append(entries, TimelineEntry{
 				State:    currentState,
 				Start:    currentStart,
@@ -86,7 +91,7 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 		currentMeta = evt.Metadata
 	}
 
-	if currentState != "" && currentState != domain.Transferring && nightEnd.After(currentStart) {
+	if currentState != "" && !instantaneousStates[currentState] && nightEnd.After(currentStart) {
 		entries = append(entries, TimelineEntry{
 			State:    currentState,
 			Start:    currentStart,

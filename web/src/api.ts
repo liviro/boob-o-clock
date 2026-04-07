@@ -78,6 +78,7 @@ export interface NightDetail {
 
 /** Format a Date as RFC3339 with local timezone offset (not UTC). */
 function toLocalISO(d: Date): string {
+  // getTimezoneOffset() returns minutes *behind* UTC, but ISO 8601 wants minutes *ahead*
   const off = -d.getTimezoneOffset();
   const sign = off >= 0 ? '+' : '-';
   const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');

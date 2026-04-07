@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getNights, getNightDetail, getTrends, NightSummary, NightDetail, TrendPoint } from '../api';
 import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { FeedScatterChart } from '../components/FeedScatterChart';
+import { ErrorToast } from '../components/ErrorToast';
 
 type View = 'nights' | 'trends';
 
@@ -13,6 +14,8 @@ export function History() {
   const [detail, setDetail] = useState<NightDetail | null>(null);
   const [view, setView] = useState<View>('nights');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => setError(null), []);
 
   useEffect(() => { loadNights(); }, []);
 
@@ -23,19 +26,18 @@ export function History() {
       const data = await getNights();
       setNights((data.nights || []).reverse());
     } catch {
-      setNights([]);
+      setError('Failed to load nights');
     } finally {
       setLoading(false);
     }
   }
 
   async function loadTrends() {
-    if (trends !== null) return; // already loaded
     try {
       const data = await getTrends();
       setTrends(data.trends || []);
     } catch {
-      setTrends([]);
+      setError('Failed to load trends');
     }
   }
 
@@ -49,7 +51,7 @@ export function History() {
       const data = await getNightDetail(id);
       setDetail(data);
     } catch {
-      // stay on list
+      setError('Failed to load night details');
     }
   }
 
@@ -146,6 +148,8 @@ export function History() {
           <FeedScatterChart nights={nights} />
         </div>
       )}
+
+      <ErrorToast message={error} onDismiss={clearError} />
     </div>
   );
 }

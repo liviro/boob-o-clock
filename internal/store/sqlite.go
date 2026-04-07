@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/liviro/boob-o-clock/internal/domain"
@@ -93,27 +94,29 @@ func (s *Store) EndNight(nightID int64, endedAt time.Time) error {
 		"UPDATE nights SET ended_at = ? WHERE id = ?",
 		endedAt.Format(time.RFC3339Nano), nightID,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("end night: %w", err)
+	}
+	return nil
 }
 
-func (s *Store) DeleteNight(nightID int64) (err error) {
+func (s *Store) DeleteNight(nightID int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("delete night: begin tx: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
-	if _, err = tx.Exec("DELETE FROM events WHERE night_id = ?", nightID); err != nil {
-		return err
+	if _, err := tx.Exec("DELETE FROM events WHERE night_id = ?", nightID); err != nil {
+		return fmt.Errorf("delete night: delete events: %w", err)
 	}
-	if _, err = tx.Exec("DELETE FROM nights WHERE id = ?", nightID); err != nil {
-		return err
+	if _, err := tx.Exec("DELETE FROM nights WHERE id = ?", nightID); err != nil {
+		return fmt.Errorf("delete night: delete row: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete night: commit: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) AddEvent(evt *domain.Event) error {
@@ -198,7 +201,7 @@ func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
 
 	events, err := s.GetEvents(night.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("current session: %w", err)
 	}
 
 	return night, events, nil
@@ -217,7 +220,7 @@ func (s *Store) GetNight(id int64) (*domain.Night, []domain.Event, error) {
 
 	events, err := s.GetEvents(id)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("get night: %w", err)
 	}
 
 	return night, events, nil
@@ -241,7 +244,10 @@ func (s *Store) ListNights(from, to time.Time) ([]domain.Night, error) {
 		}
 		nights = append(nights, *n)
 	}
-	return nights, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list nights: iterate: %w", err)
+	}
+	return nights, nil
 }
 
 // -- internal helpers --
@@ -292,11 +298,14 @@ func (s *Store) GetAllEvents() ([]domain.Event, error) {
 	for rows.Next() {
 		evt, err := scanEvent(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get all events: %w", err)
 		}
 		events = append(events, *evt)
 	}
-	return events, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get all events: iterate: %w", err)
+	}
+	return events, nil
 }
 
 // GetEventsForNights fetches events for multiple nights in a single query,
@@ -306,19 +315,16 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 		return map[int64][]domain.Event{}, nil
 	}
 
-	placeholders := make([]byte, 0, len(nightIDs)*2-1)
 	args := make([]any, len(nightIDs))
 	for i, id := range nightIDs {
-		if i > 0 {
-			placeholders = append(placeholders, ',')
-		}
-		placeholders = append(placeholders, '?')
 		args[i] = id
 	}
+	placeholders := strings.Repeat("?,", len(nightIDs))
+	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
 
 	rows, err := s.db.Query(
 		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
-		 FROM events WHERE night_id IN (`+string(placeholders)+`) ORDER BY night_id, seq`, args...,
+		 FROM events WHERE night_id IN (`+placeholders+`) ORDER BY night_id, seq`, args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query events batch: %w", err)
@@ -329,11 +335,14 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 	for rows.Next() {
 		evt, err := scanEvent(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get events batch: %w", err)
 		}
 		result[evt.NightID] = append(result[evt.NightID], *evt)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get events batch: iterate: %w", err)
+	}
+	return result, nil
 }
 
 func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
@@ -350,11 +359,14 @@ func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
 	for rows.Next() {
 		evt, err := scanEvent(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get events: %w", err)
 		}
 		events = append(events, *evt)
 	}
-	return events, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get events: iterate: %w", err)
+	}
+	return events, nil
 }
 
 func scanEvent(row scanner) (*domain.Event, error) {

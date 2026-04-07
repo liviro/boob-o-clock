@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"maps"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/liviro/boob-o-clock/internal/domain"
@@ -186,13 +189,9 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	popped, err := h.store.PopEvent(night.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	lastEvent := events[len(events)-1]
 
-	if popped.Action == domain.StartNight {
+	if lastEvent.Action == domain.StartNight {
 		if err := h.store.DeleteNight(night.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -201,7 +200,11 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Derive state from events minus the popped one
+	if _, err := h.store.PopEvent(night.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
 	writeJSON(w, http.StatusOK, buildSessionResponse(state, &night.ID, remaining))
@@ -355,15 +358,12 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 
 	for _, e := range events {
 		breast := e.Metadata["breast"]
-		var meta string
-		for k, v := range e.Metadata {
+		var metaParts []string
+		for _, k := range slices.Sorted(maps.Keys(e.Metadata)) {
 			if k == "breast" {
 				continue
 			}
-			if meta != "" {
-				meta += ";"
-			}
-			meta += k + "=" + v
+			metaParts = append(metaParts, k+"="+e.Metadata[k])
 		}
 		cw.Write([]string{
 			strconv.FormatInt(e.NightID, 10),
@@ -373,7 +373,7 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 			string(e.ToState),
 			e.Timestamp.Format(time.RFC3339),
 			breast,
-			meta,
+			strings.Join(metaParts, ";"),
 		})
 	}
 	cw.Flush()
