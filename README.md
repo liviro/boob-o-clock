@@ -17,15 +17,17 @@ The app models your night as a state machine. Depending on the current state, on
 - **Feeds** — start, switch breast (auto-flips), dislatch (awake or asleep). Tracks left/right duration separately.
 - **Sleep** — on me, in crib, in stroller. Tracks where the baby is sleeping.
 - **Transfers** — crib transfer attempts with deferred outcome (tap result when hands are free).
+- **Self-soothing** — baby put down awake or stirring in crib, settling without intervention.
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
 - **Diaper changes** — because shit happens, at any time.
 
 ## What it reports
 
-- Per-night summary: total sleep, total feed time, wake count, feed count, longest sleep block
+- Per-night summary: night duration, total sleep, total feed time, wake count, feed count, longest sleep block, individual sleep block durations, feed times
 - Color-coded timeline bar showing the night at a glance
 - Full event log with timestamps
+- Feed times scatter plot showing when feeds happen across nights
 - Trend charts with 3-night moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R)
 - CSV export for backup or analysis
 
@@ -33,8 +35,8 @@ The app models your night as a state machine. Depending on the current state, on
 
 <p align="center">
   <img src="docs/tracker-awake.png" width="250" alt="Tracker — awake state">
-  <img src="docs/tracker-feeding.png" width="250" alt="Tracker — feeding state">
   <img src="docs/night-detail.png" width="250" alt="Night detail with timeline">
+  <img src="docs/trends.png" width="250" alt="Trend charts with moving averages">
 </p>
 
 ## Deploy
@@ -52,7 +54,7 @@ That's it. The app is at `http://localhost:8080`.
 To update:
 
 ```bash
-docker compose pull   # or: docker compose build --no-cache
+docker compose build --no-cache
 docker compose up -d
 ```
 
