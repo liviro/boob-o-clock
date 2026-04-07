@@ -31,11 +31,11 @@ function fmtHour(nightHour: number): string {
 
 export function FeedScatterChart({ nights }: Props) {
   // Collect all feed points: { nightIndex, nightHour }
-  const completedNights = nights.filter(n => n.endedAt);
+  const allNights = [...nights].reverse();
   const points: { ni: number; nh: number }[] = [];
 
-  for (let i = 0; i < completedNights.length; i++) {
-    const ft = completedNights[i].stats.feedTimes;
+  for (let i = 0; i < allNights.length; i++) {
+    const ft = allNights[i].stats.feedTimes;
     if (!ft) continue;
     for (const ts of ft) {
       points.push({ ni: i, nh: toNightHour(ts) });
@@ -59,7 +59,7 @@ export function FeedScatterChart({ nights }: Props) {
   maxH = maxH + 0.5;
   const rangeH = maxH - minH;
 
-  const n = completedNights.length;
+  const n = allNights.length;
 
   function x(ni: number): number {
     if (n === 1) return PAD.left + CHART_W / 2;
@@ -74,13 +74,13 @@ export function FeedScatterChart({ nights }: Props) {
   // Date labels
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
-    completedNights.forEach((night, i) => {
+    allNights.forEach((night, i) => {
       const d = new Date(night.startedAt);
       dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
     });
   } else {
     for (const i of [0, Math.floor(n / 2), n - 1]) {
-      const d = new Date(completedNights[i].startedAt);
+      const d = new Date(allNights[i].startedAt);
       dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
     }
   }
