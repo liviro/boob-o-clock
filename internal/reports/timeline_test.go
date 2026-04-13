@@ -499,10 +499,131 @@ func TestEveryStateClassified(t *testing.T) {
 		}
 	}
 
-	// instantaneousStates must be a subset of contiguousSleepStates
-	for state := range instantaneousStates {
-		if !contiguousSleepStates[state] {
-			t.Errorf("state %s is in instantaneousStates but not contiguousSleepStates", state)
+}
+
+func TestTransferSuccessCountsAsSleep(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Transfer takes 3 minutes
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(23*time.Minute), nil),
+		// Sleep in crib
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+	}
+
+	stats, tl := ComputeStats(events, start, start.Add(4*time.Hour))
+
+	// Timeline should include the transferring entry
+	hasTransfer := false
+	for _, entry := range tl {
+		if entry.State == domain.Transferring {
+			hasTransfer = true
+			if entry.Duration != 3*time.Minute {
+				t.Errorf("transferring duration = %v, want 3m", entry.Duration)
+			}
 		}
+	}
+	if !hasTransfer {
+		t.Error("timeline should include a transferring entry")
+	}
+
+	// Successful transfer: 3m should count as sleep
+	// Total sleep: on_me(5m) + transferring(3m) + crib(3h37m) = 3h45m
+	expectedSleep := 5*time.Minute + 3*time.Minute + 3*time.Hour + 37*time.Minute
+	if stats.TotalSleepTime != expectedSleep {
+		t.Errorf("TotalSleepTime = %v, want %v", stats.TotalSleepTime, expectedSleep)
+	}
+
+	// Sleep block: on_me(5m) + transferring(3m) + crib(3h37m) = 3h45m
+	if len(stats.SleepBlocks) != 1 {
+		t.Fatalf("SleepBlocks count = %d, want 1", len(stats.SleepBlocks))
+	}
+	if stats.SleepBlocks[0] != 3*time.Hour+45*time.Minute {
+		t.Errorf("SleepBlocks[0] = %v, want 3h45m", stats.SleepBlocks[0])
+	}
+}
+
+func TestTransferFailedCountsAsAwake(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Transfer takes 5 minutes and fails
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(25*time.Minute), nil),
+		mkEvent(6, domain.Awake, domain.EndNight, domain.NightOff, start.Add(25*time.Minute), nil),
+	}
+
+	stats, _ := ComputeStats(events, start, start.Add(25*time.Minute))
+
+	// Failed transfer: 5m should count as awake, not sleep
+	// Total sleep: on_me(5m) only
+	if stats.TotalSleepTime != 5*time.Minute {
+		t.Errorf("TotalSleepTime = %v, want 5m", stats.TotalSleepTime)
+	}
+	// Total awake: transferring(5m)
+	if stats.TotalAwakeTime != 5*time.Minute {
+		t.Errorf("TotalAwakeTime = %v, want 5m", stats.TotalAwakeTime)
+	}
+}
+
+func TestTransferNeedResettleCountsAsSleep(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("R")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Transfer takes 4 minutes, baby stirs → needs resettle
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferNeedResettle, domain.Resettling, start.Add(24*time.Minute), nil),
+		mkEvent(6, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+	}
+
+	stats, _ := ComputeStats(events, start, start.Add(4*time.Hour))
+
+	// Transfer to resettle: 4m counts as sleep
+	// Total sleep: on_me(5m) + transferring(4m) + resettling(6m) + crib(3h30m) = 3h45m
+	expectedSleep := 5*time.Minute + 4*time.Minute + 6*time.Minute + 3*time.Hour + 30*time.Minute
+	if stats.TotalSleepTime != expectedSleep {
+		t.Errorf("TotalSleepTime = %v, want %v", stats.TotalSleepTime, expectedSleep)
+	}
+}
+
+func TestTransferInProgressNotCounted(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Transfer started, no outcome yet
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+	}
+
+	nightEnd := start.Add(25 * time.Minute) // "now", 5 minutes into transfer
+	stats, tl := ComputeStats(events, start, nightEnd)
+
+	// Timeline should show transferring with 5m duration
+	last := tl[len(tl)-1]
+	if last.State != domain.Transferring {
+		t.Errorf("last timeline state = %s, want transferring", last.State)
+	}
+	if last.Duration != 5*time.Minute {
+		t.Errorf("last timeline duration = %v, want 5m", last.Duration)
+	}
+
+	// In-progress transfer: not counted as sleep or awake
+	// Total sleep: on_me(5m) only
+	if stats.TotalSleepTime != 5*time.Minute {
+		t.Errorf("TotalSleepTime = %v, want 5m (in-progress transfer not counted)", stats.TotalSleepTime)
+	}
+	if stats.TotalAwakeTime != 0 {
+		t.Errorf("TotalAwakeTime = %v, want 0 (in-progress transfer not counted)", stats.TotalAwakeTime)
 	}
 }

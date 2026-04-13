@@ -55,16 +55,10 @@ var contiguousSleepStates = map[domain.State]bool{
 	domain.Resettling:       true,
 	domain.Strolling:        true,
 	domain.SelfSoothing:     true,
-	domain.Transferring:     true, // instantaneous, doesn't break a sleep block
-}
-
-// instantaneousStates have zero duration and are excluded from the timeline.
-var instantaneousStates = map[domain.State]bool{
-	domain.Transferring: true,
+	domain.Transferring:     true, // doesn't break a sleep block; duration classified retroactively in ComputeStats
 }
 
 // BuildTimeline converts events into a sequence of state periods with durations.
-// Instantaneous states are excluded since their duration is 0.
 // nightEnd closes the final open state so in-progress nights include the current period.
 func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	if len(events) == 0 {
@@ -77,7 +71,7 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	var currentMeta map[string]string
 
 	for _, evt := range events {
-		if currentState != "" && evt.Timestamp.After(currentStart) && !instantaneousStates[currentState] {
+		if currentState != "" && evt.Timestamp.After(currentStart) {
 			entries = append(entries, TimelineEntry{
 				State:    currentState,
 				Start:    currentStart,
@@ -91,7 +85,7 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 		currentMeta = evt.Metadata
 	}
 
-	if currentState != "" && !instantaneousStates[currentState] && nightEnd.After(currentStart) {
+	if currentState != "" && nightEnd.After(currentStart) {
 		entries = append(entries, TimelineEntry{
 			State:    currentState,
 			Start:    currentStart,
@@ -142,10 +136,32 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 		}
 	}
 
+	// Build a lookup: for each Transferring start time, what state comes next?
+	// We use events (not the timeline) so we catch zero-duration transitions that
+	// are filtered out of the timeline (e.g. a failed transfer at night's end).
+	transferOutcome := make(map[time.Time]domain.State)
+	for j, evt := range events {
+		if evt.ToState == domain.Transferring && j+1 < len(events) {
+			transferOutcome[evt.Timestamp] = events[j+1].ToState
+		}
+	}
+
 	// Accumulate durations from timeline
 	for _, entry := range timeline {
 		if sleepStates[entry.State] {
 			stats.TotalSleepTime += entry.Duration
+		}
+		// Transfer: classify retroactively based on outcome.
+		// Success (→ SleepingCrib) or stir (→ Resettling) = sleep.
+		// Failure (→ anything else) = awake. In-progress (no outcome yet) = uncounted.
+		if entry.State == domain.Transferring {
+			if next, resolved := transferOutcome[entry.Start]; resolved {
+				if next == domain.SleepingCrib || next == domain.Resettling {
+					stats.TotalSleepTime += entry.Duration
+				} else {
+					stats.TotalAwakeTime += entry.Duration
+				}
+			}
 		}
 		if entry.State == domain.Feeding {
 			stats.TotalFeedTime += entry.Duration
