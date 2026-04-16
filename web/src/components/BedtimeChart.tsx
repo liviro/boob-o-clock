@@ -1,4 +1,5 @@
 import { NightSummary } from '../api';
+import { toNightHour, fmtHour, fmtDayMonth } from '../constants';
 
 interface Props {
   nights: NightSummary[];
@@ -10,24 +11,6 @@ const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2; // minimum 2-hour Y axis range
-const NIGHT_EPOCH_H = 18; // 6 PM — times before this are treated as next-day
-
-/** Convert a timestamp to "hours since 6 PM". E.g. 9 PM = 3, 1 AM = 7. */
-function toNightHour(ts: string): number {
-  const d = new Date(ts);
-  let h = d.getHours() + d.getMinutes() / 60;
-  if (h < NIGHT_EPOCH_H) h += 24;
-  return h - NIGHT_EPOCH_H;
-}
-
-/** Format a night-hour back to a clock time string. */
-function fmtHour(nightHour: number): string {
-  let h = Math.round(nightHour + NIGHT_EPOCH_H);
-  if (h >= 24) h -= 24;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${display} ${ampm}`;
-}
 
 export function BedtimeChart({ nights }: Props) {
   // Oldest → newest, matching FeedScatterChart convention.
@@ -69,13 +52,11 @@ export function BedtimeChart({ nights }: Props) {
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
     allNights.forEach((night, i) => {
-      const d = new Date(night.startedAt);
-      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(night.startedAt)) });
     });
   } else {
     for (const i of [0, Math.floor(n / 2), n - 1]) {
-      const d = new Date(allNights[i].startedAt);
-      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(allNights[i].startedAt)) });
     }
   }
 

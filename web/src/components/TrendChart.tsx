@@ -1,4 +1,5 @@
 import { TrendPoint } from '../api';
+import { fmtDayMonth } from '../constants';
 
 interface Series {
   getValue: (p: TrendPoint) => number;
@@ -60,13 +61,11 @@ export function TrendChart({ trends, series, formatValue, title }: Props) {
   const dateLabels: { x: number; label: string }[] = [];
   if (trends.length <= 7) {
     trends.forEach((p, i) => {
-      const d = new Date(p.date);
-      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(p.date)) });
     });
   } else {
     for (const i of [0, Math.floor(trends.length / 2), trends.length - 1]) {
-      const d = new Date(trends[i].date);
-      dateLabels.push({ x: x(i), label: `${d.getMonth() + 1}/${d.getDate()}` });
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(trends[i].date)) });
     }
   }
 

@@ -72,6 +72,31 @@ function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
+/** Clock hour treated as the night's start. Times before this wrap to the next day. */
+export const NIGHT_EPOCH_H = 18; // 6 PM
+
+/** Convert a timestamp to "hours since NIGHT_EPOCH_H". E.g. 9 PM = 3, 1 AM = 7. */
+export function toNightHour(ts: string): number {
+  const d = new Date(ts);
+  let h = d.getHours() + d.getMinutes() / 60;
+  if (h < NIGHT_EPOCH_H) h += 24;
+  return h - NIGHT_EPOCH_H;
+}
+
+/** Format a night-hour back to a clock time string (e.g. "9 PM"). */
+export function fmtHour(nightHour: number): string {
+  let h = Math.round(nightHour + NIGHT_EPOCH_H);
+  if (h >= 24) h -= 24;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${display} ${ampm}`;
+}
+
+/** Format a Date as "M/D" for chart axis labels. */
+export function fmtDayMonth(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 /** State colors for timeline segments */
 export const STATE_COLORS: Record<string, string> = {
   awake: '#7a3030',

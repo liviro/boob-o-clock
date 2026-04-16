@@ -246,7 +246,6 @@ func computeRealBedtime(events []domain.Event) *time.Time {
 			reachedIndependent = false
 		}
 
-		// Entering or remaining in a block: evaluate this event.
 		if nowInBlock {
 			if independentSleepStates[evt.ToState] {
 				reachedIndependent = true
