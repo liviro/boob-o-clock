@@ -627,3 +627,43 @@ func TestTransferInProgressNotCounted(t *testing.T) {
 		t.Errorf("TotalAwakeTime = %v, want 0 (in-progress transfer not counted)", stats.TotalAwakeTime)
 	}
 }
+
+func TestSelfSoothingCountsAsAwake(t *testing.T) {
+	// SleepingCrib(20m) → SelfSoothing(5m) → SleepingCrib(30m) → BabyWoke.
+	// Expect: the 5m of self-soothing counts as awake, not sleep.
+	// Expect: the block remains contiguous — single 55m block (20+5+30).
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(5*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(10*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(10*time.Minute), nil),
+		// Sleeping in crib 00:10 → 00:30 (20m)
+		mkEvent(6, domain.SleepingCrib, domain.BabyStirred, domain.SelfSoothing, start.Add(30*time.Minute), nil),
+		// Self-soothing 00:30 → 00:35 (5m)
+		mkEvent(7, domain.SelfSoothing, domain.Settled, domain.SleepingCrib, start.Add(35*time.Minute), nil),
+		// Sleeping in crib 00:35 → 01:05 (30m)
+		mkEvent(8, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(65*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(65*time.Minute), nil),
+	}
+
+	stats, _ := ComputeStats(events, start, start.Add(65*time.Minute))
+
+	// Single contiguous block: on_me(5m) + transferring(0) + crib(20m) + self_soothing(5m) + crib(30m) = 60m
+	if len(stats.SleepBlocks) != 1 {
+		t.Fatalf("SleepBlocks count = %d, want 1", len(stats.SleepBlocks))
+	}
+	if stats.SleepBlocks[0] != 60*time.Minute {
+		t.Errorf("SleepBlocks[0] = %v, want 60m", stats.SleepBlocks[0])
+	}
+
+	// Total sleep: on_me(5m) + crib(20m) + crib(30m) = 55m (self-soothing excluded)
+	if stats.TotalSleepTime != 55*time.Minute {
+		t.Errorf("TotalSleepTime = %v, want 55m (self-soothing excluded)", stats.TotalSleepTime)
+	}
+	// Total awake: self_soothing(5m)
+	if stats.TotalAwakeTime != 5*time.Minute {
+		t.Errorf("TotalAwakeTime = %v, want 5m (self-soothing counted as awake)", stats.TotalAwakeTime)
+	}
+}
