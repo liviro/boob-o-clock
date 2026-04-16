@@ -4,6 +4,7 @@ import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { FeedScatterChart } from '../components/FeedScatterChart';
+import { BedtimeChart } from '../components/BedtimeChart';
 import { ErrorToast } from '../components/ErrorToast';
 
 type View = 'nights' | 'trends';
@@ -146,6 +147,7 @@ export function History() {
             title="Feed Time by Side"
           />
           <FeedScatterChart nights={nights} />
+          <BedtimeChart nights={nights} />
         </div>
       )}
 

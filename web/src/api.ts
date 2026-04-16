@@ -34,6 +34,7 @@ export interface NightStats {
   longestSleepBlock: number;
   sleepBlocks: number[];
   feedTimes: string[] | null;
+  realBedtime?: string | null;
 }
 
 export interface TimelineEntry {
