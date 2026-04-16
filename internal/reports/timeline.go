@@ -27,6 +27,7 @@ type NightStats struct {
 	LongestSleepBlock time.Duration   `json:"longestSleepBlock"`
 	SleepBlocks       []time.Duration `json:"sleepBlocks"`
 	FeedTimes         []time.Time    `json:"feedTimes"`
+	RealBedtime       *time.Time     `json:"realBedtime,omitempty"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
@@ -204,5 +205,60 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 	}
 	flushBlock()
 
+	stats.RealBedtime = computeRealBedtime(events)
+
 	return stats, timeline
+}
+
+// asleepSignalActions are the actions that mean "baby just fell asleep".
+// The first such action inside a block-leading-to-independent-sleep is the bedtime.
+var asleepSignalActions = map[domain.Action]bool{
+	domain.DislatchAsleep: true, // Feeding → SleepingOnMe
+	domain.FellAsleep:     true, // Strolling → SleepingStroller
+	domain.Settled:        true, // Resettling/SelfSoothing → SleepingCrib
+}
+
+// computeRealBedtime finds the timestamp when the baby first fell asleep in
+// the first contiguous sleep block that reaches independent sleep (crib or
+// stroller). Returns nil if no such block exists in the event log yet.
+func computeRealBedtime(events []domain.Event) *time.Time {
+	inBlock := false
+	var firstAsleep *time.Time
+	reachedIndependent := false
+
+	finish := func() *time.Time {
+		if reachedIndependent && firstAsleep != nil {
+			return firstAsleep
+		}
+		return nil
+	}
+
+	for i := range events {
+		evt := events[i]
+		nowInBlock := contiguousSleepStates[evt.ToState]
+
+		// Transition out of a block: maybe return a result; else reset and keep walking.
+		if inBlock && !nowInBlock {
+			if bt := finish(); bt != nil {
+				return bt
+			}
+			firstAsleep = nil
+			reachedIndependent = false
+		}
+
+		// Entering or remaining in a block: evaluate this event.
+		if nowInBlock {
+			if independentSleepStates[evt.ToState] {
+				reachedIndependent = true
+			}
+			if firstAsleep == nil && asleepSignalActions[evt.Action] {
+				ts := evt.Timestamp
+				firstAsleep = &ts
+			}
+		}
+		inBlock = nowInBlock
+	}
+
+	// End of events: if still inside a qualifying block, return it.
+	return finish()
 }

@@ -667,3 +667,191 @@ func TestSelfSoothingCountsAsAwake(t *testing.T) {
 		t.Errorf("TotalAwakeTime = %v, want 5m (self-soothing counted as awake)", stats.TotalAwakeTime)
 	}
 }
+
+// mustTime is a helper used by bedtime tests to assert a non-nil timestamp equals an expected value.
+func mustTime(t *testing.T, ts *time.Time, want time.Time, context string) {
+	t.Helper()
+	if ts == nil {
+		t.Fatalf("%s: RealBedtime = nil, want %v", context, want)
+	}
+	if !ts.Equal(want) {
+		t.Errorf("%s: RealBedtime = %v, want %v", context, *ts, want)
+	}
+}
+
+func TestRealBedtimeFromDislatchAsleep(t *testing.T) {
+	// Feeding → SleepingOnMe → Transferring → SleepingCrib.
+	// Bedtime should be the dislatch_asleep timestamp (start of SleepingOnMe).
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(25*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(25*time.Minute), nil),
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(4*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(20*time.Minute), "dislatch_asleep")
+}
+
+func TestRealBedtimeFromSettledAfterSelfSoothing(t *testing.T) {
+	// Awake → SelfSoothing (put down awake) → SleepingCrib (settled).
+	// Bedtime should be the `settled` timestamp.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.PutDownAwake, domain.SelfSoothing, start.Add(10*time.Minute), nil),
+		mkEvent(3, domain.SelfSoothing, domain.Settled, domain.SleepingCrib, start.Add(25*time.Minute), nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(25*time.Minute), "settled from self-soothing")
+}
+
+func TestRealBedtimeFromSettledAfterResettling(t *testing.T) {
+	// Awake → Resettling → SleepingCrib.
+	// Bedtime should be the `settled` timestamp (Resettling → SleepingCrib).
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartResettle, domain.Resettling, start, nil),
+		mkEvent(3, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(12*time.Minute), nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(12*time.Minute), "settled from resettling")
+}
+
+func TestRealBedtimeFromStrollerFellAsleep(t *testing.T) {
+	// Strolling → SleepingStroller.
+	// Bedtime should be the `fell_asleep` timestamp.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartStrolling, domain.Strolling, start, nil),
+		mkEvent(3, domain.Strolling, domain.FellAsleep, domain.SleepingStroller, start.Add(18*time.Minute), nil),
+		mkEvent(4, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(18*time.Minute), "fell_asleep in stroller")
+}
+
+func TestRealBedtimeNilForContactOnlyNight(t *testing.T) {
+	// Baby fell asleep at breast, woke before any transfer. No independent sleep.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(2*time.Hour))
+	if stats.RealBedtime != nil {
+		t.Errorf("RealBedtime = %v, want nil (no independent sleep)", *stats.RealBedtime)
+	}
+}
+
+func TestRealBedtimeUsesSecondBlockWhenFirstFails(t *testing.T) {
+	// First block ends with transfer_failed — no independent sleep.
+	// Second block succeeds via dislatch_asleep → transfer_success.
+	// Bedtime = second block's dislatch_asleep.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Block 1: fail
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(10*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(15*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(17*time.Minute), nil),
+		// Block 2: success
+		mkEvent(6, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(20*time.Minute), breast("R")),
+		mkEvent(7, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(35*time.Minute), nil),
+		mkEvent(8, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(40*time.Minute), nil),
+		mkEvent(9, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(40*time.Minute), nil),
+		mkEvent(10, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(11, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(35*time.Minute), "second block dislatch_asleep")
+}
+
+func TestRealBedtimeInProgressReached(t *testing.T) {
+	// In-progress night where baby has already reached SleepingCrib.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(20*time.Minute), nil),
+		// No EndNight; still sleeping.
+	}
+	nightEnd := start.Add(45 * time.Minute) // "now"
+	stats, _ := ComputeStats(events, start, nightEnd)
+	mustTime(t, stats.RealBedtime, start.Add(15*time.Minute), "in-progress reached crib")
+}
+
+func TestRealBedtimeInProgressNotReached(t *testing.T) {
+	// In-progress night where baby hasn't reached independent sleep yet.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		// Still on me; no transfer yet.
+	}
+	nightEnd := start.Add(20 * time.Minute) // "now"
+	stats, _ := ComputeStats(events, start, nightEnd)
+	if stats.RealBedtime != nil {
+		t.Errorf("RealBedtime = %v, want nil (in-progress, no independent sleep yet)", *stats.RealBedtime)
+	}
+}
+
+func TestRealBedtimeEmpty(t *testing.T) {
+	stats, _ := ComputeStats(nil, t0(), t0())
+	if stats.RealBedtime != nil {
+		t.Errorf("RealBedtime = %v, want nil for empty events", *stats.RealBedtime)
+	}
+}
+
+func TestRealBedtimeWithSwitchBreast(t *testing.T) {
+	// Block has switch_breast before dislatch_asleep. Bedtime = dislatch_asleep timestamp,
+	// not switch_breast (switch_breast is not an asleep-signaling action).
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.SwitchBreast, domain.Feeding, start.Add(10*time.Minute), breast("R")),
+		mkEvent(4, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(25*time.Minute), nil),
+		mkEvent(5, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(30*time.Minute), nil),
+		mkEvent(6, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(3*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(25*time.Minute), "dislatch_asleep after switch_breast")
+}
+
+func TestRealBedtimeViaTransferNeedResettle(t *testing.T) {
+	// Feeding → SleepingOnMe → Transferring → Resettling → SleepingCrib.
+	// Bedtime = dislatch_asleep (the first asleep-signaling action in the block).
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(15*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferNeedResettle, domain.Resettling, start.Add(24*time.Minute), nil),
+		mkEvent(6, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+	}
+	stats, _ := ComputeStats(events, start, start.Add(4*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(15*time.Minute), "dislatch_asleep (block that reaches crib via resettle)")
+}
