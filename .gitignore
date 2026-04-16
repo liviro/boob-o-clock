@@ -19,3 +19,9 @@ boob-o-clock
 
 # Frontend
 web/node_modules/
+
+# Planning artifacts (specs, plans, brainstorming docs)
+docs/superpowers/
+
+# Playwright MCP tool artifacts
+.playwright-mcp/

@@ -59,6 +59,16 @@ export function fmtDur(ns: number): string {
   return `${m}m`;
 }
 
+/** Format "time ago" from a millisecond delta as "Xm ago" or "Xh Ym ago" (minute-rounded). */
+export function fmtAgo(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m ago`;
+  if (m === 0) return `${h}h ago`;
+  return `${h}h ${m}m ago`;
+}
+
 /** Format elapsed seconds to timer display */
 export function fmtTimer(seconds: number): string {
   const h = Math.floor(seconds / 3600);

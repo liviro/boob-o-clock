@@ -131,6 +131,7 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         state={session.state}
         lastEventTimestamp={session.lastEvent?.timestamp}
         currentBreast={session.currentBreast}
+        lastFeedStartedAt={session.lastFeedStartedAt}
       />
 
       <ActionGrid

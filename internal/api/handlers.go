@@ -31,12 +31,13 @@ type eventRequest struct {
 }
 
 type sessionResponse struct {
-	State          domain.State    `json:"state"`
-	ValidActions   []domain.Action `json:"validActions"`
-	NightID        *int64          `json:"nightId"`
-	LastEvent      *eventResponse  `json:"lastEvent"`
-	SuggestBreast  string          `json:"suggestBreast,omitempty"`
-	CurrentBreast  string          `json:"currentBreast,omitempty"`
+	State             domain.State    `json:"state"`
+	ValidActions      []domain.Action `json:"validActions"`
+	NightID           *int64          `json:"nightId"`
+	LastEvent         *eventResponse  `json:"lastEvent"`
+	SuggestBreast     string          `json:"suggestBreast,omitempty"`
+	CurrentBreast     string          `json:"currentBreast,omitempty"`
+	LastFeedStartedAt *time.Time      `json:"lastFeedStartedAt,omitempty"`
 }
 
 type eventResponse struct {
@@ -60,11 +61,12 @@ func toEventResponse(e domain.Event) *eventResponse {
 func buildSessionResponse(state domain.State, nightID *int64, events []domain.Event) sessionResponse {
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
-		State:         state,
-		ValidActions:  domain.ValidActions(state),
-		NightID:       nightID,
-		SuggestBreast: reports.SuggestedBreast(lastBreast),
-		CurrentBreast: lastBreast,
+		State:             state,
+		ValidActions:      domain.ValidActions(state),
+		NightID:           nightID,
+		SuggestBreast:     reports.SuggestedBreast(lastBreast),
+		CurrentBreast:     lastBreast,
+		LastFeedStartedAt: reports.LastFeedStart(events),
 	}
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])

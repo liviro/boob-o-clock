@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/liviro/boob-o-clock/internal/store"
 )
@@ -57,12 +58,13 @@ func decodeJSON(t *testing.T, resp *http.Response, v any) {
 
 // SessionResponse matches the JSON returned by GET /api/session/current and POST /api/session/event
 type SessionResponse struct {
-	State         string   `json:"state"`
-	ValidActions  []string `json:"validActions"`
-	NightID       *int64   `json:"nightId"`
-	SuggestBreast string   `json:"suggestBreast"`
-	CurrentBreast string   `json:"currentBreast"`
-	LastEvent     *struct {
+	State             string   `json:"state"`
+	ValidActions      []string `json:"validActions"`
+	NightID           *int64   `json:"nightId"`
+	SuggestBreast     string   `json:"suggestBreast"`
+	CurrentBreast     string   `json:"currentBreast"`
+	LastFeedStartedAt string   `json:"lastFeedStartedAt"`
+	LastEvent         *struct {
 		Action    string            `json:"action"`
 		FromState string            `json:"fromState"`
 		ToState   string            `json:"toState"`
@@ -384,6 +386,79 @@ func TestBreastSuggestion(t *testing.T) {
 	}
 	if sr.SuggestBreast != "L" {
 		t.Errorf("suggestBreast after switch = %q, want L", sr.SuggestBreast)
+	}
+}
+
+func TestLastFeedStartedAtEmpty(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+
+	resp := doGet(t, ts, "/api/session/current")
+	var sr SessionResponse
+	decodeJSON(t, resp, &sr)
+
+	if sr.LastFeedStartedAt != "" {
+		t.Errorf("lastFeedStartedAt = %q, want empty before any feed", sr.LastFeedStartedAt)
+	}
+}
+
+func TestLastFeedStartedAtAfterFeed(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	feedTime := "2026-03-29T02:10:00-07:00"
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":    "start_feed",
+		"metadata":  map[string]string{"breast": "L"},
+		"timestamp": feedTime,
+	})
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_awake"})
+
+	resp := doGet(t, ts, "/api/session/current")
+	var sr SessionResponse
+	decodeJSON(t, resp, &sr)
+
+	parsed, err := time.Parse(time.RFC3339, sr.LastFeedStartedAt)
+	if err != nil {
+		t.Fatalf("lastFeedStartedAt %q: %v", sr.LastFeedStartedAt, err)
+	}
+	want, _ := time.Parse(time.RFC3339, feedTime)
+	if !parsed.Equal(want) {
+		t.Errorf("lastFeedStartedAt = %v, want %v", parsed, want)
+	}
+}
+
+func TestLastFeedStartedAtIgnoresSwitchBreast(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	feedTime := "2026-03-29T02:10:00-07:00"
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":    "start_feed",
+		"metadata":  map[string]string{"breast": "L"},
+		"timestamp": feedTime,
+	})
+	doPost(t, ts, "/api/session/event", map[string]any{
+		"action":    "switch_breast",
+		"metadata":  map[string]string{"breast": "R"},
+		"timestamp": "2026-03-29T02:25:00-07:00",
+	})
+
+	resp := doGet(t, ts, "/api/session/current")
+	var sr SessionResponse
+	decodeJSON(t, resp, &sr)
+
+	parsed, err := time.Parse(time.RFC3339, sr.LastFeedStartedAt)
+	if err != nil {
+		t.Fatalf("lastFeedStartedAt %q: %v", sr.LastFeedStartedAt, err)
+	}
+	want, _ := time.Parse(time.RFC3339, feedTime)
+	if !parsed.Equal(want) {
+		t.Errorf("lastFeedStartedAt = %v, want %v (switch_breast should not reset)", parsed, want)
 	}
 }
 

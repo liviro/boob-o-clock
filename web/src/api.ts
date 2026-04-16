@@ -6,6 +6,7 @@ export interface SessionResponse {
   nightId: number | null;
   suggestBreast?: string;
   currentBreast?: string;
+  lastFeedStartedAt?: string;
   lastEvent: {
     action: string;
     fromState: string;
