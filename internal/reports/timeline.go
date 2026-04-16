@@ -16,18 +16,18 @@ type TimelineEntry struct {
 
 // NightStats summarizes a single night.
 type NightStats struct {
-	NightDuration     time.Duration `json:"nightDuration"`
-	TotalSleepTime    time.Duration `json:"totalSleepTime"`
-	TotalFeedTime     time.Duration `json:"totalFeedTime"`
-	FeedTimeLeft      time.Duration `json:"feedTimeLeft"`
-	FeedTimeRight     time.Duration `json:"feedTimeRight"`
-	TotalAwakeTime    time.Duration `json:"totalAwakeTime"`
-	FeedCount         int           `json:"feedCount"`
-	WakeCount         int           `json:"wakeCount"`
+	NightDuration     time.Duration   `json:"nightDuration"`
+	TotalSleepTime    time.Duration   `json:"totalSleepTime"`
+	TotalFeedTime     time.Duration   `json:"totalFeedTime"`
+	FeedTimeLeft      time.Duration   `json:"feedTimeLeft"`
+	FeedTimeRight     time.Duration   `json:"feedTimeRight"`
+	TotalAwakeTime    time.Duration   `json:"totalAwakeTime"`
+	FeedCount         int             `json:"feedCount"`
+	WakeCount         int             `json:"wakeCount"`
 	LongestSleepBlock time.Duration   `json:"longestSleepBlock"`
 	SleepBlocks       []time.Duration `json:"sleepBlocks"`
-	FeedTimes         []time.Time    `json:"feedTimes"`
-	RealBedtime       *time.Time     `json:"realBedtime,omitempty"`
+	FeedTimes         []time.Time     `json:"feedTimes"`
+	RealBedtime       *time.Time      `json:"realBedtime,omitempty"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
