@@ -6,8 +6,11 @@ import { TrendChart } from '../components/TrendChart';
 import { FeedScatterChart } from '../components/FeedScatterChart';
 import { BedtimeChart } from '../components/BedtimeChart';
 import { ErrorToast } from '../components/ErrorToast';
+import { useIsLandscape } from '../hooks/useIsLandscape';
 
 type View = 'nights' | 'trends';
+
+const DISPLAY_LIMIT = 30;
 
 export function History() {
   const [nights, setNights] = useState<NightSummary[]>([]);
@@ -17,6 +20,7 @@ export function History() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const clearError = useCallback(() => setError(null), []);
+  const isLandscape = useIsLandscape();
 
   useEffect(() => { loadNights(); }, []);
 
@@ -66,6 +70,12 @@ export function History() {
     return <div class="no-data">No nights recorded yet</div>;
   }
 
+  const nightsForList = nights.slice(0, DISPLAY_LIMIT);
+  const nightsForCharts = isLandscape ? nights : nights.slice(0, DISPLAY_LIMIT);
+  const trendsForCharts: TrendPoint[] | null = trends
+    ? (isLandscape ? trends : trends.slice(-DISPLAY_LIMIT))
+    : null;
+
   return (
     <div class="history-content">
       <div class="view-toggle">
@@ -73,11 +83,11 @@ export function History() {
           Nights
         </button>
         <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => switchView('trends')}>
-          Trends
+          {`Trends (${isLandscape ? '90d' : '30d'})`}
         </button>
       </div>
 
-      {view === 'nights' && nights.map(n => {
+      {view === 'nights' && nightsForList.map(n => {
         const date = new Date(n.startedAt);
         const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -105,40 +115,40 @@ export function History() {
         <div class="no-data">Loading trends...</div>
       )}
 
-      {view === 'trends' && trends !== null && (
+      {view === 'trends' && trendsForCharts !== null && (
         <div class="trends-grid">
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[{ getValue: p => p.longestSleep, getAvg: p => p.avgLongestSleep, color: '#4a8aff' }]}
             formatValue={fmtDur}
             title="Longest Sleep Block"
           />
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[{ getValue: p => p.totalSleep, getAvg: p => p.avgTotalSleep, color: '#6a5aff' }]}
             formatValue={fmtDur}
             title="Total Sleep"
           />
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[{ getValue: p => p.wakeCount, getAvg: p => p.avgWakeCount, color: '#ff5a5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Wake Count"
           />
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[{ getValue: p => p.feedCount, getAvg: p => p.avgFeedCount, color: '#ffaa5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Feed Count"
           />
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[{ getValue: p => p.totalFeed, getAvg: p => p.avgTotalFeed, color: '#ffaa5a' }]}
             formatValue={fmtDur}
             title="Total Feed Time"
           />
           <TrendChart
-            trends={trends}
+            trends={trendsForCharts}
             series={[
               { getValue: p => p.feedTimeLeft, getAvg: p => p.avgFeedTimeLeft, color: '#5a9aff', label: 'Left' },
               { getValue: p => p.feedTimeRight, getAvg: p => p.avgFeedTimeRight, color: '#ff7a5a', label: 'Right' },
@@ -146,8 +156,8 @@ export function History() {
             formatValue={fmtDur}
             title="Feed Time by Side"
           />
-          <FeedScatterChart nights={nights} />
-          <BedtimeChart nights={nights} />
+          <FeedScatterChart nights={nightsForCharts} />
+          <BedtimeChart nights={nightsForCharts} />
         </div>
       )}
 
