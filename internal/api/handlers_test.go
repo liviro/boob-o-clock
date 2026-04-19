@@ -29,6 +29,34 @@ func newTestServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(router)
 }
 
+func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.Store) {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	handler := NewHandler(s)
+	router := NewRouter(handler)
+	ts := httptest.NewServer(router)
+	t.Cleanup(ts.Close)
+	return ts, s
+}
+
+func makeNightAt(t *testing.T, s *store.Store, startedAt time.Time) int64 {
+	t.Helper()
+	n, err := s.CreateNight(startedAt)
+	if err != nil {
+		t.Fatalf("CreateNight: %v", err)
+	}
+	if err := s.EndNight(n.ID, startedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("EndNight: %v", err)
+	}
+	return n.ID
+}
+
 func doGet(t *testing.T, ts *httptest.Server, path string) *http.Response {
 	t.Helper()
 	resp, err := http.Get(ts.URL + path)
@@ -567,5 +595,97 @@ func TestGetNightsEmpty(t *testing.T) {
 
 	if len(result.Nights) != 0 {
 		t.Errorf("got %d nights, want 0", len(result.Nights))
+	}
+}
+
+// TestGetNightsHonorsExplicitRange exercises the from/to query parameters.
+func TestGetNightsHonorsExplicitRange(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	now := time.Now()
+	makeNightAt(t, s, now.Add(-5*24*time.Hour))
+	insideID := makeNightAt(t, s, now.Add(-20*24*time.Hour))
+	makeNightAt(t, s, now.Add(-45*24*time.Hour))
+
+	// Bracket only the 20-day-old night.
+	from := now.Add(-30 * 24 * time.Hour).Format("2006-01-02")
+	to := now.Add(-10 * 24 * time.Hour).Format("2006-01-02")
+	resp := doGet(t, ts, "/api/nights?from="+from+"&to="+to)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nights []struct {
+			ID int64 `json:"id"`
+		} `json:"nights"`
+	}
+	decodeJSON(t, resp, &result)
+
+	if len(result.Nights) != 1 {
+		t.Fatalf("got %d nights, want 1 (only the 20-day-old one); response = %+v", len(result.Nights), result.Nights)
+	}
+	if result.Nights[0].ID != insideID {
+		t.Errorf("got night id %d, want %d", result.Nights[0].ID, insideID)
+	}
+}
+
+// TestGetNightsIncludesOldNights asserts the default date window includes
+// nights well beyond the previous 30-day cutoff. Boundaries (60 in, 100 out)
+// are deliberately not pinned to exactly 90 days — the test stays meaningful
+// for any future window between roughly 61 and 99 days.
+func TestGetNightsIncludesOldNights(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	now := time.Now()
+	recentID := makeNightAt(t, s, now.Add(-60*24*time.Hour))
+	oldID := makeNightAt(t, s, now.Add(-100*24*time.Hour))
+
+	resp := doGet(t, ts, "/api/nights")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nights []struct {
+			ID int64 `json:"id"`
+		} `json:"nights"`
+	}
+	decodeJSON(t, resp, &result)
+
+	ids := map[int64]bool{}
+	for _, n := range result.Nights {
+		ids[n.ID] = true
+	}
+	if !ids[recentID] {
+		t.Errorf("expected 60-day-old night (id=%d) in response, got %+v", recentID, result.Nights)
+	}
+	if ids[oldID] {
+		t.Errorf("did not expect 100-day-old night (id=%d) in response, got %+v", oldID, result.Nights)
+	}
+}
+
+// TestGetTrendsIncludesOldNights confirms /api/trends shares the same date
+// window as /api/nights.
+func TestGetTrendsIncludesOldNights(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	now := time.Now()
+	makeNightAt(t, s, now.Add(-60*24*time.Hour))
+
+	resp := doGet(t, ts, "/api/trends")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Trends []struct {
+			Date string `json:"date"`
+		} `json:"trends"`
+	}
+	decodeJSON(t, resp, &result)
+
+	if len(result.Trends) == 0 {
+		t.Fatalf("expected at least one trend point for the 60-day-old night, got 0")
 	}
 }

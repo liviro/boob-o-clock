@@ -253,7 +253,7 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 
 func parseDateRange(r *http.Request) (from, to time.Time) {
 	to = time.Now().Add(24 * time.Hour)
-	from = to.Add(-30 * 24 * time.Hour)
+	from = to.Add(-90 * 24 * time.Hour)
 
 	if f := r.URL.Query().Get("from"); f != "" {
 		if parsed, err := time.Parse("2006-01-02", f); err == nil {
