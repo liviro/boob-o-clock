@@ -83,7 +83,7 @@ export function History() {
           Nights
         </button>
         <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => switchView('trends')}>
-          {`Trends (${isLandscape ? '90d' : '30d'})`}
+          {nights.length > DISPLAY_LIMIT ? `Trends (${isLandscape ? '90d' : '30d'})` : 'Trends'}
         </button>
       </div>
 
