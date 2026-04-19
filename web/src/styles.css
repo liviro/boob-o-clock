@@ -297,6 +297,13 @@ body {
 .stat-value { font-size: 20px; font-weight: 700; }
 .stat-label { font-size: 11px; color: #999; text-transform: uppercase; }
 
+.nights-caption {
+  text-align: center;
+  color: #666;
+  padding: 8px 0 24px;
+  font-size: 12px;
+}
+
 /* Pill groups (sleep blocks, feed times, etc.) */
 .pill-group { margin-bottom: 12px; }
 .pill-group-label {

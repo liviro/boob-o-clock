@@ -87,29 +87,36 @@ export function History() {
         </button>
       </div>
 
-      {view === 'nights' && nightsForList.map(n => {
-        const date = new Date(n.startedAt);
-        const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-        const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        const s = n.stats;
+      {view === 'nights' && (
+        <>
+          {nightsForList.map(n => {
+            const date = new Date(n.startedAt);
+            const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            const s = n.stats;
 
-        return (
-          <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
-            <h3>
-              <span>{dateStr}</span>
-              <span>{timeStr}</span>
-            </h3>
-            <div class="night-stats">
-              <Stat value={fmtDur(s.longestSleepBlock)} label="Longest Sleep" />
-              <Stat value={String(s.wakeCount)} label="Wakes" />
-              <Stat value={String(s.feedCount)} label="Feeds" />
-              <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
-            </div>
-            <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
-            <FeedTimesPills times={s.feedTimes} />
-          </div>
-        );
-      })}
+            return (
+              <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
+                <h3>
+                  <span>{dateStr}</span>
+                  <span>{timeStr}</span>
+                </h3>
+                <div class="night-stats">
+                  <Stat value={fmtDur(s.longestSleepBlock)} label="Longest Sleep" />
+                  <Stat value={String(s.wakeCount)} label="Wakes" />
+                  <Stat value={String(s.feedCount)} label="Feeds" />
+                  <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
+                </div>
+                <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
+                <FeedTimesPills times={s.feedTimes} />
+              </div>
+            );
+          })}
+          {nights.length > DISPLAY_LIMIT && (
+            <div class="nights-caption">Showing {DISPLAY_LIMIT} most recent nights</div>
+          )}
+        </>
+      )}
 
       {view === 'trends' && trends === null && (
         <div class="no-data">Loading trends...</div>
