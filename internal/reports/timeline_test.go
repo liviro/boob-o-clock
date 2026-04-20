@@ -477,6 +477,8 @@ func TestEveryStateClassified(t *testing.T) {
 		domain.Awake:    true,
 		domain.Feeding:  true,
 		domain.Poop:     true,
+		domain.Learning: true, // Ferber: awake in crib, not sleep (spec §3.8)
+		domain.CheckIn:  true, // Ferber: parent in the room, not sleep (spec §3.8)
 	}
 
 	for _, state := range domain.AllStates {
