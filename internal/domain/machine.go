@@ -113,11 +113,24 @@ var actionsRequiringBreast = map[Action]bool{
 	SwitchBreast: true,
 }
 
+// actionsRequiringMood is the set of actions that need mood metadata.
+var actionsRequiringMood = map[Action]bool{
+	PutDownAwakeFerber: true,
+	BabyStirredFerber:  true,
+	MoodChange:         true,
+	EndCheckIn:         true,
+}
+
 // Transition attempts a state transition and returns the new state.
 // Returns an error if the transition is invalid or required metadata is missing.
 func Transition(from State, action Action, metadata map[string]string) (State, error) {
 	if actionsRequiringBreast[action] {
 		if err := validateBreast(metadata); err != nil {
+			return "", err
+		}
+	}
+	if actionsRequiringMood[action] {
+		if err := validateMood(metadata); err != nil {
 			return "", err
 		}
 	}
@@ -187,6 +200,20 @@ func validateBreast(metadata map[string]string) error {
 	}
 	if b != string(Left) && b != string(Right) {
 		return fmt.Errorf("invalid breast: %s (must be L or R)", b)
+	}
+	return nil
+}
+
+func validateMood(metadata map[string]string) error {
+	if metadata == nil {
+		return fmt.Errorf("mood metadata required")
+	}
+	m, ok := metadata["mood"]
+	if !ok {
+		return fmt.Errorf("mood metadata required")
+	}
+	if m != "quiet" && m != "fussy" && m != "crying" {
+		return fmt.Errorf("invalid mood: %s (must be quiet, fussy, or crying)", m)
 	}
 	return nil
 }

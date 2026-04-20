@@ -388,3 +388,41 @@ func TestFerberForbiddenTransitions(t *testing.T) {
 		})
 	}
 }
+
+func TestMoodValidation(t *testing.T) {
+	t.Run("missing mood on put_down_awake_ferber", func(t *testing.T) {
+		_, err := Transition(Awake, PutDownAwakeFerber, nil)
+		if err == nil {
+			t.Error("expected mood-required error, got none")
+		}
+	})
+	t.Run("missing mood on mood_change", func(t *testing.T) {
+		_, err := Transition(Learning, MoodChange, map[string]string{})
+		if err == nil {
+			t.Error("expected mood-required error, got none")
+		}
+	})
+	t.Run("invalid mood value", func(t *testing.T) {
+		_, err := Transition(Awake, PutDownAwakeFerber, map[string]string{"mood": "angry"})
+		if err == nil {
+			t.Error("expected invalid-mood error, got none")
+		}
+	})
+	t.Run("all three valid moods accepted", func(t *testing.T) {
+		for _, m := range []string{"quiet", "fussy", "crying"} {
+			if _, err := Transition(Awake, PutDownAwakeFerber, map[string]string{"mood": m}); err != nil {
+				t.Errorf("mood %q rejected: %v", m, err)
+			}
+		}
+	})
+	t.Run("check_in does not require mood", func(t *testing.T) {
+		if _, err := Transition(Learning, CheckInStart, nil); err != nil {
+			t.Errorf("check_in should not require mood: %v", err)
+		}
+	})
+	t.Run("end_check_in requires mood", func(t *testing.T) {
+		if _, err := Transition(CheckIn, EndCheckIn, nil); err == nil {
+			t.Error("expected mood-required error on end_check_in, got none")
+		}
+	})
+}
