@@ -28,6 +28,7 @@ type NightStats struct {
 	SleepBlocks       []time.Duration `json:"sleepBlocks"`
 	FeedTimes         []time.Time     `json:"feedTimes"`
 	RealBedtime       *time.Time      `json:"realBedtime,omitempty"`
+	Ferber            *FerberStats    `json:"ferber,omitempty"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
