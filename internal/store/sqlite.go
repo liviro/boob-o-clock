@@ -301,6 +301,24 @@ func (s *Store) ListNights(from, to time.Time) ([]domain.Night, error) {
 	return nights, nil
 }
 
+// LastNight returns the most recently started night (by started_at),
+// regardless of whether it has ended. Returns nil if no nights exist.
+func (s *Store) LastNight() (*domain.Night, error) {
+	night, err := s.scanNight(
+		s.db.QueryRow(
+			`SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number
+			 FROM nights ORDER BY started_at DESC LIMIT 1`,
+		),
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query last night: %w", err)
+	}
+	return night, nil
+}
+
 // -- internal helpers --
 
 type scanner interface {

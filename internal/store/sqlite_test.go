@@ -403,3 +403,37 @@ func TestCreateNightWithoutFerber(t *testing.T) {
 		t.Errorf("FerberNightNumber = %v, want nil", n.FerberNightNumber)
 	}
 }
+
+func TestLastNight(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	// No nights yet: LastNight returns nil with no error.
+	got, err := s.LastNight()
+	if err != nil {
+		t.Fatalf("LastNight empty: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+
+	// Create two nights; second one is the Ferber one.
+	_, _ = s.CreateNight(time.Now().Add(-48*time.Hour), false, 0)
+	n2, _ := s.CreateNight(time.Now().Add(-24*time.Hour), true, 2)
+	_ = s.EndNight(n2.ID, time.Now().Add(-23*time.Hour))
+
+	got, err = s.LastNight()
+	if err != nil {
+		t.Fatalf("LastNight: %v", err)
+	}
+	if got == nil || got.ID != n2.ID {
+		t.Fatalf("LastNight = %+v, want id %d", got, n2.ID)
+	}
+	if !got.FerberEnabled || *got.FerberNightNumber != 2 {
+		t.Errorf("LastNight = %+v, want FerberEnabled=true NightNumber=2", got)
+	}
+}
