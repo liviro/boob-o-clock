@@ -41,7 +41,7 @@ func (s *Store) Ping() error {
 }
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS nights (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			started_at TEXT NOT NULL,
@@ -64,7 +64,42 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_events_night_seq ON events(night_id, seq);
 
 		PRAGMA foreign_keys = ON;
-	`)
+	`); err != nil {
+		return err
+	}
+
+	// Idempotent column additions for Ferber mode.
+	if err := s.addColumnIfMissing("nights", "ferber_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("nights", "ferber_night_number", "INTEGER"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) addColumnIfMissing(table, column, typeDecl string) error {
+	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return fmt.Errorf("pragma %s: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil // already present
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, typeDecl))
 	return err
 }
 

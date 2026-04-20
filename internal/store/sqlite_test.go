@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -313,5 +314,42 @@ func TestDeleteNight(t *testing.T) {
 	}
 	if got != nil {
 		t.Error("expected nil night after delete")
+	}
+}
+
+func TestMigrateAddsFerberColumns(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Re-running New on the same file should be a no-op (idempotent migration).
+	s.Close()
+	s2, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New (re-open): %v", err)
+	}
+	defer s2.Close()
+
+	rows, err := s2.db.Query("PRAGMA table_info(nights)")
+	if err != nil {
+		t.Fatalf("PRAGMA: %v", err)
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		seen[name] = true
+	}
+	for _, col := range []string{"ferber_enabled", "ferber_night_number"} {
+		if !seen[col] {
+			t.Errorf("expected column %q on nights, not found", col)
+		}
 	}
 }
