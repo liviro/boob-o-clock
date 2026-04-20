@@ -544,3 +544,76 @@ body {
   text-align: center;
   font-weight: bold;
 }
+
+.learning-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px;
+}
+
+.learning-timers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.learning-countdown {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #ddd;
+}
+
+.learning-countdown.ready {
+  color: #5a8060;
+}
+
+.learning-elapsed {
+  font-size: 1rem;
+  color: #888;
+}
+
+.learning-mood {
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.learning-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.btn-checkin {
+  grid-column: 1 / -1;
+  padding: 24px;
+  font-size: 1.3rem;
+  background: #2a2a2a;
+  color: #888;
+  border: 2px solid #444;
+  border-radius: 12px;
+  min-height: 64px;
+}
+
+.btn-checkin.ready {
+  background: #5a8060;
+  color: #fff;
+  border-color: #5a8060;
+}
+
+.btn-checkin.locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-mood, .btn-settled, .btn-danger {
+  padding: 16px;
+  font-size: 1rem;
+  border-radius: 12px;
+  min-height: 56px;
+}
+
+.btn-mood { background: #2a2a2a; color: #ddd; border: 1px solid #333; }
+.btn-settled { background: #3b5ba3; color: #fff; border: 1px solid #3b5ba3; grid-column: 1 / -1; }
+.btn-danger { background: #7a3030; color: #fff; border: 1px solid #7a3030; grid-column: 1 / -1; }

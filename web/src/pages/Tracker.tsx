@@ -8,6 +8,7 @@ import { MoodPicker } from '../components/MoodPicker';
 import { TimestampPicker } from '../components/TimestampPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UndoButton } from '../components/UndoButton';
+import { LearningScreen } from '../components/LearningScreen';
 
 interface Props {
   session: SessionResponse;
@@ -159,12 +160,22 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         lastFeedStartedAt={session.lastFeedStartedAt}
       />
 
-      <ActionGrid
-        actions={session.validActions}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-      />
+      {session.state === 'learning' && session.ferberEnabled
+        ? (
+          <LearningScreen
+            session={session}
+            dispatch={async (action, metadata) => { onDispatch(action, metadata); }}
+          />
+        )
+        : (
+          <ActionGrid
+            actions={session.validActions}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+          />
+        )
+      }
 
       {session.state === 'night_off' && (
         <div class="ferber-start-row">
