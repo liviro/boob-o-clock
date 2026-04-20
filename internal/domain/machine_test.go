@@ -321,3 +321,13 @@ func TestEveryStateCanReachNightOff(t *testing.T) {
 		}
 	}
 }
+
+func TestFerberActionsExist(t *testing.T) {
+	// Referencing the constants ensures they exist (any typo = compile error).
+	_ = PutDownAwakeFerber
+	_ = BabyStirredFerber
+	_ = MoodChange
+	_ = CheckInStart
+	_ = EndCheckIn
+	_ = ExitFerber
+}

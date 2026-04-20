@@ -53,6 +53,12 @@ const (
 	PoopStart            Action = "poop_start"
 	PoopDone             Action = "poop_done"
 	EndNight             Action = "end_night"
+	PutDownAwakeFerber   Action = "put_down_awake_ferber"
+	BabyStirredFerber    Action = "baby_stirred_ferber"
+	MoodChange           Action = "mood_change"
+	CheckInStart         Action = "check_in"
+	EndCheckIn           Action = "end_check_in"
+	ExitFerber           Action = "exit_ferber"
 )
 
 // Breast side for feeding metadata.
