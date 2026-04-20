@@ -89,6 +89,9 @@ export interface TrendPoint {
   avgFeedTimeRight: number | null;
   avgWakeCount: number | null;
   avgFeedCount: number | null;
+  ferberCryTime?: number | null;
+  ferberCheckIns?: number | null;
+  ferberTimeToSettle?: number | null;
 }
 
 export interface NightDetail {

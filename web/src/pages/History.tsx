@@ -12,6 +12,8 @@ type View = 'nights' | 'trends';
 
 const DISPLAY_LIMIT = 30;
 
+const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
+
 export function History() {
   const [nights, setNights] = useState<NightSummary[]>([]);
   const [trends, setTrends] = useState<TrendPoint[] | null>(null);
@@ -165,6 +167,30 @@ export function History() {
           />
           <FeedScatterChart nights={nightsForCharts} />
           <BedtimeChart nights={nightsForCharts} />
+          {trendsForCharts.some(t => t.ferberCryTime != null) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberCryTime != null)}
+              series={[{ getValue: p => nsToMinutes(p.ferberCryTime!), getAvg: () => null, color: '#ff5a8a' }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="Ferber: Cry time per night"
+            />
+          )}
+          {trendsForCharts.some(t => t.ferberCheckIns != null) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberCheckIns != null)}
+              series={[{ getValue: p => p.ferberCheckIns!, getAvg: () => null, color: '#a05aff' }]}
+              formatValue={v => String(Math.round(v))}
+              title="Ferber: Check-ins per night"
+            />
+          )}
+          {trendsForCharts.some(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0)}
+              series={[{ getValue: p => nsToMinutes(p.ferberTimeToSettle!), getAvg: () => null, color: '#5affaa' }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="Ferber: Avg time to settle"
+            />
+          )}
         </div>
       )}
 
