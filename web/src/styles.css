@@ -237,6 +237,23 @@ body {
 .breast-btn:active { background: #5a4a2a; }
 .breast-btn.suggested { border-color: #8a7a3a; box-shadow: 0 0 12px rgba(138, 122, 58, 0.4); }
 
+/* Mood picker */
+.mood-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.mood-btn {
+  padding: 24px 12px;
+  font-size: 1.1rem;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #fff;
+  min-height: 64px;
+}
+
 /* Confirm modal */
 .confirm-grid {
   display: grid;
