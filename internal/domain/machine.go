@@ -86,6 +86,25 @@ var transitions = map[transitionKey]State{
 
 	// 32: POOP → AWAKE
 	{Poop, PoopDone}: Awake,
+
+	// 33: AWAKE → LEARNING
+	{Awake, PutDownAwakeFerber}: Learning,
+	// 34: SLEEPING_CRIB → LEARNING
+	{SleepingCrib, BabyStirredFerber}: Learning,
+	// 35: LEARNING → LEARNING (mood change)
+	{Learning, MoodChange}: Learning,
+	// 36: LEARNING → CHECK_IN
+	{Learning, CheckInStart}: CheckIn,
+	// 37: LEARNING → SLEEPING_CRIB
+	{Learning, Settled}: SleepingCrib,
+	// 38: LEARNING → AWAKE
+	{Learning, ExitFerber}: Awake,
+	// 39: CHECK_IN → LEARNING
+	{CheckIn, EndCheckIn}: Learning,
+	// 40: CHECK_IN → SLEEPING_CRIB
+	{CheckIn, Settled}: SleepingCrib,
+	// 41: CHECK_IN → AWAKE
+	{CheckIn, ExitFerber}: Awake,
 }
 
 // actionsRequiringBreast is the set of actions that need breast metadata.
@@ -120,6 +139,7 @@ var actionOrder = func() map[Action]int {
 		StartStrolling, FellAsleep, GiveUp,
 		PutDownAwake, BabyStirred,
 		PoopStart, PoopDone, EndNight,
+		PutDownAwakeFerber, BabyStirredFerber, MoodChange, CheckInStart, EndCheckIn, ExitFerber,
 	}
 	m := make(map[Action]int, len(all))
 	for i, a := range all {

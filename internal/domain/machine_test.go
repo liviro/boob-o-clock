@@ -149,12 +149,12 @@ func TestValidActions(t *testing.T) {
 		actions []Action
 	}{
 		{NightOff, []Action{StartNight}},
-		{Awake, []Action{StartFeed, StartResettle, StartStrolling, PutDownAwake, PoopStart, EndNight}},
+		{Awake, []Action{StartFeed, StartResettle, StartStrolling, PutDownAwake, PoopStart, EndNight, PutDownAwakeFerber}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
 		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},
 		{Resettling, []Action{Settled, ResettleFailed, PoopStart}},
-		{SleepingCrib, []Action{BabyWoke, BabyStirred, PoopStart}},
+		{SleepingCrib, []Action{BabyWoke, BabyStirred, PoopStart, BabyStirredFerber}},
 		{SelfSoothing, []Action{Settled, BabyWoke, PoopStart}},
 		{Strolling, []Action{FellAsleep, GiveUp, PoopStart}},
 		{SleepingStroller, []Action{BabyWoke, PoopStart}},
@@ -330,4 +330,61 @@ func TestFerberActionsExist(t *testing.T) {
 	_ = CheckInStart
 	_ = EndCheckIn
 	_ = ExitFerber
+}
+
+func TestFerberTransitions(t *testing.T) {
+	mood := map[string]string{"mood": "quiet"}
+	cases := []struct {
+		name     string
+		from     State
+		action   Action
+		meta     map[string]string
+		expected State
+	}{
+		{"put down awake (ferber)", Awake, PutDownAwakeFerber, mood, Learning},
+		{"baby stirred (ferber)", SleepingCrib, BabyStirredFerber, mood, Learning},
+		{"mood change", Learning, MoodChange, map[string]string{"mood": "crying"}, Learning},
+		{"check in", Learning, CheckInStart, nil, CheckIn},
+		{"settled from learning", Learning, Settled, nil, SleepingCrib},
+		{"exit ferber from learning", Learning, ExitFerber, nil, Awake},
+		{"end check in", CheckIn, EndCheckIn, mood, Learning},
+		{"settled from check in", CheckIn, Settled, nil, SleepingCrib},
+		{"exit ferber from check in", CheckIn, ExitFerber, nil, Awake},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Transition(c.from, c.action, c.meta)
+			if err != nil {
+				t.Fatalf("Transition(%s, %s): %v", c.from, c.action, err)
+			}
+			if got != c.expected {
+				t.Errorf("Transition(%s, %s) = %s, want %s", c.from, c.action, got, c.expected)
+			}
+		})
+	}
+}
+
+func TestFerberForbiddenTransitions(t *testing.T) {
+	// Explicitly-excluded transitions (spec §3.5).
+	cases := []struct {
+		name   string
+		from   State
+		action Action
+	}{
+		{"no poop from learning", Learning, PoopStart},
+		{"no poop from check-in", CheckIn, PoopStart},
+		{"no baby_woke from learning", Learning, BabyWoke},
+		{"no feed from learning", Learning, StartFeed},
+		{"no feed from check-in", CheckIn, StartFeed},
+		{"no check-in from self-soothing", SelfSoothing, CheckInStart},
+		{"no mood change from self-soothing", SelfSoothing, MoodChange},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Transition(c.from, c.action, map[string]string{"mood": "quiet", "breast": "L"})
+			if err == nil {
+				t.Errorf("expected error for %s -> %s, got none", c.from, c.action)
+			}
+		})
+	}
 }
