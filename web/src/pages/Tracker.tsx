@@ -4,6 +4,7 @@ import { ACTION_INFO, actionLabel } from '../constants';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
 import { BreastPicker } from '../components/BreastPicker';
+import { MoodPicker } from '../components/MoodPicker';
 import { TimestampPicker } from '../components/TimestampPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UndoButton } from '../components/UndoButton';
@@ -27,6 +28,8 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
   const [ferberOn, setFerberOn] = useState(false);
   const [ferberNight, setFerberNight] = useState(1);
+  const [moodPickerFor, setMoodPickerFor] = useState<null | 'entry' | 'return'>(null);
+  const [pendingFerberAction, setPendingFerberAction] = useState<string | null>(null);
 
   // Fetch Ferber defaults once on mount
   useEffect(() => {
@@ -44,6 +47,11 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   }, []);
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
+    if (session.ferberEnabled && (action === 'put_down_awake' || action === 'baby_stirred')) {
+      setPendingFerberAction(action === 'put_down_awake' ? 'put_down_awake_ferber' : 'baby_stirred_ferber');
+      setMoodPickerFor('entry');
+      return;
+    }
     let meta = metadata;
     if (action === 'start_night' && ferberOn) {
       meta = { ...meta, ferber_enabled: 'true', ferber_night_number: String(ferberNight) };
@@ -195,6 +203,19 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         suggestSide={session.suggestBreast}
         onPick={handleBreastPick}
         onClose={closeModal}
+      />
+
+      <MoodPicker
+        open={moodPickerFor === 'entry'}
+        onPick={async (mood) => {
+          if (pendingFerberAction) {
+            onDispatch(pendingFerberAction, { mood });
+          }
+          setMoodPickerFor(null);
+          setPendingFerberAction(null);
+        }}
+        onClose={() => { setMoodPickerFor(null); setPendingFerberAction(null); }}
+        title="How is baby?"
       />
 
       <TimestampPicker
