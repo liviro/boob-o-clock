@@ -32,6 +32,16 @@ export interface NightSummary {
   stats: NightStats;
 }
 
+export interface FerberStats {
+  sessions: number;
+  checkIns: number;
+  cryTime: number;
+  fussTime: number;
+  quietTime: number;
+  sessionsAbandoned: number;
+  avgTimeToSettle: number;
+}
+
 export interface NightStats {
   nightDuration: number;
   totalSleepTime: number;
@@ -45,6 +55,7 @@ export interface NightStats {
   sleepBlocks: number[];
   feedTimes: string[] | null;
   realBedtime?: string | null;
+  ferber?: FerberStats;
 }
 
 export interface TimelineEntry {
@@ -81,7 +92,13 @@ export interface TrendPoint {
 }
 
 export interface NightDetail {
-  night: { id: number; startedAt: string; endedAt?: string };
+  night: {
+    id: number;
+    startedAt: string;
+    endedAt?: string;
+    ferberEnabled?: boolean;
+    ferberNightNumber?: number | null;
+  };
   events: EventEntry[];
   timeline: TimelineEntry[];
   stats: NightStats;

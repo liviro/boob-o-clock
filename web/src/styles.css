@@ -647,3 +647,23 @@ body {
   border-radius: 12px;
   min-height: 60px;
 }
+
+.ferber-stats {
+  margin-top: 16px;
+  padding: 12px;
+  background: #1a2a20;
+  border-left: 3px solid #5a8060;
+  border-radius: 6px;
+}
+
+.ferber-stats-header {
+  font-weight: bold;
+  color: #8fb89a;
+  margin-bottom: 8px;
+}
+
+.ferber-details summary {
+  cursor: pointer;
+  color: #aaa;
+  padding: 8px 0;
+}

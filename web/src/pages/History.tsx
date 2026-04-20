@@ -196,6 +196,25 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
         </div>
         <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
         <FeedTimesPills times={s.feedTimes} />
+        {s.ferber && n.ferberEnabled && (
+          <div class="ferber-stats">
+            <div class="ferber-stats-header">🌱 Night {n.ferberNightNumber}</div>
+            <div class="night-stats">
+              <Stat value={String(s.ferber.sessions)} label="Sessions" />
+              <Stat value={String(s.ferber.checkIns)} label="Check-ins" />
+              <Stat value={fmtDur(s.ferber.cryTime)} label="Cry time" />
+              <Stat value={fmtDur(s.ferber.fussTime)} label="Fuss time" />
+            </div>
+            <details class="ferber-details">
+              <summary>More</summary>
+              <div class="night-stats">
+                <Stat value={fmtDur(s.ferber.avgTimeToSettle)} label="Avg to settle" />
+                <Stat value={String(s.ferber.sessionsAbandoned)} label="Abandoned" />
+                <Stat value={fmtDur(s.ferber.quietTime)} label="Quiet time" />
+              </div>
+            </details>
+          </div>
+        )}
         <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
       </div>
 
