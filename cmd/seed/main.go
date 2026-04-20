@@ -127,7 +127,7 @@ type nightSpec struct {
 }
 
 func seedNight(s *store.Store, ns nightSpec) error {
-	night, err := s.CreateNight(ns.start)
+	night, err := s.CreateNight(ns.start, false, 0)
 	if err != nil {
 		return err
 	}

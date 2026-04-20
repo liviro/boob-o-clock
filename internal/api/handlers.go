@@ -133,7 +133,7 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if action == domain.StartNight {
-		night, err = h.store.CreateNight(ts)
+		night, err = h.store.CreateNight(ts, false, 0)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

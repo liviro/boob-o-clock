@@ -47,7 +47,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.Store) {
 
 func makeNightAt(t *testing.T, s *store.Store, startedAt time.Time) int64 {
 	t.Helper()
-	n, err := s.CreateNight(startedAt)
+	n, err := s.CreateNight(startedAt, false, 0)
 	if err != nil {
 		t.Fatalf("CreateNight: %v", err)
 	}
