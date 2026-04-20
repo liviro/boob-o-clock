@@ -151,7 +151,7 @@ export interface FerberDefaults {
 }
 
 export async function getFerberDefaults(): Promise<FerberDefaults> {
-  const resp = await fetch('/api/ferber/defaults');
-  if (!resp.ok) throw new Error(`GET /api/ferber/defaults: ${resp.status}`);
+  const resp = await fetch(`${API}/ferber/defaults`);
+  if (!resp.ok) throw new Error(`GET ${API}/ferber/defaults: ${resp.status}`);
   return resp.json();
 }
