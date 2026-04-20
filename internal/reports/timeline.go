@@ -100,7 +100,7 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 }
 
 // ComputeStats calculates summary statistics and returns the timeline it built.
-func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightStats, []TimelineEntry) {
+func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time, ferberEnabled bool) (NightStats, []TimelineEntry) {
 	if len(events) == 0 {
 		return NightStats{}, nil
 	}
@@ -207,6 +207,11 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 	flushBlock()
 
 	stats.RealBedtime = computeRealBedtime(events)
+
+	if ferberEnabled {
+		fs := ComputeFerberStats(events, nightEnd)
+		stats.Ferber = &fs
+	}
 
 	return stats, timeline
 }
