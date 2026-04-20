@@ -98,7 +98,7 @@ export function History() {
             return (
               <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
                 <h3>
-                  <span>{dateStr}</span>
+                  <span>{dateStr}{n.ferberEnabled && <span class="ferber-badge" title={`Night ${n.ferberNightNumber ?? ''}`}>🌱</span>}</span>
                   <span>{timeStr}</span>
                 </h3>
                 <div class="night-stats">
