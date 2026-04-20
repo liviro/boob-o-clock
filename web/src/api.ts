@@ -4,6 +4,8 @@ export interface SessionResponse {
   state: string;
   validActions: string[];
   nightId: number | null;
+  ferberEnabled?: boolean;
+  ferberNightNumber?: number | null;
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
@@ -20,6 +22,8 @@ export interface NightSummary {
   id: number;
   startedAt: string;
   endedAt?: string;
+  ferberEnabled?: boolean;
+  ferberNightNumber?: number | null;
   stats: NightStats;
 }
 
@@ -138,5 +142,16 @@ export async function getNightDetail(id: number): Promise<NightDetail> {
 
 export async function getTrends(): Promise<{ trends: TrendPoint[]; window: number }> {
   const resp = await checkResponse(await fetch(`${API}/trends`));
+  return resp.json();
+}
+
+export interface FerberDefaults {
+  enabled: boolean;
+  nightNumber: number;
+}
+
+export async function getFerberDefaults(): Promise<FerberDefaults> {
+  const resp = await fetch('/api/ferber/defaults');
+  if (!resp.ok) throw new Error(`GET /api/ferber/defaults: ${resp.status}`);
   return resp.json();
 }
