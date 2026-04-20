@@ -56,7 +56,8 @@ const (
 	PutDownAwakeFerber   Action = "put_down_awake_ferber"
 	BabyStirredFerber    Action = "baby_stirred_ferber"
 	MoodChange           Action = "mood_change"
-	CheckInStart         Action = "check_in"
+	CheckInStart         Action = "check_in" // identifier differs from value to avoid clash with State CheckIn
+
 	EndCheckIn           Action = "end_check_in"
 	ExitFerber           Action = "exit_ferber"
 )
