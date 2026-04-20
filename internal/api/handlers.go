@@ -133,7 +133,14 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if action == domain.StartNight {
-		night, err = h.store.CreateNight(ts, false, 0)
+		ferberEnabled := req.Metadata["ferber_enabled"] == "true"
+		ferberNightNumber := 0
+		if s := req.Metadata["ferber_night_number"]; s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				ferberNightNumber = n
+			}
+		}
+		night, err = h.store.CreateNight(ts, ferberEnabled, ferberNightNumber)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
