@@ -84,9 +84,11 @@ type Event struct {
 
 // Night represents a tracking session from night start to night end.
 type Night struct {
-	ID        int64
-	StartedAt time.Time
-	EndedAt   *time.Time
-	CreatedAt time.Time
+	ID                int64
+	StartedAt         time.Time
+	EndedAt           *time.Time
+	CreatedAt         time.Time
+	FerberEnabled     bool
+	FerberNightNumber *int // nil when FerberEnabled is false
 }
 

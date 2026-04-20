@@ -103,11 +103,25 @@ func (s *Store) addColumnIfMissing(table, column, typeDecl string) error {
 	return err
 }
 
-func (s *Store) CreateNight(startedAt time.Time) (*domain.Night, error) {
+func (s *Store) CreateNight(startedAt time.Time, ferberEnabled bool, ferberNightNumber int) (*domain.Night, error) {
 	now := time.Now()
+	var ferberNumArg any
+	var ferberNumPtr *int
+	if ferberEnabled {
+		n := ferberNightNumber
+		ferberNumArg = n
+		ferberNumPtr = &n
+	}
+	ferberEnabledInt := 0
+	if ferberEnabled {
+		ferberEnabledInt = 1
+	}
+
 	result, err := s.db.Exec(
-		"INSERT INTO nights (started_at, created_at) VALUES (?, ?)",
+		`INSERT INTO nights (started_at, created_at, ferber_enabled, ferber_night_number)
+		 VALUES (?, ?, ?, ?)`,
 		startedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
+		ferberEnabledInt, ferberNumArg,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert night: %w", err)
@@ -118,9 +132,11 @@ func (s *Store) CreateNight(startedAt time.Time) (*domain.Night, error) {
 		return nil, fmt.Errorf("last insert id: %w", err)
 	}
 	return &domain.Night{
-		ID:        id,
-		StartedAt: startedAt,
-		CreatedAt: now,
+		ID:                id,
+		StartedAt:         startedAt,
+		CreatedAt:         now,
+		FerberEnabled:     ferberEnabled,
+		FerberNightNumber: ferberNumPtr,
 	}, nil
 }
 
@@ -225,7 +241,7 @@ func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
 
 func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
 	night, err := s.scanNight(
-		s.db.QueryRow("SELECT id, started_at, ended_at, created_at FROM nights WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1"),
+		s.db.QueryRow("SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1"),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil, nil
@@ -244,7 +260,7 @@ func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
 
 func (s *Store) GetNight(id int64) (*domain.Night, []domain.Event, error) {
 	night, err := s.scanNight(
-		s.db.QueryRow("SELECT id, started_at, ended_at, created_at FROM nights WHERE id = ?", id),
+		s.db.QueryRow("SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE id = ?", id),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil, nil
@@ -263,7 +279,7 @@ func (s *Store) GetNight(id int64) (*domain.Night, []domain.Event, error) {
 
 func (s *Store) ListNights(from, to time.Time) ([]domain.Night, error) {
 	rows, err := s.db.Query(
-		"SELECT id, started_at, ended_at, created_at FROM nights WHERE started_at >= ? AND started_at < ? ORDER BY started_at",
+		"SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE started_at >= ? AND started_at < ? ORDER BY started_at",
 		from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano),
 	)
 	if err != nil {
@@ -295,8 +311,10 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 	var n domain.Night
 	var startedAt, createdAt string
 	var endedAt sql.NullString
+	var ferberEnabled int
+	var ferberNightNumber sql.NullInt64
 
-	if err := row.Scan(&n.ID, &startedAt, &endedAt, &createdAt); err != nil {
+	if err := row.Scan(&n.ID, &startedAt, &endedAt, &createdAt, &ferberEnabled, &ferberNightNumber); err != nil {
 		return nil, err
 	}
 	var err error
@@ -314,6 +332,11 @@ func (s *Store) scanNight(row scanner) (*domain.Night, error) {
 			return nil, fmt.Errorf("parse endedAt: %w", err)
 		}
 		n.EndedAt = &t
+	}
+	n.FerberEnabled = ferberEnabled == 1
+	if ferberNightNumber.Valid {
+		v := int(ferberNightNumber.Int64)
+		n.FerberNightNumber = &v
 	}
 	return &n, nil
 }
