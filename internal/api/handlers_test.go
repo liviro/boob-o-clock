@@ -749,3 +749,35 @@ func TestGetTrendsIncludesOldNights(t *testing.T) {
 		t.Fatalf("expected at least one trend point for the 60-day-old night, got 0")
 	}
 }
+
+func TestGetFerberDefaults(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	// No previous nights: defaults are off / 1.
+	resp, err := http.Get(ts.URL + "/api/ferber/defaults")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		Enabled     bool `json:"enabled"`
+		NightNumber int  `json:"nightNumber"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Enabled || got.NightNumber != 1 {
+		t.Errorf("defaults (empty) = %+v, want {false, 1}", got)
+	}
+
+	// With a previous Ferber night at number 4, defaults become {true, 5}.
+	n, _ := s.CreateNight(time.Now().Add(-12*time.Hour), true, 4)
+	_ = s.EndNight(n.ID, time.Now().Add(-2*time.Hour))
+
+	resp2, _ := http.Get(ts.URL + "/api/ferber/defaults")
+	defer resp2.Body.Close()
+	_ = json.NewDecoder(resp2.Body).Decode(&got)
+	if !got.Enabled || got.NightNumber != 5 {
+		t.Errorf("defaults (with prev) = %+v, want {true, 5}", got)
+	}
+}

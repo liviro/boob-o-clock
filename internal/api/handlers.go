@@ -356,6 +356,26 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetFerberDefaults returns the default toggle and night-number values for the
+// start-of-night UI, based on the most recent night's Ferber state.
+func (h *Handler) GetFerberDefaults(w http.ResponseWriter, r *http.Request) {
+	last, err := h.store.LastNight()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	enabled := false
+	nightNumber := 1
+	if last != nil && last.FerberEnabled && last.FerberNightNumber != nil {
+		enabled = true
+		nightNumber = *last.FerberNightNumber + 1
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled":     enabled,
+		"nightNumber": nightNumber,
+	})
+}
+
 // ExportCSV streams all events as a CSV file.
 func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	events, err := h.store.GetAllEvents()
