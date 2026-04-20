@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
-import { SessionResponse } from '../api';
+import { SessionResponse, getFerberDefaults } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
@@ -25,13 +25,30 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
 
+  const [ferberOn, setFerberOn] = useState(false);
+  const [ferberNight, setFerberNight] = useState(1);
+
+  // Fetch Ferber defaults once on mount
+  useEffect(() => {
+    getFerberDefaults()
+      .then(d => {
+        setFerberOn(d.enabled);
+        setFerberNight(d.nightNumber);
+      })
+      .catch(() => {/* swallow: defaults stay off/1 */});
+  }, []);
+
   // Cleanup timer on unmount
   useEffect(() => {
     return () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   }, []);
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
-    onDispatch(action, metadata, timestamp ?? new Date());
+    let meta = metadata;
+    if (action === 'start_night' && ferberOn) {
+      meta = { ...meta, ferber_enabled: 'true', ferber_night_number: String(ferberNight) };
+    }
+    onDispatch(action, meta, timestamp ?? new Date());
   }
 
   function openTimePicker(action: string, metadata?: Record<string, string>) {
@@ -140,6 +157,29 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       />
+
+      {session.state === 'night_off' && (
+        <div class="ferber-start-row">
+          <label class="ferber-toggle">
+            <input
+              type="checkbox"
+              checked={ferberOn}
+              onChange={e => setFerberOn((e.target as HTMLInputElement).checked)}
+            />
+            <span>Ferber mode</span>
+          </label>
+          {ferberOn && (
+            <div class="ferber-night-stepper">
+              Night
+              <button type="button" aria-label="decrease"
+                      onClick={() => setFerberNight(n => Math.max(1, n - 1))}>−</button>
+              <span>{ferberNight}</span>
+              <button type="button" aria-label="increase"
+                      onClick={() => setFerberNight(n => n + 1)}>+</button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div class="bottom-bar">
         <UndoButton

@@ -500,3 +500,47 @@ body {
   font-size: 14px;
   z-index: 200;
 }
+
+.ferber-start-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.ferber-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  color: #ddd;
+}
+
+.ferber-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.ferber-night-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ddd;
+}
+
+.ferber-night-stepper button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.ferber-night-stepper span {
+  min-width: 24px;
+  text-align: center;
+  font-weight: bold;
+}
