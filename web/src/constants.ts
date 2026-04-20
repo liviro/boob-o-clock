@@ -10,6 +10,8 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   sleeping_stroller: { icon: '💤', label: 'Sleeping in Stroller' },
   self_soothing:     { icon: '🤫', label: 'Self-Soothing' },
   poop:              { icon: '💩', label: 'Diaper Change' },
+  learning:          { icon: '🌱', label: 'Learning' },
+  check_in:          { icon: '👣', label: 'Checking In' },
 };
 
 export interface ActionDef {
@@ -42,6 +44,12 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
   poop_done:              { icon: '✅', label: 'Diaper\nChange Done', cls: 'primary full-width' },
   end_night:              { icon: '☀️', label: 'End Night',           cls: 'danger full-width', confirm: true },
+  put_down_awake_ferber:  { icon: '🌱', label: 'Put Down\nAwake',   cls: '' },
+  baby_stirred_ferber:    { icon: '🌱', label: 'Baby\nStirred',     cls: '' },
+  mood_change:            { icon: '😐', label: 'Mood',              cls: '' },
+  check_in:               { icon: '👣', label: 'Check In',          cls: 'primary' },
+  end_check_in:           { icon: '🌱', label: 'Back to\nLearning', cls: '' },
+  exit_ferber:            { icon: '🚪', label: 'Exit\nLearning',    cls: 'danger', confirm: true },
 };
 
 /** Get single-line label for an action */
@@ -119,4 +127,6 @@ export const STATE_COLORS: Record<string, string> = {
   transferring: '#666',
   self_soothing: '#4a6090',
   poop: '#8a6030',
+  learning: '#5a8060',
+  check_in: '#888888',
 };
