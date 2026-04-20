@@ -138,8 +138,9 @@ var actionOrder = func() map[Action]int {
 		StartResettle, Settled, ResettleFailed, BabyWoke,
 		StartStrolling, FellAsleep, GiveUp,
 		PutDownAwake, BabyStirred,
+		PutDownAwakeFerber, BabyStirredFerber,
+		MoodChange, CheckInStart, EndCheckIn, ExitFerber,
 		PoopStart, PoopDone, EndNight,
-		PutDownAwakeFerber, BabyStirredFerber, MoodChange, CheckInStart, EndCheckIn, ExitFerber,
 	}
 	m := make(map[Action]int, len(all))
 	for i, a := range all {
