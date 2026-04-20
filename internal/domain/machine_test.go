@@ -4,6 +4,19 @@ import (
 	"testing"
 )
 
+func TestLearningAndCheckInStatesExist(t *testing.T) {
+	wantPresent := []State{Learning, CheckIn}
+	present := make(map[State]bool, len(AllStates))
+	for _, s := range AllStates {
+		present[s] = true
+	}
+	for _, s := range wantPresent {
+		if !present[s] {
+			t.Errorf("state %q missing from AllStates", s)
+		}
+	}
+}
+
 // TestAllValidTransitions verifies every row of the 32-transition table.
 func TestAllValidTransitions(t *testing.T) {
 	tests := []struct {
