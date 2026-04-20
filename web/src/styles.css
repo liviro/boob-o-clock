@@ -617,3 +617,33 @@ body {
 .btn-mood { background: #2a2a2a; color: #ddd; border: 1px solid #333; }
 .btn-settled { background: #3b5ba3; color: #fff; border: 1px solid #3b5ba3; grid-column: 1 / -1; }
 .btn-danger { background: #7a3030; color: #fff; border: 1px solid #7a3030; grid-column: 1 / -1; }
+
+.checkin-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px;
+}
+
+.checkin-timer {
+  font-size: 2.5rem;
+  font-weight: bold;
+  text-align: center;
+  color: #ddd;
+}
+
+.checkin-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.btn-return {
+  padding: 18px;
+  font-size: 1.1rem;
+  background: #5a8060;
+  color: #fff;
+  border: 1px solid #5a8060;
+  border-radius: 12px;
+  min-height: 60px;
+}

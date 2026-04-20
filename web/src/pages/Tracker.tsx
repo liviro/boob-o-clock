@@ -9,6 +9,7 @@ import { TimestampPicker } from '../components/TimestampPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UndoButton } from '../components/UndoButton';
 import { LearningScreen } from '../components/LearningScreen';
+import { CheckInScreen } from '../components/CheckInScreen';
 
 interface Props {
   session: SessionResponse;
@@ -163,6 +164,13 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       {session.state === 'learning' && session.ferberEnabled
         ? (
           <LearningScreen
+            session={session}
+            dispatch={async (action, metadata) => { onDispatch(action, metadata); }}
+          />
+        )
+        : session.state === 'check_in'
+        ? (
+          <CheckInScreen
             session={session}
             dispatch={async (action, metadata) => { onDispatch(action, metadata); }}
           />
