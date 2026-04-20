@@ -38,6 +38,8 @@ type sessionResponse struct {
 	SuggestBreast     string          `json:"suggestBreast,omitempty"`
 	CurrentBreast     string          `json:"currentBreast,omitempty"`
 	LastFeedStartedAt *time.Time      `json:"lastFeedStartedAt,omitempty"`
+	FerberEnabled     bool            `json:"ferberEnabled"`
+	FerberNightNumber *int            `json:"ferberNightNumber,omitempty"`
 }
 
 type eventResponse struct {
@@ -58,15 +60,19 @@ func toEventResponse(e domain.Event) *eventResponse {
 	}
 }
 
-func buildSessionResponse(state domain.State, nightID *int64, events []domain.Event) sessionResponse {
+func buildSessionResponse(state domain.State, night *domain.Night, events []domain.Event) sessionResponse {
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
 		State:             state,
 		ValidActions:      domain.ValidActions(state),
-		NightID:           nightID,
 		SuggestBreast:     reports.SuggestedBreast(lastBreast),
 		CurrentBreast:     lastBreast,
 		LastFeedStartedAt: reports.LastFeedStart(events),
+	}
+	if night != nil {
+		resp.NightID = &night.ID
+		resp.FerberEnabled = night.FerberEnabled
+		resp.FerberNightNumber = night.FerberNightNumber
 	}
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
@@ -90,12 +96,8 @@ func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state := domain.DeriveState(events)
-	var nightID *int64
-	if night != nil {
-		nightID = &night.ID
-	}
 
-	writeJSON(w, http.StatusOK, buildSessionResponse(state, nightID, events))
+	writeJSON(w, http.StatusOK, buildSessionResponse(state, night, events))
 }
 
 // PostEvent records a new event and returns the updated session.
@@ -172,12 +174,11 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var nightID *int64
+	var responseNight *domain.Night
 	if nextState != domain.NightOff {
-		nightID = &night.ID
+		responseNight = night
 	}
-
-	writeJSON(w, http.StatusOK, buildSessionResponse(nextState, nightID, append(events, *evt)))
+	writeJSON(w, http.StatusOK, buildSessionResponse(nextState, responseNight, append(events, *evt)))
 }
 
 // PostUndo removes the last event and returns the updated session.
@@ -216,7 +217,7 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
-	writeJSON(w, http.StatusOK, buildSessionResponse(state, &night.ID, remaining))
+	writeJSON(w, http.StatusOK, buildSessionResponse(state, night, remaining))
 }
 
 // GetNightDetail returns a night with its timeline, stats, and raw events.
@@ -248,9 +249,11 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"night": nightDetailJSON{
-			ID:        night.ID,
-			StartedAt: night.StartedAt,
-			EndedAt:   night.EndedAt,
+			ID:                night.ID,
+			StartedAt:         night.StartedAt,
+			EndedAt:           night.EndedAt,
+			FerberEnabled:     night.FerberEnabled,
+			FerberNightNumber: night.FerberNightNumber,
 		},
 		"events":   eventJSONs,
 		"timeline": timeline,
@@ -312,9 +315,11 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 		stats, _ := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n), n.FerberEnabled)
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{
-				ID:        n.ID,
-				StartedAt: n.StartedAt,
-				EndedAt:   n.EndedAt,
+				ID:                n.ID,
+				StartedAt:         n.StartedAt,
+				EndedAt:           n.EndedAt,
+				FerberEnabled:     n.FerberEnabled,
+				FerberNightNumber: n.FerberNightNumber,
 			},
 			Stats: stats,
 		})
@@ -392,9 +397,11 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 }
 
 type nightDetailJSON struct {
-	ID        int64      `json:"id"`
-	StartedAt time.Time  `json:"startedAt"`
-	EndedAt   *time.Time `json:"endedAt,omitempty"`
+	ID                int64      `json:"id"`
+	StartedAt         time.Time  `json:"startedAt"`
+	EndedAt           *time.Time `json:"endedAt,omitempty"`
+	FerberEnabled     bool       `json:"ferberEnabled"`
+	FerberNightNumber *int       `json:"ferberNightNumber,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

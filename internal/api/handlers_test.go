@@ -692,6 +692,39 @@ func TestStartNightWithFerberMetadata(t *testing.T) {
 	}
 }
 
+func TestSessionResponseIncludesFerberFields(t *testing.T) {
+	ts, _ := newTestServerWithStore(t)
+
+	body := strings.NewReader(`{
+		"action":"start_night",
+		"metadata":{"ferber_enabled":"true","ferber_night_number":"2"}
+	}`)
+	_, err := http.Post(ts.URL+"/api/session/event", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/session/current")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var got struct {
+		FerberEnabled     bool `json:"ferberEnabled"`
+		FerberNightNumber *int `json:"ferberNightNumber,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !got.FerberEnabled {
+		t.Error("FerberEnabled = false, want true")
+	}
+	if got.FerberNightNumber == nil || *got.FerberNightNumber != 2 {
+		t.Errorf("FerberNightNumber = %v, want 2", got.FerberNightNumber)
+	}
+}
+
 // TestGetTrendsIncludesOldNights confirms /api/trends shares the same date
 // window as /api/nights.
 func TestGetTrendsIncludesOldNights(t *testing.T) {
