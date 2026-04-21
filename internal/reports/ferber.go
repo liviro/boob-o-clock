@@ -18,11 +18,11 @@ type FerberStats struct {
 	AvgTimeToSettle   time.Duration `json:"avgTimeToSettle"`
 }
 
-// SelectFerberVariants returns the subset of actions appropriate for the night's
-// Ferber state: on Ferber nights, drop the plain variants and keep the _ferber
+// SelectActionsForNight returns the actions appropriate for the night's Ferber
+// state: on Ferber nights, drop the plain variants and keep the _ferber
 // aliases; on normal nights, drop the _ferber aliases and keep the plain ones.
 // Clients render exactly what they receive without branching on ferber state.
-func SelectFerberVariants(actions []domain.Action, ferberEnabled bool) []domain.Action {
+func SelectActionsForNight(actions []domain.Action, ferberEnabled bool) []domain.Action {
 	drop := map[domain.Action]bool{}
 	if ferberEnabled {
 		drop[domain.PutDownAwake] = true
