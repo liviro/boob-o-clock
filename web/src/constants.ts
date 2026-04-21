@@ -19,6 +19,7 @@ export interface ActionDef {
   label: string;
   cls: string;
   needsBreast?: boolean;
+  needsMood?: boolean;
   confirm?: boolean;
 }
 
@@ -44,8 +45,8 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
   poop_done:              { icon: '✅', label: 'Diaper change done',  cls: 'primary full-width' },
   end_night:              { icon: '☀️', label: 'End night',           cls: 'danger full-width', confirm: true },
-  put_down_awake_ferber:  { icon: '🌱', label: 'Put down awake',    cls: 'full-width' },
-  baby_stirred_ferber:    { icon: '🌱', label: 'Baby stirred',      cls: '' },
+  put_down_awake_ferber:  { icon: '🌱', label: 'Put down awake',    cls: 'full-width', needsMood: true },
+  baby_stirred_ferber:    { icon: '🌱', label: 'Baby stirred',      cls: '',           needsMood: true },
   mood_change:            { icon: '😐', label: 'Mood',              cls: '' },
   check_in:               { icon: '👣', label: 'Check in',          cls: 'primary' },
   end_check_in:           { icon: '🌱', label: 'Resume learning',   cls: '' },

@@ -1,5 +1,6 @@
 import { TrendPoint } from '../api';
 import { fmtDayMonth } from '../constants';
+import { FerberHighlight } from './FerberHighlight';
 
 interface Series {
   getValue: (p: TrendPoint) => number;
@@ -82,14 +83,17 @@ export function TrendChart({ trends, series, formatValue, title, highlightFerber
         <text x={PAD.left - 4} y={PAD.top + CHART_H + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(minVal)}
         </text>
-        {highlightFerber && trends.map((p, i) => {
-          if (p.ferberCryTime == null) return null;
-          const sw = trends.length > 1 ? CHART_W / (trends.length - 1) : CHART_W * 0.15;
-          const cx = x(i);
-          const l = Math.max(PAD.left, cx - sw / 2);
-          const r = Math.min(PAD.left + CHART_W, cx + sw / 2);
-          return <rect key={`f${i}`} x={l} y={PAD.top} width={r - l} height={CHART_H} fill="#1a3a1a" opacity="0.8" />;
-        })}
+        {highlightFerber && (
+          <FerberHighlight
+            count={trends.length}
+            isFerber={i => trends[i].ferberCryTime != null}
+            x={x}
+            left={PAD.left}
+            top={PAD.top}
+            width={CHART_W}
+            height={CHART_H}
+          />
+        )}
 
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 

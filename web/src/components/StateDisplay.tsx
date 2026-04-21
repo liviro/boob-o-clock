@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'preact/hooks';
 import { STATE_INFO, fmtTimer, fmtAgo } from '../constants';
+import { useNow } from '../hooks/useNow';
 
 interface Props {
   state: string;
@@ -12,13 +12,7 @@ interface Props {
 
 export function StateDisplay({ state, lastEventTimestamp, currentBreast, lastFeedStartedAt, sessionStartIso, moodLabel }: Props) {
   const info = STATE_INFO[state] || { icon: '?', label: state };
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    if (state === 'night_off') return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [state]);
+  const now = useNow();
 
   const elapsed = lastEventTimestamp && state !== 'night_off'
     ? Math.max(0, Math.floor((now - new Date(lastEventTimestamp).getTime()) / 1000))

@@ -147,3 +147,69 @@ func TestComputeFerberStats_OpenSession(t *testing.T) {
 		t.Errorf("AvgTimeToSettle = %v, want 0 (session open)", got.AvgTimeToSettle)
 	}
 }
+
+func TestCurrentFerberSession_NotInLearningOrCheckIn(t *testing.T) {
+	t0 := time.Now()
+	events := []domain.Event{
+		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
+	}
+	if got := CurrentFerberSession(domain.Awake, events); got != nil {
+		t.Errorf("want nil outside Learning/CheckIn, got %+v", got)
+	}
+}
+
+func TestCurrentFerberSession_NoEntry(t *testing.T) {
+	if got := CurrentFerberSession(domain.Learning, nil); got != nil {
+		t.Errorf("want nil with no events, got %+v", got)
+	}
+}
+
+func TestCurrentFerberSession_TracksCheckInsAndMood(t *testing.T) {
+	t0 := time.Now()
+	events := []domain.Event{
+		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
+		evt(domain.Learning, domain.MoodChange, domain.Learning, t0.Add(mins(3)), map[string]string{"mood": "fussy"}),
+		evt(domain.Learning, domain.CheckInStart, domain.CheckIn, t0.Add(mins(5)), nil),
+		evt(domain.CheckIn, domain.EndCheckIn, domain.Learning, t0.Add(mins(7)), map[string]string{"mood": "crying"}),
+		evt(domain.Learning, domain.CheckInStart, domain.CheckIn, t0.Add(mins(12)), nil),
+	}
+	got := CurrentFerberSession(domain.CheckIn, events)
+	if got == nil {
+		t.Fatal("want non-nil live session")
+	}
+	if got.CheckIns != 2 {
+		t.Errorf("CheckIns = %d, want 2", got.CheckIns)
+	}
+	if !got.SessionStart.Equal(t0) {
+		t.Errorf("SessionStart = %v, want %v", got.SessionStart, t0)
+	}
+	if !got.LastTick.Equal(t0.Add(mins(7))) {
+		t.Errorf("LastTick = %v, want sessionStart+7m (last EndCheckIn)", got.LastTick)
+	}
+	if got.Mood != "crying" {
+		t.Errorf("Mood = %q, want crying", got.Mood)
+	}
+}
+
+func TestCurrentFerberSession_OnlyMostRecentSession(t *testing.T) {
+	// Two sessions in the log; only the most recent should be returned.
+	t0 := time.Now()
+	events := []domain.Event{
+		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
+		evt(domain.Learning, domain.ExitFerber, domain.Awake, t0.Add(mins(10)), nil),
+		evt(domain.SleepingCrib, domain.BabyStirredFerber, domain.Learning, t0.Add(mins(60)), map[string]string{"mood": "fussy"}),
+	}
+	got := CurrentFerberSession(domain.Learning, events)
+	if got == nil {
+		t.Fatal("want non-nil live session")
+	}
+	if !got.SessionStart.Equal(t0.Add(mins(60))) {
+		t.Errorf("SessionStart = %v, want second session start", got.SessionStart)
+	}
+	if got.Mood != "fussy" {
+		t.Errorf("Mood = %q, want fussy (from second session entry)", got.Mood)
+	}
+	if got.CheckIns != 0 {
+		t.Errorf("CheckIns = %d, want 0 in fresh session", got.CheckIns)
+	}
+}

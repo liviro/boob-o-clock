@@ -44,7 +44,6 @@ type sessionResponse struct {
 	FerberSessionStart  *time.Time      `json:"ferberSessionStart,omitempty"`
 	FerberLastTick      *time.Time      `json:"ferberLastTick,omitempty"`
 	FerberCurrentMood   string          `json:"ferberCurrentMood,omitempty"`
-	FerberCheckInStart  *time.Time      `json:"ferberCheckInStart,omitempty"`
 }
 
 type eventResponse struct {
@@ -82,62 +81,13 @@ func buildSessionResponse(state domain.State, night *domain.Night, events []doma
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
 	}
-	if ci, ss, lt, m, cis := ferberLiveFields(state, events); ci != nil {
-		resp.FerberCheckInCount = ci
-		resp.FerberSessionStart = ss
-		resp.FerberLastTick = lt
-		resp.FerberCurrentMood = m
-		resp.FerberCheckInStart = cis
+	if live := reports.CurrentFerberSession(state, events); live != nil {
+		resp.FerberCheckInCount = &live.CheckIns
+		resp.FerberSessionStart = &live.SessionStart
+		resp.FerberLastTick = &live.LastTick
+		resp.FerberCurrentMood = live.Mood
 	}
 	return resp
-}
-
-// ferberLiveFields derives the live Ferber session fields from the event log,
-// for display in the Tracker (timer countdown, current mood, check-in duration).
-func ferberLiveFields(state domain.State, events []domain.Event) (
-	checkIns *int, sessionStartT *time.Time, lastTick *time.Time, mood string, checkInStart *time.Time,
-) {
-	if state != domain.Learning && state != domain.CheckIn {
-		return
-	}
-	// Walk backward to find the most recent Ferber session entry.
-	sessionIdx := -1
-	for i := len(events) - 1; i >= 0; i-- {
-		a := events[i].Action
-		if a == domain.PutDownAwakeFerber || a == domain.BabyStirredFerber {
-			sessionIdx = i
-			break
-		}
-	}
-	if sessionIdx == -1 {
-		return
-	}
-	count := 0
-	sessStart := events[sessionIdx].Timestamp
-	last := events[sessionIdx].Timestamp
-	moodVal := events[sessionIdx].Metadata["mood"]
-	var ciStart *time.Time
-	for j := sessionIdx + 1; j < len(events); j++ {
-		e := events[j]
-		switch e.Action {
-		case domain.CheckInStart:
-			count++
-			ts := e.Timestamp
-			ciStart = &ts
-		case domain.EndCheckIn:
-			last = e.Timestamp
-			moodVal = e.Metadata["mood"]
-			ciStart = nil
-		case domain.MoodChange:
-			moodVal = e.Metadata["mood"]
-		}
-	}
-	checkIns = &count
-	sessionStartT = &sessStart
-	lastTick = &last
-	mood = moodVal
-	checkInStart = ciStart
-	return
 }
 
 func nightEndTime(n *domain.Night) time.Time {

@@ -20,7 +20,6 @@ export interface SessionResponse {
   ferberSessionStart?: string;
   ferberLastTick?: string;
   ferberCurrentMood?: 'quiet' | 'fussy' | 'crying';
-  ferberCheckInStart?: string;
 }
 
 export interface NightSummary {

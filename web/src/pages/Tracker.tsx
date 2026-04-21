@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { SessionResponse, getFerberDefaults } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
-import { moodWord } from '../ferber';
+import { Mood, moodWord } from '../ferber';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
 import { BreastPicker } from '../components/BreastPicker';
@@ -21,6 +21,7 @@ interface Props {
 type ModalState =
   | { type: 'none' }
   | { type: 'breast'; action: string; wantsTimePicker: boolean }
+  | { type: 'mood'; action: string; wantsTimePicker: boolean }
   | { type: 'timestamp'; action: string; metadata?: Record<string, string>; title: string }
   | { type: 'confirm'; action: string; wantsTimePicker: boolean };
 
@@ -31,8 +32,6 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
   const [ferberOn, setFerberOn] = useState(false);
   const [ferberNight, setFerberNight] = useState(1);
-  const [moodPickerOpen, setMoodPickerOpen] = useState(false);
-  const [pendingFerberAction, setPendingFerberAction] = useState<string | null>(null);
 
   useEffect(() => {
     getFerberDefaults()
@@ -49,11 +48,6 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   }, []);
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
-    if (action === 'put_down_awake_ferber' || action === 'baby_stirred_ferber') {
-      setPendingFerberAction(action);
-      setMoodPickerOpen(true);
-      return;
-    }
     let meta = metadata;
     if (action === 'start_night' && ferberOn) {
       meta = { ...meta, ferber_enabled: 'true', ferber_night_number: String(ferberNight) };
@@ -94,6 +88,11 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       return;
     }
 
+    if (ai?.needsMood) {
+      setModal({ type: 'mood', action, wantsTimePicker });
+      return;
+    }
+
     wantsTimePicker ? openTimePicker(action) : fireAction(action);
   }
 
@@ -130,6 +129,13 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   function handleBreastPick(side: 'L' | 'R') {
     if (modal.type !== 'breast') return;
     const meta = { breast: side };
+    setModal({ type: 'none' });
+    modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
+  }
+
+  function handleMoodPick(mood: Mood) {
+    if (modal.type !== 'mood') return;
+    const meta = { mood };
     setModal({ type: 'none' });
     modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
   }
@@ -225,16 +231,9 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       />
 
       <MoodPicker
-        open={moodPickerOpen}
-        onPick={async (mood) => {
-          if (pendingFerberAction) {
-            onDispatch(pendingFerberAction, { mood });
-          }
-          setMoodPickerOpen(false);
-          setPendingFerberAction(null);
-        }}
-        onClose={() => { setMoodPickerOpen(false); setPendingFerberAction(null); }}
-        title="How is baby?"
+        open={modal.type === 'mood'}
+        onPick={handleMoodPick}
+        onClose={closeModal}
       />
 
       <TimestampPicker

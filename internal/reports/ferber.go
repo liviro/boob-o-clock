@@ -47,6 +47,52 @@ var ferberEntryActions = map[domain.Action]bool{
 	domain.BabyStirredFerber:  true,
 }
 
+// FerberLive captures the live state of an in-progress Ferber session.
+// Returned only when the caller is in Learning or CheckIn; nil otherwise.
+type FerberLive struct {
+	CheckIns     int
+	SessionStart time.Time
+	LastTick     time.Time // sessionStart, or timestamp of most recent EndCheckIn
+	Mood         string
+}
+
+// CurrentFerberSession derives the live fields of the current Ferber session
+// from the event log. Returns nil when state is not Learning/CheckIn or when
+// no Ferber session entry is found.
+func CurrentFerberSession(state domain.State, events []domain.Event) *FerberLive {
+	if state != domain.Learning && state != domain.CheckIn {
+		return nil
+	}
+	sessionIdx := -1
+	for i := len(events) - 1; i >= 0; i-- {
+		if ferberEntryActions[events[i].Action] {
+			sessionIdx = i
+			break
+		}
+	}
+	if sessionIdx == -1 {
+		return nil
+	}
+	live := &FerberLive{
+		SessionStart: events[sessionIdx].Timestamp,
+		LastTick:     events[sessionIdx].Timestamp,
+		Mood:         events[sessionIdx].Metadata["mood"],
+	}
+	for j := sessionIdx + 1; j < len(events); j++ {
+		e := events[j]
+		switch e.Action {
+		case domain.CheckInStart:
+			live.CheckIns++
+		case domain.EndCheckIn:
+			live.LastTick = e.Timestamp
+			live.Mood = e.Metadata["mood"]
+		case domain.MoodChange:
+			live.Mood = e.Metadata["mood"]
+		}
+	}
+	return live
+}
+
 // ComputeFerberStats returns Ferber metrics derived from the event log.
 // nightEnd closes the final open state so in-progress sessions still contribute
 // their elapsed mood time.

@@ -7,10 +7,12 @@ interface Props {
   onPointerCancel: () => void;
 }
 
+// States with <= this many actions render every button full-width.
+// Denser states (Awake has 6) use per-action cls so Stroller/Poop can pair.
+const FULL_WIDTH_THRESHOLD = 4;
+
 export function ActionGrid({ actions, onPointerDown, onPointerUp, onPointerCancel }: Props) {
-  // When a state has few actions, give each its own row for easier tapping.
-  // Denser states (Awake has 6) fall back to the per-action cls for layout.
-  const allFull = actions.length <= 4;
+  const allFull = actions.length <= FULL_WIDTH_THRESHOLD;
   return (
     <div class="action-grid">
       {actions.map(action => {

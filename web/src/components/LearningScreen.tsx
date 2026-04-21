@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { SessionResponse } from '../api';
-import { intervalMinutes, otherMoods, Mood } from '../ferber';
+import { intervalMinutes, otherMoods, Mood, MOOD_LABELS } from '../ferber';
 import { fmtTimer } from '../constants';
+import { useNow } from '../hooks/useNow';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
@@ -10,12 +11,7 @@ interface Props {
 }
 
 export function LearningScreen({ session, dispatch }: Props) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
+  const now = useNow();
   const [confirmExit, setConfirmExit] = useState(false);
 
   const nightNumber = session.ferberNightNumber ?? 1;
@@ -29,7 +25,7 @@ export function LearningScreen({ session, dispatch }: Props) {
   const currentMood = (session.ferberCurrentMood ?? 'quiet') as Mood;
   const [mA, mB] = otherMoods(currentMood);
 
-  const moodLabel = (m: Mood) => m === 'quiet' ? '🙂 Quiet' : m === 'fussy' ? '😣 Fussing' : '😭 Crying';
+  const moodLabel = (m: Mood) => `${MOOD_LABELS[m].emoji} ${MOOD_LABELS[m].word}`;
 
   return (
     <div class="learning-screen">

@@ -20,37 +20,17 @@ export function intervalMinutes(nightNumber: number, checkInNumber: number): num
 export const MOODS = ['quiet', 'fussy', 'crying'] as const;
 export type Mood = typeof MOODS[number];
 
+export const MOOD_LABELS: Record<Mood, { emoji: string; word: string }> = {
+  quiet:  { emoji: '🙂', word: 'Quiet' },
+  fussy:  { emoji: '😣', word: 'Fussing' },
+  crying: { emoji: '😭', word: 'Crying' },
+};
+
 export function otherMoods(current: Mood): [Mood, Mood] {
   const others = MOODS.filter(m => m !== current) as Mood[];
   return [others[0], others[1]];
 }
 
 export function moodWord(m?: string): string | undefined {
-  switch (m) {
-    case 'quiet':  return 'Quiet';
-    case 'fussy':  return 'Fussing';
-    case 'crying': return 'Crying';
-    default:       return undefined;
-  }
-}
-
-export interface FerberSessionContext {
-  /** The Ferber session's entry event timestamp (ISO string). */
-  sessionStartIso: string;
-  /** Timestamp of the last relevant event for timer derivation (ISO).
-   *  Either the LEARNING entry or the most recent end_check_in. */
-  lastTickIso: string;
-  /** Number of check-ins so far within this session. */
-  checkInCount: number;
-  /** Current mood in LEARNING (undefined while in CHECK_IN). */
-  currentMood: Mood;
-  /** The night's Ferber night number (for interval lookup). */
-  nightNumber: number;
-}
-
-/** Seconds until the next check-in becomes available. Negative when past due. */
-export function secondsUntilNextCheckIn(ctx: FerberSessionContext, nowMs: number): number {
-  const intervalSec = intervalMinutes(ctx.nightNumber, ctx.checkInCount + 1) * 60;
-  const elapsedSec = (nowMs - new Date(ctx.lastTickIso).getTime()) / 1000;
-  return Math.round(intervalSec - elapsedSec);
+  return m && m in MOOD_LABELS ? MOOD_LABELS[m as Mood].word : undefined;
 }

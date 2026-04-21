@@ -1,6 +1,6 @@
 import { Modal } from './Modal';
 import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
-import { MOODS, Mood } from '../ferber';
+import { MOODS, MOOD_LABELS, Mood } from '../ferber';
 
 interface Props {
   open: boolean;
@@ -8,12 +8,6 @@ interface Props {
   onClose: () => void;
   title?: string;
 }
-
-const LABELS: Record<Mood, { emoji: string; word: string }> = {
-  quiet:  { emoji: '🙂', word: 'Quiet' },
-  fussy:  { emoji: '😣', word: 'Fussing' },
-  crying: { emoji: '😭', word: 'Crying' },
-};
 
 export function MoodPicker({ open, onPick, onClose, title }: Props) {
   const guard = useGhostClickGuard(open);
@@ -26,8 +20,8 @@ export function MoodPicker({ open, onPick, onClose, title }: Props) {
             class="mood-btn"
             onClick={guard(() => onPick(mood))}
           >
-            <span class="mood-btn-emoji">{LABELS[mood].emoji}</span>
-            <span class="mood-btn-word">{LABELS[mood].word}</span>
+            <span class="mood-btn-emoji">{MOOD_LABELS[mood].emoji}</span>
+            <span class="mood-btn-word">{MOOD_LABELS[mood].word}</span>
           </button>
         ))}
       </div>

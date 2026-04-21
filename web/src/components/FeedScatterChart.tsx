@@ -1,5 +1,6 @@
 import { NightSummary } from '../api';
 import { toNightHour, fmtHour, fmtDayMonth } from '../constants';
+import { FerberHighlight } from './FerberHighlight';
 
 interface Props {
   nights: NightSummary[];
@@ -81,14 +82,17 @@ export function FeedScatterChart({ nights, highlightFerber }: Props) {
           <line key={`g${i}`} x1={PAD.left} y1={yl.y} x2={PAD.left + CHART_W} y2={yl.y} stroke="#222" />
         ))}
 
-        {highlightFerber && allNights.map((night, i) => {
-          if (!night.ferberEnabled) return null;
-          const sw = n > 1 ? CHART_W / (n - 1) : CHART_W * 0.15;
-          const cx = x(i);
-          const l = Math.max(PAD.left, cx - sw / 2);
-          const r = Math.min(PAD.left + CHART_W, cx + sw / 2);
-          return <rect key={`f${i}`} x={l} y={PAD.top} width={r - l} height={CHART_H} fill="#1a3a1a" opacity="0.8" />;
-        })}
+        {highlightFerber && (
+          <FerberHighlight
+            count={n}
+            isFerber={i => !!allNights[i].ferberEnabled}
+            x={x}
+            left={PAD.left}
+            top={PAD.top}
+            width={CHART_W}
+            height={CHART_H}
+          />
+        )}
 
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
