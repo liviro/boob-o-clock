@@ -927,8 +927,13 @@ func TestFerberSessionResponseShape(t *testing.T) {
 	if cur.StartedAt.IsZero() {
 		t.Error("startedAt is zero, want populated")
 	}
-	if !cur.LastTick.Equal(cur.StartedAt) {
-		t.Errorf("lastTick = %v, want equal to startedAt (no check-ins yet)", cur.LastTick)
+	if cur.CheckInAvailableAt == nil {
+		t.Fatal("checkInAvailableAt = nil, want populated in Learning")
+	}
+	// Night 1, check-in 1: interval is 3 minutes from startedAt.
+	wantAvail := cur.StartedAt.Add(3 * time.Minute)
+	if !cur.CheckInAvailableAt.Equal(wantAvail) {
+		t.Errorf("checkInAvailableAt = %v, want startedAt+3m = %v", cur.CheckInAvailableAt, wantAvail)
 	}
 }
 

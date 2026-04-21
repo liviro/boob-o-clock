@@ -174,18 +174,20 @@ func TestCurrentFerberSession_NotInLearningOrCheckIn(t *testing.T) {
 	events := []domain.Event{
 		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
 	}
-	if got := CurrentFerberSession(domain.Awake, events); got != nil {
+	if got := CurrentFerberSession(domain.Awake, events, 1); got != nil {
 		t.Errorf("want nil outside Learning/CheckIn, got %+v", got)
 	}
 }
 
 func TestCurrentFerberSession_NoEntry(t *testing.T) {
-	if got := CurrentFerberSession(domain.Learning, nil); got != nil {
+	if got := CurrentFerberSession(domain.Learning, nil, 1); got != nil {
 		t.Errorf("want nil with no events, got %+v", got)
 	}
 }
 
-func TestCurrentFerberSession_TracksCheckInsAndMood(t *testing.T) {
+func TestCurrentFerberSession_CheckInAbsentDuringCheckIn(t *testing.T) {
+	// During CheckIn state, the countdown field is absent: the current
+	// check-in is in progress, no "next" to count toward.
 	t0 := time.Now()
 	events := []domain.Event{
 		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
@@ -194,7 +196,7 @@ func TestCurrentFerberSession_TracksCheckInsAndMood(t *testing.T) {
 		evt(domain.CheckIn, domain.EndCheckIn, domain.Learning, t0.Add(mins(7)), map[string]string{"mood": "crying"}),
 		evt(domain.Learning, domain.CheckInStart, domain.CheckIn, t0.Add(mins(12)), nil),
 	}
-	got := CurrentFerberSession(domain.CheckIn, events)
+	got := CurrentFerberSession(domain.CheckIn, events, 1)
 	if got == nil {
 		t.Fatal("want non-nil live session")
 	}
@@ -204,11 +206,68 @@ func TestCurrentFerberSession_TracksCheckInsAndMood(t *testing.T) {
 	if !got.SessionStart.Equal(t0) {
 		t.Errorf("SessionStart = %v, want %v", got.SessionStart, t0)
 	}
-	if !got.LastTick.Equal(t0.Add(mins(7))) {
-		t.Errorf("LastTick = %v, want sessionStart+7m (last EndCheckIn)", got.LastTick)
+	if got.CheckInAvailableAt != nil {
+		t.Errorf("CheckInAvailableAt = %v, want nil during CheckIn", got.CheckInAvailableAt)
 	}
 	if got.Mood != "crying" {
 		t.Errorf("Mood = %q, want crying", got.Mood)
+	}
+}
+
+func TestCurrentFerberSession_CheckInAvailableAtDuringLearning(t *testing.T) {
+	// Night 1, no check-ins yet: next check-in is available at sessionStart + 3m.
+	t0 := time.Now()
+	events := []domain.Event{
+		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
+	}
+	got := CurrentFerberSession(domain.Learning, events, 1)
+	if got == nil {
+		t.Fatal("want non-nil live session")
+	}
+	if got.CheckInAvailableAt == nil {
+		t.Fatal("CheckInAvailableAt = nil, want non-nil during Learning")
+	}
+	if !got.CheckInAvailableAt.Equal(t0.Add(mins(3))) {
+		t.Errorf("CheckInAvailableAt = %v, want sessionStart+3m (night 1, check-in 1)", got.CheckInAvailableAt)
+	}
+
+	// After two check-ins, the base resets to the most recent EndCheckIn and
+	// the interval bumps to the third column (10m on night 1).
+	events = append(events,
+		evt(domain.Learning, domain.CheckInStart, domain.CheckIn, t0.Add(mins(3)), nil),
+		evt(domain.CheckIn, domain.EndCheckIn, domain.Learning, t0.Add(mins(4)), map[string]string{"mood": "fussy"}),
+		evt(domain.Learning, domain.CheckInStart, domain.CheckIn, t0.Add(mins(9)), nil),
+		evt(domain.CheckIn, domain.EndCheckIn, domain.Learning, t0.Add(mins(10)), map[string]string{"mood": "fussy"}),
+	)
+	got = CurrentFerberSession(domain.Learning, events, 1)
+	if got == nil || got.CheckInAvailableAt == nil {
+		t.Fatal("want CheckInAvailableAt populated")
+	}
+	if !got.CheckInAvailableAt.Equal(t0.Add(mins(20))) {
+		t.Errorf("CheckInAvailableAt = %v, want lastEndCheckIn+10m = sessionStart+20m", got.CheckInAvailableAt)
+	}
+}
+
+func TestIntervalFor(t *testing.T) {
+	cases := []struct {
+		night, checkIn int
+		wantMins       int
+	}{
+		{1, 1, 3},
+		{1, 2, 5},
+		{1, 3, 10},
+		{1, 4, 10}, // column clamps to 3
+		{2, 1, 5},
+		{7, 3, 30},
+		{8, 1, 20},  // night clamps to 7
+		{99, 99, 30}, // both clamp
+		{0, 0, 3},   // clamps up to night 1, check-in 1
+	}
+	for _, c := range cases {
+		got := IntervalFor(c.night, c.checkIn)
+		if got != mins(c.wantMins) {
+			t.Errorf("IntervalFor(%d, %d) = %v, want %dm", c.night, c.checkIn, got, c.wantMins)
+		}
 	}
 }
 
@@ -220,7 +279,7 @@ func TestCurrentFerberSession_OnlyMostRecentSession(t *testing.T) {
 		evt(domain.Learning, domain.ExitFerber, domain.Awake, t0.Add(mins(10)), nil),
 		evt(domain.SleepingCrib, domain.BabyStirredFerber, domain.Learning, t0.Add(mins(60)), map[string]string{"mood": "fussy"}),
 	}
-	got := CurrentFerberSession(domain.Learning, events)
+	got := CurrentFerberSession(domain.Learning, events, 2)
 	if got == nil {
 		t.Fatal("want non-nil live session")
 	}

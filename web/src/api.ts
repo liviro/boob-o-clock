@@ -21,7 +21,9 @@ export interface SessionResponse {
     current?: {
       checkInCount: number;
       startedAt: string;
-      lastTick: string;
+      // Absolute timestamp at which the next check-in becomes available.
+      // Present only in Learning state (absent during CheckIn).
+      checkInAvailableAt?: string;
       mood: 'quiet' | 'fussy' | 'crying';
     };
   };

@@ -58,19 +58,54 @@ var ferberEntryActions = map[domain.Action]bool{
 	domain.BabyStirredFerber:  true,
 }
 
+// ferberIntervals is the classic Ferber graduated-extinction table, in minutes.
+// Rows are 1-indexed Ferber nights; columns are 1-indexed check-ins within a
+// session. Nights beyond 7 use night 7's row; check-ins beyond 3 use column 3.
+var ferberIntervals = [7][3]int{
+	{3, 5, 10},
+	{5, 10, 12},
+	{10, 12, 15},
+	{12, 15, 17},
+	{15, 17, 20},
+	{17, 20, 25},
+	{20, 25, 30},
+}
+
+// IntervalFor returns the Ferber wait interval between check-ins for the given
+// night and check-in number.
+func IntervalFor(nightNumber, checkInNumber int) time.Duration {
+	n := clamp(nightNumber, 1, 7) - 1
+	c := clamp(checkInNumber, 1, 3) - 1
+	return time.Duration(ferberIntervals[n][c]) * time.Minute
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // FerberLive captures the live state of an in-progress Ferber session.
 // Returned only when the caller is in Learning or CheckIn; nil otherwise.
 type FerberLive struct {
 	CheckIns     int
 	SessionStart time.Time
-	LastTick     time.Time // sessionStart, or timestamp of most recent EndCheckIn
-	Mood         string
+	// CheckInAvailableAt is populated only when state is Learning: the
+	// absolute timestamp at which the next check-in becomes available
+	// (sessionStart-or-last-EndCheckIn + graduated interval). Nil during
+	// CheckIn, where the current check-in is still in progress.
+	CheckInAvailableAt *time.Time
+	Mood               string
 }
 
 // CurrentFerberSession derives the live fields of the current Ferber session
 // from the event log. Returns nil when state is not Learning/CheckIn or when
 // no Ferber session entry is found.
-func CurrentFerberSession(state domain.State, events []domain.Event) *FerberLive {
+func CurrentFerberSession(state domain.State, events []domain.Event, nightNumber int) *FerberLive {
 	if state != domain.Learning && state != domain.CheckIn {
 		return nil
 	}
@@ -86,20 +121,27 @@ func CurrentFerberSession(state domain.State, events []domain.Event) *FerberLive
 	}
 	live := &FerberLive{
 		SessionStart: events[sessionIdx].Timestamp,
-		LastTick:     events[sessionIdx].Timestamp,
 		Mood:         events[sessionIdx].Metadata["mood"],
 	}
+	// intervalBase is sessionStart or the most recent EndCheckIn timestamp —
+	// the point from which the next check-in's countdown runs. Kept local
+	// because it's only meaningful when combined with the graduated interval.
+	intervalBase := events[sessionIdx].Timestamp
 	for j := sessionIdx + 1; j < len(events); j++ {
 		e := events[j]
 		switch e.Action {
 		case domain.CheckInStart:
 			live.CheckIns++
 		case domain.EndCheckIn:
-			live.LastTick = e.Timestamp
+			intervalBase = e.Timestamp
 			live.Mood = e.Metadata["mood"]
 		case domain.MoodChange:
 			live.Mood = e.Metadata["mood"]
 		}
+	}
+	if state == domain.Learning {
+		avail := intervalBase.Add(IntervalFor(nightNumber, live.CheckIns+1))
+		live.CheckInAvailableAt = &avail
 	}
 	return live
 }

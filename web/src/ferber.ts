@@ -1,21 +1,8 @@
-// Classic Ferber graduated-extinction interval table (minutes).
-// Rows are nights (1-indexed); columns are check-in numbers within a session.
-// Night 8+ uses Night 7's row; check-in 4+ uses the third column.
-const FERBER_INTERVALS_MIN: Record<number, readonly [number, number, number]> = {
-  1: [3,  5,  10],
-  2: [5,  10, 12],
-  3: [10, 12, 15],
-  4: [12, 15, 17],
-  5: [15, 17, 20],
-  6: [17, 20, 25],
-  7: [20, 25, 30],
-};
-
-export function intervalMinutes(nightNumber: number, checkInNumber: number): number {
-  const row = FERBER_INTERVALS_MIN[Math.min(Math.max(nightNumber, 1), 7)];
-  const col = Math.min(Math.max(checkInNumber, 1), 3) - 1;
-  return row[col];
-}
+// The Ferber graduated-extinction interval table lives on the backend
+// (internal/reports/ferber.go). The server computes the absolute timestamp at
+// which the next check-in becomes available and sends it via
+// session.ferber.current.checkInAvailableAt — the frontend is just a
+// subtracter.
 
 export const MOODS = ['quiet', 'fussy', 'crying'] as const;
 export type Mood = typeof MOODS[number];

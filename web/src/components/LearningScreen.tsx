@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { SessionResponse } from '../api';
-import { intervalMinutes, otherMoods, Mood, MOOD_LABELS } from '../ferber';
+import { otherMoods, Mood, MOOD_LABELS } from '../ferber';
 import { fmtTimer } from '../constants';
 import { useNow } from '../hooks/useNow';
 import { ConfirmModal } from './ConfirmModal';
@@ -14,13 +14,9 @@ export function LearningScreen({ session, dispatch }: Props) {
   const now = useNow();
   const [confirmExit, setConfirmExit] = useState(false);
 
-  const nightNumber = session.ferber?.nightNumber ?? 1;
   const current = session.ferber?.current;
-  const checkInCount = current?.checkInCount ?? 0;
-  const lastTickMs = current?.lastTick ? new Date(current.lastTick).getTime() : now;
-  const intervalSec = intervalMinutes(nightNumber, checkInCount + 1) * 60;
-  const sinceTickSec = Math.max(0, Math.floor((now - lastTickMs) / 1000));
-  const countdownSec = Math.max(0, intervalSec - sinceTickSec);
+  const availableAtMs = current?.checkInAvailableAt ? new Date(current.checkInAvailableAt).getTime() : now;
+  const countdownSec = Math.max(0, Math.floor((availableAtMs - now) / 1000));
   const readyToCheck = countdownSec === 0;
 
   const currentMood = (current?.mood ?? 'quiet') as Mood;

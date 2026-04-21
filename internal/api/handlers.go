@@ -35,8 +35,10 @@ type eventRequest struct {
 type ferberCurrent struct {
 	CheckInCount int       `json:"checkInCount"`
 	StartedAt    time.Time `json:"startedAt"`
-	LastTick     time.Time `json:"lastTick"`
-	Mood         string    `json:"mood"`
+	// CheckInAvailableAt is populated only in Learning state — the moment
+	// the next check-in button becomes tappable. Absent during CheckIn.
+	CheckInAvailableAt *time.Time `json:"checkInAvailableAt,omitempty"`
+	Mood               string     `json:"mood"`
 }
 
 // ferberNight is the Ferber-specific context for the current night. Absent
@@ -104,12 +106,12 @@ func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, 
 		resp.NightID = &night.ID
 		if night.FerberEnabled && night.FerberNightNumber != nil {
 			resp.Ferber = &ferberNight{NightNumber: *night.FerberNightNumber}
-			if live := reports.CurrentFerberSession(state, events); live != nil {
+			if live := reports.CurrentFerberSession(state, events, *night.FerberNightNumber); live != nil {
 				resp.Ferber.Current = &ferberCurrent{
-					CheckInCount: live.CheckIns,
-					StartedAt:    live.SessionStart,
-					LastTick:     live.LastTick,
-					Mood:         live.Mood,
+					CheckInCount:       live.CheckIns,
+					StartedAt:          live.SessionStart,
+					CheckInAvailableAt: live.CheckInAvailableAt,
+					Mood:               live.Mood,
 				}
 			}
 		}
