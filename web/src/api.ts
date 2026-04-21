@@ -1,7 +1,23 @@
 const API = '/api';
 
+// Mirrors internal/domain.State. Keep in sync with internal/domain/states.go.
+export type State =
+  | 'night_off'
+  | 'awake'
+  | 'feeding'
+  | 'sleeping_on_me'
+  | 'transferring'
+  | 'resettling'
+  | 'sleeping_crib'
+  | 'strolling'
+  | 'sleeping_stroller'
+  | 'self_soothing'
+  | 'poop'
+  | 'learning'
+  | 'check_in';
+
 export interface SessionResponse {
-  state: string;
+  state: State;
   validActions: string[];
   nightId: number | null;
   suggestBreast?: string;

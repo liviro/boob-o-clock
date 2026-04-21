@@ -232,10 +232,8 @@ func seedNight(s *store.Store, ns nightSpec) error {
 	}
 
 	cursor := ns.start
-	seq := 0
 
 	add := func(from domain.State, action domain.Action, to domain.State, meta map[string]string) {
-		seq++
 		evt := &domain.Event{
 			NightID:   night.ID,
 			FromState: from,
@@ -335,9 +333,7 @@ func seedFerberNight(s *store.Store, ns nightSpec) error {
 	}
 
 	cursor := ns.start
-	seq := 0
 	add := func(from domain.State, action domain.Action, to domain.State, meta map[string]string) {
-		seq++
 		evt := &domain.Event{
 			NightID:   night.ID,
 			FromState: from,

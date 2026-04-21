@@ -1,9 +1,14 @@
 import { NightSummary } from '../api';
-import { toNightHour, fmtHour, fmtDayMonth } from '../constants';
+import { fmtHour, fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
 
 interface Props {
   nights: NightSummary[];
+  // Maps a night to zero or more night-hours (hours since NIGHT_EPOCH_H).
+  // Callers pre-compute via toNightHour() on the raw timestamp.
+  getHours: (n: NightSummary) => number[];
+  color: string;
+  title: string;
   highlightFerber?: boolean;
 }
 
@@ -12,20 +17,16 @@ const H = 160;
 const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
-const MIN_RANGE_H = 2; // minimum 2-hour Y axis range
+const MIN_RANGE_H = 2;
 
-export function FeedScatterChart({ nights, highlightFerber }: Props) {
+export function NightHourChart({ nights, getHours, color, title, highlightFerber }: Props) {
   const allNights = [...nights].reverse();
   const points: { ni: number; nh: number }[] = [];
-
   for (let i = 0; i < allNights.length; i++) {
-    const ft = allNights[i].stats.feedTimes;
-    if (!ft) continue;
-    for (const ts of ft) {
-      points.push({ ni: i, nh: toNightHour(ts) });
+    for (const nh of getHours(allNights[i])) {
+      points.push({ ni: i, nh });
     }
   }
-
   if (points.length === 0) return null;
 
   const allHours = points.map(p => p.nh);
@@ -41,15 +42,8 @@ export function FeedScatterChart({ nights, highlightFerber }: Props) {
   const rangeH = maxH - minH;
 
   const n = allNights.length;
-
-  function x(ni: number): number {
-    if (n === 1) return PAD.left + CHART_W / 2;
-    return PAD.left + (ni / (n - 1)) * CHART_W;
-  }
-
-  function y(nh: number): number {
-    return PAD.top + ((nh - minH) / rangeH) * CHART_H;
-  }
+  const x = (ni: number) => n === 1 ? PAD.left + CHART_W / 2 : PAD.left + (ni / (n - 1)) * CHART_W;
+  const y = (nh: number) => PAD.top + ((nh - minH) / rangeH) * CHART_H;
 
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
@@ -70,7 +64,7 @@ export function FeedScatterChart({ nights, highlightFerber }: Props) {
 
   return (
     <div class="trend-chart">
-      <div class="trend-title">Feed Times</div>
+      <div class="trend-title">{title}</div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
         {yLabels.map((yl, i) => (
           <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
@@ -97,7 +91,7 @@ export function FeedScatterChart({ nights, highlightFerber }: Props) {
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
         {points.map((p, i) => (
-          <circle key={i} cx={x(p.ni)} cy={y(p.nh)} r="4" fill="#c0b040" opacity="0.85" />
+          <circle key={i} cx={x(p.ni)} cy={y(p.nh)} r="4" fill={color} opacity="0.85" />
         ))}
 
         {dateLabels.map((dl, i) => (

@@ -34,8 +34,6 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
   const [ferberOn, setFerberOn] = useState(false);
   const [ferberNight, setFerberNight] = useState(1);
 
-  // Seed the Start Night controls from the server-computed suggestion.
-  // Reseeds when the suggestion changes (e.g. after End Night).
   useEffect(() => {
     const suggested = session.suggestFerberNight;
     if (suggested != null) {
@@ -47,7 +45,6 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
     }
   }, [session.suggestFerberNight]);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   }, []);
@@ -66,12 +63,10 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
     setModal({ type: 'timestamp', action, metadata, title: `${label}${breastSuffix} — When?` });
   }
 
-  // Resolve metadata for switch_breast using the API-provided suggestion
   function switchBreastMeta(): Record<string, string> | undefined {
     return session.suggestBreast ? { breast: session.suggestBreast } : undefined;
   }
 
-  // Shared action resolution: resolves modals/metadata, then calls terminal fn
   function resolveAction(action: string, wantsTimePicker: boolean) {
     const ai = ACTION_INFO[action];
 
@@ -104,7 +99,6 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
   const handleAction = (action: string) => resolveAction(action, false);
   const handleLongPress = (action: string) => resolveAction(action, true);
 
-  // Touch/mouse handlers for long-press detection
   function handlePointerDown(action: string) {
     longPressFired.current = false;
     longPressTimer.current = setTimeout(() => {

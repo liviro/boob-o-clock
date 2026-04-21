@@ -14,13 +14,19 @@ export function LearningScreen({ session, dispatch }: Props) {
   const now = useNow();
   const [confirmExit, setConfirmExit] = useState(false);
 
+  // Tracker only renders LearningScreen when state is 'learning' and the
+  // server populates ferber.current.checkInAvailableAt in that state.
+  // Treat absence as a server/client invariant violation, not as benign.
   const current = session.ferber?.current;
-  const availableAtMs = current?.checkInAvailableAt ? new Date(current.checkInAvailableAt).getTime() : now;
+  if (!current?.checkInAvailableAt) {
+    throw new Error('LearningScreen: session.ferber.current.checkInAvailableAt is required in Learning state');
+  }
+
+  const availableAtMs = new Date(current.checkInAvailableAt).getTime();
   const countdownSec = Math.max(0, Math.floor((availableAtMs - now) / 1000));
   const readyToCheck = countdownSec === 0;
 
-  const currentMood = (current?.mood ?? 'quiet') as Mood;
-  const [mA, mB] = otherMoods(currentMood);
+  const [mA, mB] = otherMoods(current.mood as Mood);
 
   const moodLabel = (m: Mood) => `${MOOD_LABELS[m].emoji} ${MOOD_LABELS[m].word}`;
 

@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getNights, getNightDetail, getTrends, NightSummary, NightDetail, TrendPoint } from '../api';
-import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
+import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { TrendChart } from '../components/TrendChart';
-import { FeedScatterChart } from '../components/FeedScatterChart';
-import { BedtimeChart } from '../components/BedtimeChart';
+import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 
@@ -171,8 +170,20 @@ export function History() {
             title="Feed Time by Side"
             highlightFerber
           />
-          <FeedScatterChart nights={nightsForCharts} highlightFerber />
-          <BedtimeChart nights={nightsForCharts} highlightFerber />
+          <NightHourChart
+            nights={nightsForCharts}
+            getHours={n => (n.stats.feedTimes ?? []).map(toNightHour)}
+            color="#c0b040"
+            title="Feed Times"
+            highlightFerber
+          />
+          <NightHourChart
+            nights={nightsForCharts}
+            getHours={n => n.stats.realBedtime ? [toNightHour(n.stats.realBedtime)] : []}
+            color="#6a9aff"
+            title="Real Bedtime"
+            highlightFerber
+          />
           {trendsForCharts.some(t => t.ferberCryTime != null) && (
             <TrendChart
               trends={trendsForCharts.filter(t => t.ferberCryTime != null)}

@@ -1,9 +1,3 @@
-// The Ferber graduated-extinction interval table lives on the backend
-// (internal/reports/ferber.go). The server computes the absolute timestamp at
-// which the next check-in becomes available and sends it via
-// session.ferber.current.checkInAvailableAt — the frontend is just a
-// subtracter.
-
 export const MOODS = ['quiet', 'fussy', 'crying'] as const;
 export type Mood = typeof MOODS[number];
 

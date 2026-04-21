@@ -50,7 +50,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   mood_change:            { icon: '😐', label: 'Mood',              cls: '' },
   check_in:               { icon: '👣', label: 'Check in',          cls: 'primary' },
   end_check_in:           { icon: '🌱', label: 'Resume learning',   cls: '' },
-  exit_ferber:            { icon: '🏳️', label: 'Give up',         cls: 'danger', confirm: true },
+  exit_ferber:            { icon: '🏳️', label: 'Give up',         cls: 'danger' },
 };
 
 /** Get single-line label for an action */
