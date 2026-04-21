@@ -8,14 +8,18 @@ interface Props {
 }
 
 export function ActionGrid({ actions, onPointerDown, onPointerUp, onPointerCancel }: Props) {
+  // When a state has few actions, give each its own row for easier tapping.
+  // Denser states (Awake has 6) fall back to the per-action cls for layout.
+  const allFull = actions.length <= 4;
   return (
     <div class="action-grid">
       {actions.map(action => {
         const ai = ACTION_INFO[action] || { icon: '?', label: action, cls: '' };
+        const cls = allFull && !ai.cls.includes('full-width') ? `${ai.cls} full-width` : ai.cls;
         return (
           <button
             key={action}
-            class={`action-btn ${ai.cls}`}
+            class={`action-btn ${cls}`}
             onTouchStart={(e) => { e.preventDefault(); onPointerDown(action); }}
             onTouchEnd={() => onPointerUp(action)}
             onTouchCancel={onPointerCancel}

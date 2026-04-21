@@ -13,6 +13,7 @@ interface Props {
   series: Series[];
   formatValue: (v: number) => string;
   title: string;
+  highlightFerber?: boolean;
 }
 
 const W = 320;
@@ -21,7 +22,7 @@ const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
-export function TrendChart({ trends, series, formatValue, title }: Props) {
+export function TrendChart({ trends, series, formatValue, title, highlightFerber }: Props) {
   if (trends.length === 0) return null;
 
   // Compute global min/max across all series
@@ -81,6 +82,15 @@ export function TrendChart({ trends, series, formatValue, title }: Props) {
         <text x={PAD.left - 4} y={PAD.top + CHART_H + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(minVal)}
         </text>
+        {highlightFerber && trends.map((p, i) => {
+          if (p.ferberCryTime == null) return null;
+          const sw = trends.length > 1 ? CHART_W / (trends.length - 1) : CHART_W * 0.15;
+          const cx = x(i);
+          const l = Math.max(PAD.left, cx - sw / 2);
+          const r = Math.min(PAD.left + CHART_W, cx + sw / 2);
+          return <rect key={`f${i}`} x={l} y={PAD.top} width={r - l} height={CHART_H} fill="#1a3a1a" opacity="0.8" />;
+        })}
+
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
         {series.map((s, si) => {

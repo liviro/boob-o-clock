@@ -148,10 +148,10 @@ var actionOrder = func() map[Action]int {
 	all := []Action{
 		StartNight, StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
+		PutDownAwake, PutDownAwakeFerber,
 		StartResettle, Settled, ResettleFailed, BabyWoke,
 		StartStrolling, FellAsleep, GiveUp,
-		PutDownAwake, BabyStirred,
-		PutDownAwakeFerber, BabyStirredFerber,
+		BabyStirred, BabyStirredFerber,
 		MoodChange, CheckInStart, EndCheckIn, ExitFerber,
 		PoopStart, PoopDone, EndNight,
 	}

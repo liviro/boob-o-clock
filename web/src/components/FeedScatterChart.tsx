@@ -3,6 +3,7 @@ import { toNightHour, fmtHour, fmtDayMonth } from '../constants';
 
 interface Props {
   nights: NightSummary[];
+  highlightFerber?: boolean;
 }
 
 const W = 320;
@@ -12,7 +13,7 @@ const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2; // minimum 2-hour Y axis range
 
-export function FeedScatterChart({ nights }: Props) {
+export function FeedScatterChart({ nights, highlightFerber }: Props) {
   const allNights = [...nights].reverse();
   const points: { ni: number; nh: number }[] = [];
 
@@ -79,6 +80,15 @@ export function FeedScatterChart({ nights }: Props) {
         {yLabels.map((yl, i) => (
           <line key={`g${i}`} x1={PAD.left} y1={yl.y} x2={PAD.left + CHART_W} y2={yl.y} stroke="#222" />
         ))}
+
+        {highlightFerber && allNights.map((night, i) => {
+          if (!night.ferberEnabled) return null;
+          const sw = n > 1 ? CHART_W / (n - 1) : CHART_W * 0.15;
+          const cx = x(i);
+          const l = Math.max(PAD.left, cx - sw / 2);
+          const r = Math.min(PAD.left + CHART_W, cx + sw / 2);
+          return <rect key={`f${i}`} x={l} y={PAD.top} width={r - l} height={CHART_H} fill="#1a3a1a" opacity="0.8" />;
+        })}
 
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 

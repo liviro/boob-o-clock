@@ -21,35 +21,25 @@ export function LearningScreen({ session, dispatch }: Props) {
   const nightNumber = session.ferberNightNumber ?? 1;
   const checkInCount = session.ferberCheckInCount ?? 0;
   const lastTickMs = session.ferberLastTick ? new Date(session.ferberLastTick).getTime() : now;
-  const sessionStartMs = session.ferberSessionStart ? new Date(session.ferberSessionStart).getTime() : now;
   const intervalSec = intervalMinutes(nightNumber, checkInCount + 1) * 60;
   const sinceTickSec = Math.max(0, Math.floor((now - lastTickMs) / 1000));
   const countdownSec = Math.max(0, intervalSec - sinceTickSec);
   const readyToCheck = countdownSec === 0;
-  const inCribSec = Math.max(0, Math.floor((now - sessionStartMs) / 1000));
 
   const currentMood = (session.ferberCurrentMood ?? 'quiet') as Mood;
   const [mA, mB] = otherMoods(currentMood);
 
-  const moodLabel = (m: Mood) => m === 'quiet' ? '🙂 Quiet' : m === 'fussy' ? '😣 Fussy' : '😭 Crying';
+  const moodLabel = (m: Mood) => m === 'quiet' ? '🙂 Quiet' : m === 'fussy' ? '😣 Fussing' : '😭 Crying';
 
   return (
     <div class="learning-screen">
-      <div class="learning-timers">
-        <div class={`learning-countdown ${readyToCheck ? 'ready' : ''}`}>
-          {readyToCheck ? 'Check In' : `Check in: ${fmtTimer(countdownSec)}`}
-        </div>
-        <div class="learning-elapsed">In crib: {fmtTimer(inCribSec)}</div>
-        <div class="learning-mood">Mood: {moodLabel(currentMood)}</div>
-      </div>
-
       <div class="learning-buttons">
         <button
           class={`btn btn-checkin ${readyToCheck ? 'ready' : 'locked'}`}
           disabled={!readyToCheck}
           onClick={() => dispatch('check_in')}
         >
-          {readyToCheck ? '👣 Check In' : `Wait ${fmtTimer(countdownSec)}`}
+          {readyToCheck ? '👣 Check in' : `Wait ${fmtTimer(countdownSec)} until checking in`}
         </button>
 
         <button class="btn btn-mood" onClick={() => dispatch('mood_change', { mood: mA })}>
@@ -64,13 +54,13 @@ export function LearningScreen({ session, dispatch }: Props) {
         </button>
 
         <button class="btn btn-danger" onClick={() => setConfirmExit(true)}>
-          🚪 Exit Learning
+          🏳️ Give up
         </button>
       </div>
 
       <ConfirmModal
         open={confirmExit}
-        title="Exit Learning? This ends the Ferber session."
+        title="Give up for now? This ends the Ferber session."
         onConfirm={async () => { setConfirmExit(false); await dispatch('exit_ferber'); }}
         onCancel={() => setConfirmExit(false)}
       />

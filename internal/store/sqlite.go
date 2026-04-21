@@ -107,13 +107,11 @@ func (s *Store) CreateNight(startedAt time.Time, ferberEnabled bool, ferberNight
 	now := time.Now()
 	var ferberNumArg any
 	var ferberNumPtr *int
+	ferberEnabledInt := 0
 	if ferberEnabled {
 		n := ferberNightNumber
 		ferberNumArg = n
 		ferberNumPtr = &n
-	}
-	ferberEnabledInt := 0
-	if ferberEnabled {
 		ferberEnabledInt = 1
 	}
 

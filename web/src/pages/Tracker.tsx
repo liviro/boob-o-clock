@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
+import { useState, useRef, useEffect } from 'preact/hooks';
 import { SessionResponse, getFerberDefaults } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
+import { moodWord } from '../ferber';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
 import { BreastPicker } from '../components/BreastPicker';
@@ -30,10 +31,9 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
 
   const [ferberOn, setFerberOn] = useState(false);
   const [ferberNight, setFerberNight] = useState(1);
-  const [moodPickerFor, setMoodPickerFor] = useState<null | 'entry' | 'return'>(null);
+  const [moodPickerOpen, setMoodPickerOpen] = useState(false);
   const [pendingFerberAction, setPendingFerberAction] = useState<string | null>(null);
 
-  // Fetch Ferber defaults once on mount
   useEffect(() => {
     getFerberDefaults()
       .then(d => {
@@ -49,9 +49,9 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   }, []);
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
-    if (session.ferberEnabled && (action === 'put_down_awake' || action === 'baby_stirred')) {
-      setPendingFerberAction(action === 'put_down_awake' ? 'put_down_awake_ferber' : 'baby_stirred_ferber');
-      setMoodPickerFor('entry');
+    if (action === 'put_down_awake_ferber' || action === 'baby_stirred_ferber') {
+      setPendingFerberAction(action);
+      setMoodPickerOpen(true);
       return;
     }
     let meta = metadata;
@@ -97,23 +97,20 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
     wantsTimePicker ? openTimePicker(action) : fireAction(action);
   }
 
-  const handleAction = useCallback((action: string) => resolveAction(action, false),
-    [session.suggestBreast, onDispatch]);
-
-  const handleLongPress = useCallback((action: string) => resolveAction(action, true),
-    [session.suggestBreast]);
+  const handleAction = (action: string) => resolveAction(action, false);
+  const handleLongPress = (action: string) => resolveAction(action, true);
 
   // Touch/mouse handlers for long-press detection
-  const handlePointerDown = useCallback((action: string) => {
+  function handlePointerDown(action: string) {
     longPressFired.current = false;
     longPressTimer.current = setTimeout(() => {
       longPressFired.current = true;
       handleLongPress(action);
       if (navigator.vibrate) navigator.vibrate(20);
     }, 400);
-  }, [handleLongPress]);
+  }
 
-  const handlePointerUp = useCallback((action: string) => {
+  function handlePointerUp(action: string) {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
@@ -121,44 +118,48 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
     if (!longPressFired.current) {
       handleAction(action);
     }
-  }, [handleAction]);
+  }
 
-  const handlePointerCancel = useCallback(() => {
+  function handlePointerCancel() {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-  }, []);
+  }
 
-  const handleBreastPick = useCallback((side: 'L' | 'R') => {
+  function handleBreastPick(side: 'L' | 'R') {
     if (modal.type !== 'breast') return;
     const meta = { breast: side };
     setModal({ type: 'none' });
     modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
-  }, [modal, onDispatch]);
+  }
 
-  const handleTimestampPick = useCallback((minutesAgo: number) => {
+  function handleTimestampPick(minutesAgo: number) {
     if (modal.type !== 'timestamp') return;
     const ts = new Date(Date.now() + minutesAgo * 60000);
     onDispatch(modal.action, modal.metadata, ts);
     setModal({ type: 'none' });
-  }, [modal, onDispatch]);
+  }
 
-  const handleConfirm = useCallback(() => {
+  function handleConfirm() {
     if (modal.type !== 'confirm') return;
     setModal({ type: 'none' });
     modal.wantsTimePicker ? openTimePicker(modal.action) : fireAction(modal.action);
-  }, [modal, onDispatch]);
+  }
 
-  const closeModal = useCallback(() => setModal({ type: 'none' }), []);
+  function closeModal() {
+    setModal({ type: 'none' });
+  }
 
   return (
-    <div class="page-tracker">
+    <div class={`page-tracker ${session.state === 'night_off' ? 'is-night-off' : ''}`}>
       <StateDisplay
         state={session.state}
         lastEventTimestamp={session.lastEvent?.timestamp}
         currentBreast={session.currentBreast}
         lastFeedStartedAt={session.lastFeedStartedAt}
+        sessionStartIso={session.state === 'learning' ? session.ferberSessionStart : undefined}
+        moodLabel={session.state === 'learning' ? moodWord(session.ferberCurrentMood) : undefined}
       />
 
       {session.state === 'learning' && session.ferberEnabled
@@ -171,7 +172,6 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         : session.state === 'check_in'
         ? (
           <CheckInScreen
-            session={session}
             dispatch={async (action, metadata) => { onDispatch(action, metadata); }}
           />
         )
@@ -193,18 +193,18 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
               checked={ferberOn}
               onChange={e => setFerberOn((e.target as HTMLInputElement).checked)}
             />
-            <span>Ferber mode</span>
+            <span class="ferber-toggle-switch" aria-hidden="true"></span>
+            <span class="ferber-toggle-label">Ferber mode</span>
           </label>
-          {ferberOn && (
-            <div class="ferber-night-stepper">
-              Night
-              <button type="button" aria-label="decrease"
-                      onClick={() => setFerberNight(n => Math.max(1, n - 1))}>−</button>
-              <span>{ferberNight}</span>
-              <button type="button" aria-label="increase"
-                      onClick={() => setFerberNight(n => n + 1)}>+</button>
-            </div>
-          )}
+          <div class={`ferber-night-stepper ${ferberOn ? '' : 'is-hidden'}`} aria-hidden={!ferberOn}>
+            Night
+            <button type="button" aria-label="decrease"
+                    class={ferberNight === 1 ? 'is-hidden' : ''}
+                    onClick={() => setFerberNight(n => Math.max(1, n - 1))}>−</button>
+            <span>{ferberNight}</span>
+            <button type="button" aria-label="increase"
+                    onClick={() => setFerberNight(n => n + 1)}>+</button>
+          </div>
         </div>
       )}
 
@@ -225,15 +225,15 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
       />
 
       <MoodPicker
-        open={moodPickerFor === 'entry'}
+        open={moodPickerOpen}
         onPick={async (mood) => {
           if (pendingFerberAction) {
             onDispatch(pendingFerberAction, { mood });
           }
-          setMoodPickerFor(null);
+          setMoodPickerOpen(false);
           setPendingFerberAction(null);
         }}
-        onClose={() => { setMoodPickerFor(null); setPendingFerberAction(null); }}
+        onClose={() => { setMoodPickerOpen(false); setPendingFerberAction(null); }}
         title="How is baby?"
       />
 

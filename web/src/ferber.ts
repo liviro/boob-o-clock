@@ -25,6 +25,15 @@ export function otherMoods(current: Mood): [Mood, Mood] {
   return [others[0], others[1]];
 }
 
+export function moodWord(m?: string): string | undefined {
+  switch (m) {
+    case 'quiet':  return 'Quiet';
+    case 'fussy':  return 'Fussing';
+    case 'crying': return 'Crying';
+    default:       return undefined;
+  }
+}
+
 export interface FerberSessionContext {
   /** The Ferber session's entry event timestamp (ISO string). */
   sessionStartIso: string;

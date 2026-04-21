@@ -9,10 +9,10 @@ interface Props {
   title?: string;
 }
 
-const LABELS: Record<Mood, string> = {
-  quiet: '🙂 Quiet',
-  fussy: '😣 Fussy',
-  crying: '😭 Crying',
+const LABELS: Record<Mood, { emoji: string; word: string }> = {
+  quiet:  { emoji: '🙂', word: 'Quiet' },
+  fussy:  { emoji: '😣', word: 'Fussing' },
+  crying: { emoji: '😭', word: 'Crying' },
 };
 
 export function MoodPicker({ open, onPick, onClose, title }: Props) {
@@ -26,7 +26,8 @@ export function MoodPicker({ open, onPick, onClose, title }: Props) {
             class="mood-btn"
             onClick={guard(() => onPick(mood))}
           >
-            {LABELS[mood]}
+            <span class="mood-btn-emoji">{LABELS[mood].emoji}</span>
+            <span class="mood-btn-word">{LABELS[mood].word}</span>
           </button>
         ))}
       </div>

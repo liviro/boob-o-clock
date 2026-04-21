@@ -131,30 +131,35 @@ export function History() {
             series={[{ getValue: p => p.longestSleep, getAvg: p => p.avgLongestSleep, color: '#4a8aff' }]}
             formatValue={fmtDur}
             title="Longest Sleep Block"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.totalSleep, getAvg: p => p.avgTotalSleep, color: '#6a5aff' }]}
             formatValue={fmtDur}
             title="Total Sleep"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.wakeCount, getAvg: p => p.avgWakeCount, color: '#ff5a5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Wake Count"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.feedCount, getAvg: p => p.avgFeedCount, color: '#ffaa5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Feed Count"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.totalFeed, getAvg: p => p.avgTotalFeed, color: '#ffaa5a' }]}
             formatValue={fmtDur}
             title="Total Feed Time"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
@@ -164,15 +169,16 @@ export function History() {
             ]}
             formatValue={fmtDur}
             title="Feed Time by Side"
+            highlightFerber
           />
-          <FeedScatterChart nights={nightsForCharts} />
-          <BedtimeChart nights={nightsForCharts} />
+          <FeedScatterChart nights={nightsForCharts} highlightFerber />
+          <BedtimeChart nights={nightsForCharts} highlightFerber />
           {trendsForCharts.some(t => t.ferberCryTime != null) && (
             <TrendChart
               trends={trendsForCharts.filter(t => t.ferberCryTime != null)}
               series={[{ getValue: p => nsToMinutes(p.ferberCryTime!), getAvg: () => null, color: '#ff5a8a' }]}
               formatValue={v => `${Math.round(v)}m`}
-              title="Ferber: Cry time per night"
+              title="🌱 Cry time per night"
             />
           )}
           {trendsForCharts.some(t => t.ferberCheckIns != null) && (
@@ -180,7 +186,7 @@ export function History() {
               trends={trendsForCharts.filter(t => t.ferberCheckIns != null)}
               series={[{ getValue: p => p.ferberCheckIns!, getAvg: () => null, color: '#a05aff' }]}
               formatValue={v => String(Math.round(v))}
-              title="Ferber: Check-ins per night"
+              title="🌱 Check-ins per night"
             />
           )}
           {trendsForCharts.some(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0) && (
@@ -188,7 +194,7 @@ export function History() {
               trends={trendsForCharts.filter(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0)}
               series={[{ getValue: p => nsToMinutes(p.ferberTimeToSettle!), getAvg: () => null, color: '#5affaa' }]}
               formatValue={v => `${Math.round(v)}m`}
-              title="Ferber: Avg time to settle"
+              title="🌱 Avg time to settle"
             />
           )}
         </div>
@@ -220,27 +226,27 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
           <Stat value={fmtDur(s.totalFeedTime)} label="Feed Time" />
           <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
         </div>
-        <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
-        <FeedTimesPills times={s.feedTimes} />
         {s.ferber && n.ferberEnabled && (
           <div class="ferber-stats">
             <div class="ferber-stats-header">🌱 Night {n.ferberNightNumber}</div>
             <div class="night-stats">
               <Stat value={String(s.ferber.sessions)} label="Sessions" />
-              <Stat value={String(s.ferber.checkIns)} label="Check-ins" />
+              <Stat value={fmtDur(s.ferber.avgTimeToSettle)} label="Session average" />
               <Stat value={fmtDur(s.ferber.cryTime)} label="Cry time" />
               <Stat value={fmtDur(s.ferber.fussTime)} label="Fuss time" />
             </div>
             <details class="ferber-details">
               <summary>More</summary>
               <div class="night-stats">
-                <Stat value={fmtDur(s.ferber.avgTimeToSettle)} label="Avg to settle" />
+                <Stat value={String(s.ferber.checkIns)} label="Check-ins" />
                 <Stat value={String(s.ferber.sessionsAbandoned)} label="Abandoned" />
                 <Stat value={fmtDur(s.ferber.quietTime)} label="Quiet time" />
               </div>
             </details>
           </div>
         )}
+        <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
+        <FeedTimesPills times={s.feedTimes} />
         <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
       </div>
 
@@ -251,7 +257,7 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
             const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
             const ai = ACTION_INFO[evt.action];
             const label = ai ? `${ai.icon} ${actionLabel(evt.action)}` : evt.action;
-            const meta = evt.metadata ? ` (${Object.values(evt.metadata).join(', ')})` : '';
+            const meta = fmtEventMeta(evt.metadata);
             return <div key={i} class="event-row">{t} — {label}{meta}</div>;
           })}
         </div>
@@ -296,6 +302,13 @@ function FeedTimesPills({ times }: { times: string[] | null }) {
       </div>
     </div>
   );
+}
+
+function fmtEventMeta(m?: Record<string, string>): string {
+  if (!m) return '';
+  if (m.ferber_enabled === 'true') return ` (🌱 #${m.ferber_night_number})`;
+  const vals = Object.values(m);
+  return vals.length ? ` (${vals.join(', ')})` : '';
 }
 
 function Stat({ value, label }: { value: string; label: string }) {

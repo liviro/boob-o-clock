@@ -69,7 +69,7 @@ func buildSessionResponse(state domain.State, night *domain.Night, events []doma
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
 		State:             state,
-		ValidActions:      domain.ValidActions(state),
+		ValidActions:      reports.SelectFerberVariants(domain.ValidActions(state), night != nil && night.FerberEnabled),
 		SuggestBreast:     reports.SuggestedBreast(lastBreast),
 		CurrentBreast:     lastBreast,
 		LastFeedStartedAt: reports.LastFeedStart(events),

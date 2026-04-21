@@ -149,7 +149,7 @@ func TestValidActions(t *testing.T) {
 		actions []Action
 	}{
 		{NightOff, []Action{StartNight}},
-		{Awake, []Action{StartFeed, StartResettle, StartStrolling, PutDownAwake, PutDownAwakeFerber, PoopStart, EndNight}},
+		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, StartResettle, StartStrolling, PoopStart, EndNight}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
 		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},

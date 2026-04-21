@@ -18,6 +18,29 @@ type FerberStats struct {
 	AvgTimeToSettle   time.Duration `json:"avgTimeToSettle"`
 }
 
+// SelectFerberVariants returns the subset of actions appropriate for the night's
+// Ferber state: on Ferber nights, drop the plain variants and keep the _ferber
+// aliases; on normal nights, drop the _ferber aliases and keep the plain ones.
+// Clients render exactly what they receive without branching on ferber state.
+func SelectFerberVariants(actions []domain.Action, ferberEnabled bool) []domain.Action {
+	drop := map[domain.Action]bool{}
+	if ferberEnabled {
+		drop[domain.PutDownAwake] = true
+		drop[domain.BabyStirred] = true
+	} else {
+		drop[domain.PutDownAwakeFerber] = true
+		drop[domain.BabyStirredFerber] = true
+	}
+	out := make([]domain.Action, 0, len(actions))
+	for _, a := range actions {
+		if drop[a] {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // ferberEntryActions are the actions that begin a Ferber session.
 var ferberEntryActions = map[domain.Action]bool{
 	domain.PutDownAwakeFerber: true,
@@ -76,12 +99,10 @@ func ComputeFerberStats(events []domain.Event, nightEnd time.Time) FerberStats {
 				settleDurations = append(settleDurations, e.Timestamp.Sub(sessionStart))
 				sessionClosed = true
 				i++
-				break
 			case domain.ExitFerber:
 				stats.SessionsAbandoned++
 				sessionClosed = true
 				i++
-				break
 			}
 			if sessionClosed {
 				break

@@ -781,3 +781,140 @@ func TestGetFerberDefaults(t *testing.T) {
 		t.Errorf("defaults (with prev) = %+v, want {true, 5}", got)
 	}
 }
+
+// TestValidActions_FerberNight verifies that after starting a Ferber night,
+// the AWAKE state's valid actions contain the Ferber variant (put_down_awake_ferber)
+// and NOT the plain variant. This ensures the client renders the 🌱 button.
+func TestValidActions_FerberNight(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Start a Ferber-enabled night.
+	resp := doPost(t, ts, "/api/session/event", map[string]any{
+		"action": "start_night",
+		"metadata": map[string]string{
+			"ferber_enabled":      "true",
+			"ferber_night_number": "1",
+		},
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start_night: status %d", resp.StatusCode)
+	}
+
+	var got sessionResponse
+	decodeJSON(t, resp, &got)
+
+	if got.State != "awake" {
+		t.Fatalf("state = %q, want awake", got.State)
+	}
+	if !got.FerberEnabled {
+		t.Fatal("FerberEnabled = false, want true")
+	}
+
+	has := func(a string) bool {
+		for _, x := range got.ValidActions {
+			if string(x) == a {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !has("put_down_awake_ferber") {
+		t.Errorf("validActions missing put_down_awake_ferber; got %v", got.ValidActions)
+	}
+	if has("put_down_awake") {
+		t.Errorf("validActions contains put_down_awake; should be hidden on Ferber nights; got %v", got.ValidActions)
+	}
+}
+
+// TestValidActions_NonFerberNight verifies that a plain (non-Ferber) night
+// sees the plain put_down_awake action and NOT the Ferber variant.
+func TestValidActions_NonFerberNight(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := doPost(t, ts, "/api/session/event", map[string]any{
+		"action": "start_night",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start_night: status %d", resp.StatusCode)
+	}
+
+	var got sessionResponse
+	decodeJSON(t, resp, &got)
+
+	if got.FerberEnabled {
+		t.Fatal("FerberEnabled = true, want false")
+	}
+
+	has := func(a string) bool {
+		for _, x := range got.ValidActions {
+			if string(x) == a {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !has("put_down_awake") {
+		t.Errorf("validActions missing put_down_awake; got %v", got.ValidActions)
+	}
+	if has("put_down_awake_ferber") {
+		t.Errorf("validActions contains put_down_awake_ferber; should be hidden on non-Ferber nights; got %v", got.ValidActions)
+	}
+}
+
+// TestValidActions_FerberStir verifies that from SLEEPING_CRIB on a Ferber night,
+// the stir action exposed is the ferber variant.
+func TestValidActions_FerberStir(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Start Ferber night, put baby down awake (ferber, requires mood), settle.
+	if r := doPost(t, ts, "/api/session/event", map[string]any{
+		"action": "start_night",
+		"metadata": map[string]string{
+			"ferber_enabled":      "true",
+			"ferber_night_number": "1",
+		},
+	}); r.StatusCode != 200 {
+		t.Fatalf("start_night: %d", r.StatusCode)
+	} else {
+		r.Body.Close()
+	}
+	if r := doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "put_down_awake_ferber",
+		"metadata": map[string]string{"mood": "quiet"},
+	}); r.StatusCode != 200 {
+		t.Fatalf("put_down_awake_ferber: %d", r.StatusCode)
+	} else {
+		r.Body.Close()
+	}
+	r := doPost(t, ts, "/api/session/event", map[string]any{"action": "settled"})
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		t.Fatalf("settled: %d", r.StatusCode)
+	}
+
+	var got sessionResponse
+	decodeJSON(t, r, &got)
+
+	if got.State != "sleeping_crib" {
+		t.Fatalf("state = %q, want sleeping_crib", got.State)
+	}
+
+	has := func(a string) bool {
+		for _, x := range got.ValidActions {
+			if string(x) == a {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("baby_stirred_ferber") {
+		t.Errorf("validActions missing baby_stirred_ferber; got %v", got.ValidActions)
+	}
+	if has("baby_stirred") {
+		t.Errorf("validActions contains plain baby_stirred on Ferber night; got %v", got.ValidActions)
+	}
+}
