@@ -70,21 +70,78 @@ func main() {
 				{feedBreast: "R", feedMins: 12, sleepOnMeMins: 3, cribMins: 150},
 			},
 		},
-		// 2 nights ago — good night, 2 blocks
+		// 2 nights ago — Ferber Night 1: bedtime + one mid-night stir, both settled
 		{
 			start: now.Add(-2 * 24 * time.Hour).Truncate(time.Hour).Add(21*time.Hour + 15*time.Minute),
-			blocks: []block{
-				{feedBreast: "L", feedMins: 20, sleepOnMeMins: 5, cribMins: 240},
-				{feedBreast: "R", feedMins: 15, sleepOnMeMins: 4, resettleMins: 6, cribMins: 180},
+			ferber: &ferberProfile{
+				night: 1,
+				sessions: []ferberSession{
+					{
+						trigger:     "bedtime",
+						feedBreast:  "L",
+						feedMins:    18,
+						initialMood: "quiet",
+						checkIns: []ferberCheckIn{
+							{intervalMins: 3, checkInMins: 1, postMood: "fussy"},
+							{intervalMins: 5, checkInMins: 1, postMood: "fussy"},
+						},
+						outcome:          "settled",
+						outcomeDelayMins: 8,
+						settleMood:       "quiet",
+						sleepAfterMins:   240,
+					},
+					{
+						trigger:     "stir",
+						initialMood: "fussy",
+						checkIns: []ferberCheckIn{
+							{intervalMins: 3, checkInMins: 1, postMood: "quiet"},
+						},
+						outcome:          "settled",
+						outcomeDelayMins: 5,
+						settleMood:       "quiet",
+						sleepAfterMins:   200,
+					},
+				},
 			},
 		},
-		// Last night — 3 blocks, mixed
+		// Last night — Ferber Night 2: tougher; bedtime settles after 3 check-ins,
+		// mid-night session is abandoned → feed-to-sleep fallback
 		{
 			start: now.Add(-1 * 24 * time.Hour).Truncate(time.Hour).Add(20*time.Hour + 30*time.Minute),
-			blocks: []block{
-				{feedBreast: "R", feedMins: 17, sleepOnMeMins: 6, cribMins: 165},
-				{feedBreast: "L", feedMins: 13, sleepOnMeMins: 3, cribMins: 75},
-				{feedBreast: "R", feedMins: 11, sleepOnMeMins: 5, resettleMins: 8, cribMins: 120},
+			ferber: &ferberProfile{
+				night: 2,
+				sessions: []ferberSession{
+					{
+						trigger:     "bedtime",
+						feedBreast:  "R",
+						feedMins:    16,
+						initialMood: "quiet",
+						preMoods:    []moodChange{{afterMins: 2, mood: "fussy"}, {afterMins: 4, mood: "crying"}},
+						checkIns: []ferberCheckIn{
+							{intervalMins: 5, checkInMins: 2, postMood: "crying"},
+							{intervalMins: 10, checkInMins: 2, postMood: "fussy"},
+							{intervalMins: 12, checkInMins: 2, postMood: "quiet"},
+						},
+						outcome:          "settled",
+						outcomeDelayMins: 6,
+						settleMood:       "quiet",
+						sleepAfterMins:   180,
+					},
+					{
+						trigger:     "stir",
+						initialMood: "crying",
+						checkIns: []ferberCheckIn{
+							{intervalMins: 5, checkInMins: 2, postMood: "crying"},
+							{intervalMins: 10, checkInMins: 2, postMood: "crying"},
+						},
+						outcome:          "exit",
+						outcomeDelayMins: 2,
+						// After exit_ferber: feed-to-sleep fallback
+						exitFeedBreast: "L",
+						exitFeedMins:   18,
+						sleepAfterMins: 150,
+					},
+				},
 			},
 		},
 		// Tonight — in progress, baby sleeping in crib after 2 completed blocks
@@ -123,10 +180,52 @@ type block struct {
 type nightSpec struct {
 	start      time.Time
 	blocks     []block
-	inProgress bool // if true, baby is currently sleeping in crib (no EndNight)
+	inProgress bool            // if true, baby is currently sleeping in crib (no EndNight)
+	ferber     *ferberProfile  // non-nil = Ferber night; blocks is ignored
+}
+
+type ferberProfile struct {
+	night    int // Ferber night number (1+)
+	sessions []ferberSession
+}
+
+type ferberSession struct {
+	// "bedtime": precede with feed + DislatchAwake, enter via PutDownAwakeFerber
+	// "stir":    enter from SleepingCrib via BabyStirredFerber (no feed)
+	trigger     string
+	feedBreast  string       // for "bedtime" only
+	feedMins    int          // for "bedtime" only
+	initialMood string       // mood carried into Learning at session start
+	preMoods    []moodChange // mood changes between entry and first check-in (offsets from entry)
+	checkIns    []ferberCheckIn
+	// "settled": Learning -> Settled -> SleepingCrib, logging settleMood on Settled
+	// "exit":    Learning -> ExitFerber -> Awake, then feed-to-sleep via exitFeedBreast/exitFeedMins
+	outcome          string
+	outcomeDelayMins int    // minutes from last CheckIn end (or entry if no check-ins) to outcome
+	settleMood       string // for "settled": mood at Settled
+
+	// For "exit" only: fallback feed path ending in SleepingCrib via TransferSuccess.
+	exitFeedBreast string
+	exitFeedMins   int
+
+	sleepAfterMins int // minutes in SleepingCrib after this session, before next session or wake
+}
+
+type ferberCheckIn struct {
+	intervalMins int    // minutes from previous event (entry or prior EndCheckIn) to CheckInStart
+	checkInMins  int    // minutes spent in CheckIn
+	postMood     string // mood logged on EndCheckIn
+}
+
+type moodChange struct {
+	afterMins int
+	mood      string
 }
 
 func seedNight(s *store.Store, ns nightSpec) error {
+	if ns.ferber != nil {
+		return seedFerberNight(s, ns)
+	}
 	night, err := s.CreateNight(ns.start, false, 0)
 	if err != nil {
 		return err
@@ -226,5 +325,95 @@ func seedNight(s *store.Store, ns nightSpec) error {
 		return err
 	}
 
+	return s.EndNight(night.ID, cursor)
+}
+
+func seedFerberNight(s *store.Store, ns nightSpec) error {
+	night, err := s.CreateNight(ns.start, true, ns.ferber.night)
+	if err != nil {
+		return err
+	}
+
+	cursor := ns.start
+	seq := 0
+	add := func(from domain.State, action domain.Action, to domain.State, meta map[string]string) {
+		seq++
+		evt := &domain.Event{
+			NightID:   night.ID,
+			FromState: from,
+			Action:    action,
+			ToState:   to,
+			Timestamp: cursor,
+			Metadata:  meta,
+		}
+		if err2 := s.AddEvent(evt); err2 != nil {
+			err = err2
+		}
+	}
+	tick := func(mins int) { cursor = cursor.Add(time.Duration(mins) * time.Minute) }
+
+	// Start night with Ferber metadata
+	add(domain.NightOff, domain.StartNight, domain.Awake, map[string]string{
+		"ferber_enabled":      "true",
+		"ferber_night_number": fmt.Sprintf("%d", ns.ferber.night),
+	})
+
+	for _, sess := range ns.ferber.sessions {
+		// Enter Learning
+		switch sess.trigger {
+		case "bedtime":
+			add(domain.Awake, domain.StartFeed, domain.Feeding, map[string]string{"breast": sess.feedBreast})
+			tick(sess.feedMins)
+			add(domain.Feeding, domain.DislatchAwake, domain.Awake, nil)
+			tick(1)
+			add(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, map[string]string{"mood": sess.initialMood})
+		case "stir":
+			add(domain.SleepingCrib, domain.BabyStirredFerber, domain.Learning, map[string]string{"mood": sess.initialMood})
+		default:
+			return fmt.Errorf("unknown ferber trigger %q", sess.trigger)
+		}
+
+		// Pre-first-check-in mood changes
+		for _, mc := range sess.preMoods {
+			tick(mc.afterMins)
+			add(domain.Learning, domain.MoodChange, domain.Learning, map[string]string{"mood": mc.mood})
+		}
+
+		// Check-ins
+		for _, ci := range sess.checkIns {
+			tick(ci.intervalMins)
+			add(domain.Learning, domain.CheckInStart, domain.CheckIn, nil)
+			tick(ci.checkInMins)
+			add(domain.CheckIn, domain.EndCheckIn, domain.Learning, map[string]string{"mood": ci.postMood})
+		}
+
+		tick(sess.outcomeDelayMins)
+
+		// Outcome
+		switch sess.outcome {
+		case "settled":
+			add(domain.Learning, domain.Settled, domain.SleepingCrib, nil)
+			tick(sess.sleepAfterMins)
+			add(domain.SleepingCrib, domain.BabyWoke, domain.Awake, nil)
+		case "exit":
+			add(domain.Learning, domain.ExitFerber, domain.Awake, nil)
+			// Feed-to-sleep fallback, transferred into crib without resettle
+			add(domain.Awake, domain.StartFeed, domain.Feeding, map[string]string{"breast": sess.exitFeedBreast})
+			tick(sess.exitFeedMins)
+			add(domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, nil)
+			tick(4)
+			add(domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, nil)
+			add(domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, nil)
+			tick(sess.sleepAfterMins)
+			add(domain.SleepingCrib, domain.BabyWoke, domain.Awake, nil)
+		default:
+			return fmt.Errorf("unknown ferber outcome %q", sess.outcome)
+		}
+	}
+
+	add(domain.Awake, domain.EndNight, domain.NightOff, nil)
+	if err != nil {
+		return err
+	}
 	return s.EndNight(night.ID, cursor)
 }

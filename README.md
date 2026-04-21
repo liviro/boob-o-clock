@@ -122,7 +122,7 @@ go run ./cmd/seed -db ./dev.db          # 8 nights of plausible data
 go run ./cmd/server -addr :8080 -db ./dev.db
 ```
 
-Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, and breast alternation.
+Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, breast alternation, and two Ferber nights (Night 1 with two settled sessions, Night 2 with a settled bedtime and an abandoned mid-night session falling back to feed-to-sleep).
 
 ### Test
 
