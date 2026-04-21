@@ -106,12 +106,12 @@ func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, 
 		resp.NightID = &night.ID
 		if night.FerberEnabled && night.FerberNightNumber != nil {
 			resp.Ferber = &ferberNight{NightNumber: *night.FerberNightNumber}
-			if live := reports.CurrentFerberSession(state, events, *night.FerberNightNumber); live != nil {
+			if session := reports.CurrentFerberSession(state, events, *night.FerberNightNumber); session != nil {
 				resp.Ferber.Current = &ferberCurrent{
-					CheckInCount:       live.CheckIns,
-					StartedAt:          live.SessionStart,
-					CheckInAvailableAt: live.CheckInAvailableAt,
-					Mood:               live.Mood,
+					CheckInCount:       session.CheckIns,
+					StartedAt:          session.SessionStart,
+					CheckInAvailableAt: session.CheckInAvailableAt,
+					Mood:               session.Mood,
 				}
 			}
 		}
@@ -130,13 +130,6 @@ func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, 
 		}
 	}
 	return resp
-}
-
-func nightEndTime(n *domain.Night) time.Time {
-	if n.EndedAt != nil {
-		return *n.EndedAt
-	}
-	return time.Now()
 }
 
 // GetCurrentSession returns the current state and valid actions.
@@ -350,8 +343,7 @@ func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
 		eventJSONs[i] = *toEventResponse(e)
 	}
 
-	nightEnd := nightEndTime(night)
-	stats, timeline := reports.ComputeStats(events, night.StartedAt, nightEnd, night.FerberEnabled)
+	stats, timeline := reports.ComputeStats(events, night)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"night": nightDetailJSON{
@@ -418,7 +410,7 @@ func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]nightSummary, 0, len(nights))
 	for _, n := range nights {
-		stats, _ := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n), n.FerberEnabled)
+		stats, _ := reports.ComputeStats(eventsMap[n.ID], &n)
 		summaries = append(summaries, nightSummary{
 			nightDetailJSON: nightDetailJSON{
 				ID:                n.ID,
@@ -446,7 +438,7 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 
 	points := make([]reports.NightDataPoint, len(nights))
 	for i, n := range nights {
-		stats, _ := reports.ComputeStats(eventsMap[n.ID], n.StartedAt, nightEndTime(&n), n.FerberEnabled)
+		stats, _ := reports.ComputeStats(eventsMap[n.ID], &n)
 		points[i] = reports.NightDataPoint{
 			Date:  n.StartedAt,
 			Stats: stats,

@@ -21,7 +21,7 @@ func evt(from domain.State, action domain.Action, to domain.State, ts time.Time,
 func mins(n int) time.Duration { return time.Duration(n) * time.Minute }
 
 func TestComputeFerberStats_Empty(t *testing.T) {
-	got := ComputeFerberStats(nil, time.Now())
+	got := computeFerberStats(nil, time.Now())
 	if got != (FerberStats{}) {
 		t.Errorf("expected zero stats, got %+v", got)
 	}
@@ -34,7 +34,7 @@ func TestComputeFerberStats_SingleQuickSettle(t *testing.T) {
 		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "quiet"}),
 		evt(domain.Learning, domain.Settled, domain.SleepingCrib, t0.Add(8*time.Minute), nil),
 	}
-	got := ComputeFerberStats(events, t0.Add(10*time.Minute))
+	got := computeFerberStats(events, t0.Add(10*time.Minute))
 	if got.Sessions != 1 {
 		t.Errorf("Sessions = %d, want 1", got.Sessions)
 	}
@@ -64,7 +64,7 @@ func TestComputeFerberStats_MoodChangesAndCheckIn(t *testing.T) {
 		evt(domain.CheckIn, domain.EndCheckIn, domain.Learning, t0.Add(16*time.Minute), map[string]string{"mood": "quiet"}),
 		evt(domain.Learning, domain.Settled, domain.SleepingCrib, t0.Add(20*time.Minute), nil),
 	}
-	got := ComputeFerberStats(events, t0.Add(25*time.Minute))
+	got := computeFerberStats(events, t0.Add(25*time.Minute))
 	if got.Sessions != 1 {
 		t.Errorf("Sessions = %d, want 1", got.Sessions)
 	}
@@ -95,7 +95,7 @@ func TestComputeFerberStats_AbandonedSession(t *testing.T) {
 		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "crying"}),
 		evt(domain.Learning, domain.ExitFerber, domain.Awake, t0.Add(10*time.Minute), nil),
 	}
-	got := ComputeFerberStats(events, t0.Add(15*time.Minute))
+	got := computeFerberStats(events, t0.Add(15*time.Minute))
 	if got.SessionsAbandoned != 1 {
 		t.Errorf("SessionsAbandoned = %d, want 1", got.SessionsAbandoned)
 	}
@@ -119,7 +119,7 @@ func TestComputeFerberStats_MultipleSessions(t *testing.T) {
 		evt(domain.SleepingCrib, domain.BabyStirredFerber, domain.Learning, t0.Add(68*time.Minute), map[string]string{"mood": "fussy"}),
 		evt(domain.Learning, domain.Settled, domain.SleepingCrib, t0.Add(80*time.Minute), nil),
 	}
-	got := ComputeFerberStats(events, t0.Add(85*time.Minute))
+	got := computeFerberStats(events, t0.Add(85*time.Minute))
 	if got.Sessions != 2 {
 		t.Errorf("Sessions = %d, want 2", got.Sessions)
 	}
@@ -135,7 +135,7 @@ func TestComputeFerberStats_OpenSession(t *testing.T) {
 		evt(domain.Awake, domain.PutDownAwakeFerber, domain.Learning, t0, map[string]string{"mood": "fussy"}),
 	}
 	nightEnd := t0.Add(5 * time.Minute)
-	got := ComputeFerberStats(events, nightEnd)
+	got := computeFerberStats(events, nightEnd)
 	if got.Sessions != 1 {
 		t.Errorf("Sessions = %d, want 1", got.Sessions)
 	}
@@ -198,7 +198,7 @@ func TestCurrentFerberSession_CheckInAbsentDuringCheckIn(t *testing.T) {
 	}
 	got := CurrentFerberSession(domain.CheckIn, events, 1)
 	if got == nil {
-		t.Fatal("want non-nil live session")
+		t.Fatal("want non-nil session")
 	}
 	if got.CheckIns != 2 {
 		t.Errorf("CheckIns = %d, want 2", got.CheckIns)
@@ -222,7 +222,7 @@ func TestCurrentFerberSession_CheckInAvailableAtDuringLearning(t *testing.T) {
 	}
 	got := CurrentFerberSession(domain.Learning, events, 1)
 	if got == nil {
-		t.Fatal("want non-nil live session")
+		t.Fatal("want non-nil session")
 	}
 	if got.CheckInAvailableAt == nil {
 		t.Fatal("CheckInAvailableAt = nil, want non-nil during Learning")
@@ -281,7 +281,7 @@ func TestCurrentFerberSession_OnlyMostRecentSession(t *testing.T) {
 	}
 	got := CurrentFerberSession(domain.Learning, events, 2)
 	if got == nil {
-		t.Fatal("want non-nil live session")
+		t.Fatal("want non-nil session")
 	}
 	if !got.SessionStart.Equal(t0.Add(mins(60))) {
 		t.Errorf("SessionStart = %v, want second session start", got.SessionStart)

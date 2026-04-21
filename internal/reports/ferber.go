@@ -89,9 +89,9 @@ func clamp(v, lo, hi int) int {
 	return v
 }
 
-// FerberLive captures the live state of an in-progress Ferber session.
+// FerberSession captures the state of an in-progress Ferber session.
 // Returned only when the caller is in Learning or CheckIn; nil otherwise.
-type FerberLive struct {
+type FerberSession struct {
 	CheckIns     int
 	SessionStart time.Time
 	// CheckInAvailableAt is populated only when state is Learning: the
@@ -102,10 +102,10 @@ type FerberLive struct {
 	Mood               string
 }
 
-// CurrentFerberSession derives the live fields of the current Ferber session
-// from the event log. Returns nil when state is not Learning/CheckIn or when
-// no Ferber session entry is found.
-func CurrentFerberSession(state domain.State, events []domain.Event, nightNumber int) *FerberLive {
+// CurrentFerberSession derives the current Ferber session from the event log.
+// Returns nil when state is not Learning/CheckIn or when no Ferber session
+// entry is found.
+func CurrentFerberSession(state domain.State, events []domain.Event, nightNumber int) *FerberSession {
 	if state != domain.Learning && state != domain.CheckIn {
 		return nil
 	}
@@ -119,7 +119,7 @@ func CurrentFerberSession(state domain.State, events []domain.Event, nightNumber
 	if sessionIdx == -1 {
 		return nil
 	}
-	live := &FerberLive{
+	session := &FerberSession{
 		SessionStart: events[sessionIdx].Timestamp,
 		Mood:         events[sessionIdx].Metadata["mood"],
 	}
@@ -131,25 +131,25 @@ func CurrentFerberSession(state domain.State, events []domain.Event, nightNumber
 		e := events[j]
 		switch e.Action {
 		case domain.CheckInStart:
-			live.CheckIns++
+			session.CheckIns++
 		case domain.EndCheckIn:
 			intervalBase = e.Timestamp
-			live.Mood = e.Metadata["mood"]
+			session.Mood = e.Metadata["mood"]
 		case domain.MoodChange:
-			live.Mood = e.Metadata["mood"]
+			session.Mood = e.Metadata["mood"]
 		}
 	}
 	if state == domain.Learning {
-		avail := intervalBase.Add(IntervalFor(nightNumber, live.CheckIns+1))
-		live.CheckInAvailableAt = &avail
+		avail := intervalBase.Add(IntervalFor(nightNumber, session.CheckIns+1))
+		session.CheckInAvailableAt = &avail
 	}
-	return live
+	return session
 }
 
-// ComputeFerberStats returns Ferber metrics derived from the event log.
+// computeFerberStats returns Ferber metrics derived from the event log.
 // nightEnd closes the final open state so in-progress sessions still contribute
 // their elapsed mood time.
-func ComputeFerberStats(events []domain.Event, nightEnd time.Time) FerberStats {
+func computeFerberStats(events []domain.Event, nightEnd time.Time) FerberStats {
 	var stats FerberStats
 	var settleDurations []time.Duration
 
