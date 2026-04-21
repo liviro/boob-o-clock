@@ -127,8 +127,7 @@ func TestPostEventStartNight(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	body := map[string]any{"action": "start_night"}
-	resp := doPost(t, ts, "/api/session/event", body)
+	resp := doPost(t, ts, "/api/session/start", map[string]any{})
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -160,7 +159,7 @@ func TestPostEventFeedRequiresBreast(t *testing.T) {
 	defer ts.Close()
 
 	// Start night first
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 
 	// Try to feed without breast
 	resp := doPost(t, ts, "/api/session/event", map[string]any{"action": "start_feed"})
@@ -190,12 +189,16 @@ func TestFullNightRoundTrip(t *testing.T) {
 	}
 
 	for _, step := range steps {
-		body := map[string]any{"action": step.action}
-		if step.metadata != nil {
-			body["metadata"] = step.metadata
+		var resp *http.Response
+		if step.action == "start_night" {
+			resp = doPost(t, ts, "/api/session/start", map[string]any{})
+		} else {
+			body := map[string]any{"action": step.action}
+			if step.metadata != nil {
+				body["metadata"] = step.metadata
+			}
+			resp = doPost(t, ts, "/api/session/event", body)
 		}
-
-		resp := doPost(t, ts, "/api/session/event", body)
 		if resp.StatusCode != 200 {
 			t.Fatalf("step %s: status = %d, want 200", step.action, resp.StatusCode)
 		}
@@ -222,7 +225,7 @@ func TestUndo(t *testing.T) {
 	defer ts.Close()
 
 	// Start night + feed
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -246,7 +249,7 @@ func TestUndoStartNight(t *testing.T) {
 	defer ts.Close()
 
 	// Start night, then undo it
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	resp := doPost(t, ts, "/api/session/undo", nil)
 	if resp.StatusCode != 200 {
 		t.Fatalf("undo status = %d, want 200", resp.StatusCode)
@@ -271,10 +274,9 @@ func TestPostEventWithTimestamp(t *testing.T) {
 	defer ts.Close()
 
 	body := map[string]any{
-		"action":    "start_night",
 		"timestamp": "2026-03-29T03:00:00-07:00",
 	}
-	resp := doPost(t, ts, "/api/session/event", body)
+	resp := doPost(t, ts, "/api/session/start", body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -295,7 +297,7 @@ func TestGetNightDetail(t *testing.T) {
 	defer ts.Close()
 
 	// Create a complete night
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	resp := doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -351,7 +353,7 @@ func TestGetNights(t *testing.T) {
 	defer ts.Close()
 
 	// Create a complete night
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -385,7 +387,7 @@ func TestBreastSuggestion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -421,7 +423,7 @@ func TestLastFeedStartedAtEmpty(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 
 	resp := doGet(t, ts, "/api/session/current")
 	var sr SessionResponse
@@ -436,7 +438,7 @@ func TestLastFeedStartedAtAfterFeed(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	feedTime := "2026-03-29T02:10:00-07:00"
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":    "start_feed",
@@ -463,7 +465,7 @@ func TestLastFeedStartedAtIgnoresSwitchBreast(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	feedTime := "2026-03-29T02:10:00-07:00"
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":    "start_feed",
@@ -495,7 +497,7 @@ func TestGetTrends(t *testing.T) {
 	defer ts.Close()
 
 	// Create a complete night
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -527,7 +529,7 @@ func TestExportCSV(t *testing.T) {
 	defer ts.Close()
 
 	// Create a night with a feed
-	doPost(t, ts, "/api/session/event", map[string]any{"action": "start_night"})
+	doPost(t, ts, "/api/session/start", map[string]any{})
 	doPost(t, ts, "/api/session/event", map[string]any{
 		"action":   "start_feed",
 		"metadata": map[string]string{"breast": "L"},
@@ -669,11 +671,10 @@ func TestStartNightWithFerberMetadata(t *testing.T) {
 	ts, store := newTestServerWithStore(t)
 
 	body := strings.NewReader(`{
-		"action":"start_night",
-		"metadata":{"ferber_enabled":"true","ferber_night_number":"3"},
+		"ferber":{"nightNumber":3},
 		"timestamp":"2026-04-20T21:00:00Z"
 	}`)
-	resp, err := http.Post(ts.URL+"/api/session/event", "application/json", body)
+	resp, err := http.Post(ts.URL+"/api/session/start", "application/json", body)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
@@ -695,11 +696,8 @@ func TestStartNightWithFerberMetadata(t *testing.T) {
 func TestSessionResponseIncludesFerberFields(t *testing.T) {
 	ts, _ := newTestServerWithStore(t)
 
-	body := strings.NewReader(`{
-		"action":"start_night",
-		"metadata":{"ferber_enabled":"true","ferber_night_number":"2"}
-	}`)
-	_, err := http.Post(ts.URL+"/api/session/event", "application/json", body)
+	body := strings.NewReader(`{"ferber":{"nightNumber":2}}`)
+	_, err := http.Post(ts.URL+"/api/session/start", "application/json", body)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
@@ -791,9 +789,7 @@ func TestSuggestFerberNight_AbsentMidNight(t *testing.T) {
 	// must not carry it.
 	ts := newTestServer(t)
 
-	_ = doPost(t, ts, "/api/session/event", map[string]any{
-		"action": "start_night",
-	})
+	_ = doPost(t, ts, "/api/session/start", map[string]any{})
 
 	resp, _ := http.Get(ts.URL + "/api/session/current")
 	defer resp.Body.Close()
@@ -817,12 +813,8 @@ func TestValidActions_FerberNight(t *testing.T) {
 	ts := newTestServer(t)
 
 	// Start a Ferber-enabled night.
-	resp := doPost(t, ts, "/api/session/event", map[string]any{
-		"action": "start_night",
-		"metadata": map[string]string{
-			"ferber_enabled":      "true",
-			"ferber_night_number": "1",
-		},
+	resp := doPost(t, ts, "/api/session/start", map[string]any{
+		"ferber": map[string]any{"nightNumber": 1},
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -861,9 +853,7 @@ func TestValidActions_FerberNight(t *testing.T) {
 func TestValidActions_NonFerberNight(t *testing.T) {
 	ts := newTestServer(t)
 
-	resp := doPost(t, ts, "/api/session/event", map[string]any{
-		"action": "start_night",
-	})
+	resp := doPost(t, ts, "/api/session/start", map[string]any{})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("start_night: status %d", resp.StatusCode)
@@ -900,12 +890,8 @@ func TestValidActions_NonFerberNight(t *testing.T) {
 func TestFerberSessionResponseShape(t *testing.T) {
 	ts := newTestServer(t)
 
-	if r := doPost(t, ts, "/api/session/event", map[string]any{
-		"action": "start_night",
-		"metadata": map[string]string{
-			"ferber_enabled":      "true",
-			"ferber_night_number": "1",
-		},
+	if r := doPost(t, ts, "/api/session/start", map[string]any{
+		"ferber": map[string]any{"nightNumber": 1},
 	}); r.StatusCode != 200 {
 		t.Fatalf("start_night: %d", r.StatusCode)
 	}
@@ -952,12 +938,8 @@ func TestValidActions_FerberStir(t *testing.T) {
 	ts := newTestServer(t)
 
 	// Start Ferber night, put baby down awake (ferber, requires mood), settle.
-	if r := doPost(t, ts, "/api/session/event", map[string]any{
-		"action": "start_night",
-		"metadata": map[string]string{
-			"ferber_enabled":      "true",
-			"ferber_night_number": "1",
-		},
+	if r := doPost(t, ts, "/api/session/start", map[string]any{
+		"ferber": map[string]any{"nightNumber": 1},
 	}); r.StatusCode != 200 {
 		t.Fatalf("start_night: %d", r.StatusCode)
 	} else {

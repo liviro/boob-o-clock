@@ -306,7 +306,6 @@ function FeedTimesPills({ times }: { times: string[] | null }) {
 
 function fmtEventMeta(m?: Record<string, string>): string {
   if (!m) return '';
-  if (m.ferber_enabled === 'true') return ` (🌱 #${m.ferber_night_number})`;
   const vals = Object.values(m);
   return vals.length ? ` (${vals.join(', ')})` : '';
 }

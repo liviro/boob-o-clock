@@ -156,6 +156,24 @@ export async function postEvent(
   return resp.json();
 }
 
+export interface StartNightConfig {
+  ferber?: { nightNumber: number };
+  timestamp?: Date;
+}
+
+export async function postStartNight(config: StartNightConfig): Promise<SessionResponse> {
+  const body: Record<string, unknown> = {};
+  if (config.ferber) body.ferber = config.ferber;
+  if (config.timestamp) body.timestamp = toLocalISO(config.timestamp);
+
+  const resp = await checkResponse(await fetch(`${API}/session/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+  return resp.json();
+}
+
 export async function postUndo(): Promise<SessionResponse> {
   const resp = await checkResponse(await fetch(`${API}/session/undo`, { method: 'POST' }));
   return resp.json();

@@ -352,11 +352,9 @@ func seedFerberNight(s *store.Store, ns nightSpec) error {
 	}
 	tick := func(mins int) { cursor = cursor.Add(time.Duration(mins) * time.Minute) }
 
-	// Start night with Ferber metadata
-	add(domain.NightOff, domain.StartNight, domain.Awake, map[string]string{
-		"ferber_enabled":      "true",
-		"ferber_night_number": fmt.Sprintf("%d", ns.ferber.night),
-	})
+	// Ferber config is persisted on the night row by CreateNight above,
+	// not as event metadata.
+	add(domain.NightOff, domain.StartNight, domain.Awake, nil)
 
 	for _, sess := range ns.ferber.sessions {
 		// Enter Learning

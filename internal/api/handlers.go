@@ -61,6 +61,18 @@ type sessionResponse struct {
 	SuggestFerberNight *int `json:"suggestFerberNight,omitempty"`
 }
 
+type ferberConfigRequest struct {
+	NightNumber int `json:"nightNumber"`
+}
+
+// startNightRequest is the typed body for POST /api/session/start.
+// Presence of Ferber implies the night runs in Ferber mode with the given
+// night number; absence means a plain night.
+type startNightRequest struct {
+	Timestamp string               `json:"timestamp,omitempty"`
+	Ferber    *ferberConfigRequest `json:"ferber,omitempty"`
+}
+
 type eventResponse struct {
 	Action    domain.Action     `json:"action"`
 	FromState domain.State      `json:"fromState"`
@@ -147,6 +159,10 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := domain.Action(req.Action)
+	if action == domain.StartNight {
+		writeError(w, http.StatusBadRequest, "use POST /api/session/start to start a night")
+		return
+	}
 
 	ts := time.Now()
 	if req.Timestamp != "" {
@@ -164,31 +180,16 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if night == nil {
+		writeError(w, http.StatusBadRequest, "no active night session")
+		return
+	}
+
 	currentState := domain.DeriveState(events)
 
 	nextState, err := domain.Transition(currentState, action, req.Metadata)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if action == domain.StartNight {
-		ferberEnabled := req.Metadata["ferber_enabled"] == "true"
-		ferberNightNumber := 0
-		if s := req.Metadata["ferber_night_number"]; s != "" {
-			if n, err := strconv.Atoi(s); err == nil {
-				ferberNightNumber = n
-			}
-		}
-		night, err = h.store.CreateNight(ts, ferberEnabled, ferberNightNumber)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-
-	if night == nil {
-		writeError(w, http.StatusBadRequest, "no active night session")
 		return
 	}
 
@@ -217,6 +218,71 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 		responseNight = night
 	}
 	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, responseNight, append(events, *evt)))
+}
+
+// StartNight creates a new night with optional Ferber config and records the
+// start_night event. Separate from PostEvent because start_night is the only
+// action that creates a nights row, and its config is typed (not string-keyed
+// event metadata).
+func (h *Handler) StartNight(w http.ResponseWriter, r *http.Request) {
+	var req startNightRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Ferber != nil && req.Ferber.NightNumber < 1 {
+		writeError(w, http.StatusBadRequest, "ferber.nightNumber must be >= 1")
+		return
+	}
+
+	ts := time.Now()
+	if req.Timestamp != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Timestamp)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid timestamp format (use RFC3339)")
+			return
+		}
+		ts = parsed
+	}
+
+	_, events, err := h.store.CurrentSession()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	currentState := domain.DeriveState(events)
+	nextState, err := domain.Transition(currentState, domain.StartNight, nil)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ferberEnabled := req.Ferber != nil
+	ferberNightNumber := 0
+	if ferberEnabled {
+		ferberNightNumber = req.Ferber.NightNumber
+	}
+	night, err := h.store.CreateNight(ts, ferberEnabled, ferberNightNumber)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	evt := &domain.Event{
+		NightID:   night.ID,
+		FromState: currentState,
+		Action:    domain.StartNight,
+		ToState:   nextState,
+		Timestamp: ts,
+	}
+	if err := h.store.AddEvent(evt); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, night, []domain.Event{*evt}))
 }
 
 // PostUndo removes the last event and returns the updated session.

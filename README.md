@@ -150,6 +150,7 @@ cd web && npm run lint # ESLint (react-hooks rules)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/session/current` | Current state + valid actions |
+| POST | `/api/session/start` | Start a new night (optional Ferber config) |
 | POST | `/api/session/event` | Record an event |
 | POST | `/api/session/undo` | Undo last event |
 | GET | `/api/nights` | Night list with stats |
