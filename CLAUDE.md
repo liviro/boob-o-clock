@@ -19,12 +19,14 @@ Single Go binary serving a REST API and embedded frontend static files.
 
 ## Core Domain: State Machine
 
-11 states, 32 transitions. The transition table lives in `internal/domain/machine.go`. Key properties:
+13 states, 41 transitions. The transition table lives in `internal/domain/machine.go`. Key properties:
 - AWAKE is the hub state — every state can reach it, and it's the only state that can end the night
 - TRANSFERRING is instantaneous (deferred outcome — user picks result when hands are free)
 - SELF_SOOTHING is reachable from SLEEPING_CRIB (baby stirred) and AWAKE (put down awake)
 - POOP is reachable from 7 states (everything except FEEDING, TRANSFERRING, NIGHT_OFF)
 - FEEDING supports a self-transition (switch breast) that logs dislatch + restart
+- LEARNING / CHECK_IN are Ferber-mode states. LEARNING supports a self-transition (`mood_change`) analogous to FEEDING's switch-breast. They're classified as non-sleep in timeline stats.
+- Ferber entry actions (`put_down_awake_ferber`, `baby_stirred_ferber`) are action-level variants of their non-Ferber counterparts — the backend picks which variant is valid per night based on `ferber_enabled`, so the client renders `validActions` without branching.
 
 ## Commands
 
@@ -55,10 +57,13 @@ docker run -p 8080:8080 -v boc-data:/data boob-o-clock
 
 Preact + TypeScript + Vite. Source in `web/src/`, builds to `internal/web/static/`.
 - `web/src/api.ts` — typed API client
-- `web/src/constants.ts` — state/action definitions, formatters
+- `web/src/constants.ts` — state/action definitions, formatters. `ActionDef` supports `needsBreast` / `needsMood` / `confirm` flags that drive modal dispatch in Tracker.
+- `web/src/ferber.ts` — Ferber interval table, mood types, `MOOD_LABELS` (emoji + word for `quiet` / `fussy` / `crying`)
 - `web/src/hooks/useSession.ts` — session state management hook
-- `web/src/components/` — reusable UI components
+- `web/src/hooks/useNow.ts` — shared-singleton 1 Hz ticker. One `setInterval` drives all consumers via a listener set; prevents per-component drift.
+- `web/src/components/` — reusable UI components (Tracker screens, pickers, chart primitives like `FerberHighlight`)
 - `web/src/pages/` — Tracker and History pages
+- ESLint is configured (`web/eslint.config.js`) with `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` as errors. Run `cd web && npm run lint`.
 
 ## Conventions
 
@@ -68,5 +73,7 @@ Preact + TypeScript + Vite. Source in `web/src/`, builds to `internal/web/static
 - **Timestamps**: All stored as RFC3339 with timezone offset. Frontend sends local time with offset.
 - **Dark mode only**: No light theme. Background #000, designed for nighttime use.
 - **Tap targets**: Minimum 48px, prefer 64px for primary actions. Design for iPhone SE (375px wide).
-- **Metadata**: Stored as `map[string]string` serialized to JSON. Feed events carry `{"breast": "L"}` or `{"breast": "R"}`.
+- **Metadata**: Stored as `map[string]string` serialized to JSON. Strictly event-level (no night-level config). Validation lives in `internal/domain/machine.go` — `actionsRequiringBreast` / `actionsRequiringMood` maps plus `validateBreast` / `validateMood` gate transitions. Common payloads: feed events `{"breast": "L"|"R"}`; Ferber entries and mood changes `{"mood": "quiet"|"fussy"|"crying"}`. `start_night` events have no metadata — Ferber night config is posted through a dedicated typed endpoint (see below).
+- **Ferber is per-night, opt-in**: Ferber night config (`ferber_enabled`, `ferber_night_number`) is set via `POST /api/session/start` with a typed body `{ ferber?: { nightNumber } }`, and persisted on the `nights` row. All other actions go through `POST /api/session/event`. The asymmetry is honest: `start_night` is the only action that creates a `nights` row, and its config is per-night (not per-event). The backend picks the action set (`SelectActionsForNight` in `reports/`) and derives the live-session fields (`CurrentFerberSession` in `reports/`) so the frontend never branches on Ferber state. The session response groups Ferber state into a nested object: `ferber?: { nightNumber, current?: { checkInCount, startedAt, checkInAvailableAt?, mood } }` — outer presence encodes "current night is Ferber", inner `current` presence encodes "baby is in a Learning/CheckIn session right now", and the innermost `checkInAvailableAt?` (absolute timestamp for when the next check-in becomes tappable) is present only in Learning. The Ferber graduated-interval table lives server-side in `internal/reports/ferber.go::IntervalFor` — the frontend is a pure subtracter of two timestamps. The response also carries a flat `suggestFerberNight?` on NightOff for the Start Night form (same pattern as `suggestBreast`).
+- **Schema migrations**: use `addColumnIfMissing` in `internal/store/sqlite.go` — probes `PRAGMA table_info` and adds columns only when absent. Idempotent across restarts.
 - **Versioning**: Version is defined in `web/package.json`. When bumping: update `package.json`, run `npm install --package-lock-only` in `web/` to sync `package-lock.json`, commit and push both, then create a GitHub release with `gh release create`.

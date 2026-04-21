@@ -86,6 +86,25 @@ var transitions = map[transitionKey]State{
 
 	// 32: POOP → AWAKE
 	{Poop, PoopDone}: Awake,
+
+	// 33: AWAKE → LEARNING
+	{Awake, PutDownAwakeFerber}: Learning,
+	// 34: SLEEPING_CRIB → LEARNING
+	{SleepingCrib, BabyStirredFerber}: Learning,
+	// 35: LEARNING → LEARNING (mood change)
+	{Learning, MoodChange}: Learning,
+	// 36: LEARNING → CHECK_IN
+	{Learning, CheckInStart}: CheckIn,
+	// 37: LEARNING → SLEEPING_CRIB
+	{Learning, Settled}: SleepingCrib,
+	// 38: LEARNING → AWAKE
+	{Learning, ExitFerber}: Awake,
+	// 39: CHECK_IN → LEARNING
+	{CheckIn, EndCheckIn}: Learning,
+	// 40: CHECK_IN → SLEEPING_CRIB
+	{CheckIn, Settled}: SleepingCrib,
+	// 41: CHECK_IN → AWAKE
+	{CheckIn, ExitFerber}: Awake,
 }
 
 // actionsRequiringBreast is the set of actions that need breast metadata.
@@ -94,11 +113,24 @@ var actionsRequiringBreast = map[Action]bool{
 	SwitchBreast: true,
 }
 
+// actionsRequiringMood is the set of actions that need mood metadata.
+var actionsRequiringMood = map[Action]bool{
+	PutDownAwakeFerber: true,
+	BabyStirredFerber:  true,
+	MoodChange:         true,
+	EndCheckIn:         true,
+}
+
 // Transition attempts a state transition and returns the new state.
 // Returns an error if the transition is invalid or required metadata is missing.
 func Transition(from State, action Action, metadata map[string]string) (State, error) {
 	if actionsRequiringBreast[action] {
 		if err := validateBreast(metadata); err != nil {
+			return "", err
+		}
+	}
+	if actionsRequiringMood[action] {
+		if err := validateMood(metadata); err != nil {
 			return "", err
 		}
 	}
@@ -116,9 +148,11 @@ var actionOrder = func() map[Action]int {
 	all := []Action{
 		StartNight, StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
+		PutDownAwake, PutDownAwakeFerber,
 		StartResettle, Settled, ResettleFailed, BabyWoke,
 		StartStrolling, FellAsleep, GiveUp,
-		PutDownAwake, BabyStirred,
+		BabyStirred, BabyStirredFerber,
+		MoodChange, CheckInStart, EndCheckIn, ExitFerber,
 		PoopStart, PoopDone, EndNight,
 	}
 	m := make(map[Action]int, len(all))
@@ -166,6 +200,20 @@ func validateBreast(metadata map[string]string) error {
 	}
 	if b != string(Left) && b != string(Right) {
 		return fmt.Errorf("invalid breast: %s (must be L or R)", b)
+	}
+	return nil
+}
+
+func validateMood(metadata map[string]string) error {
+	if metadata == nil {
+		return fmt.Errorf("mood metadata required")
+	}
+	m, ok := metadata["mood"]
+	if !ok {
+		return fmt.Errorf("mood metadata required")
+	}
+	if m != "quiet" && m != "fussy" && m != "crying" {
+		return fmt.Errorf("invalid mood: %s (must be quiet, fussy, or crying)", m)
 	}
 	return nil
 }

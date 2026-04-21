@@ -28,6 +28,7 @@ type NightStats struct {
 	SleepBlocks       []time.Duration `json:"sleepBlocks"`
 	FeedTimes         []time.Time     `json:"feedTimes"`
 	RealBedtime       *time.Time      `json:"realBedtime,omitempty"`
+	Ferber            *FerberStats    `json:"ferber,omitempty"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
@@ -56,7 +57,7 @@ var contiguousSleepStates = map[domain.State]bool{
 	domain.Resettling:       true,
 	domain.Strolling:        true,
 	domain.SelfSoothing:     true,
-	domain.Transferring:     true, // doesn't break a sleep block; duration classified retroactively in ComputeStats
+	domain.Transferring:     true, // doesn't break a sleep block; duration classified retroactively based on outcome
 }
 
 // BuildTimeline converts events into a sequence of state periods with durations.
@@ -98,8 +99,9 @@ func BuildTimeline(events []domain.Event, nightEnd time.Time) []TimelineEntry {
 	return entries
 }
 
-// ComputeStats calculates summary statistics and returns the timeline it built.
-func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightStats, []TimelineEntry) {
+// computeBaseStats calculates non-Ferber summary statistics and returns the
+// timeline it built.
+func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (NightStats, []TimelineEntry) {
 	if len(events) == 0 {
 		return NightStats{}, nil
 	}
@@ -207,6 +209,22 @@ func ComputeStats(events []domain.Event, nightStart, nightEnd time.Time) (NightS
 
 	stats.RealBedtime = computeRealBedtime(events)
 
+	return stats, timeline
+}
+
+// ComputeStats returns the full per-night stat bag for a single night,
+// including Ferber stats when the night is a Ferber night. An unended night
+// closes out at now so in-progress state spans still contribute.
+func ComputeStats(events []domain.Event, night *domain.Night) (NightStats, []TimelineEntry) {
+	nightEnd := time.Now()
+	if night.EndedAt != nil {
+		nightEnd = *night.EndedAt
+	}
+	stats, timeline := computeBaseStats(events, night.StartedAt, nightEnd)
+	if night.FerberEnabled {
+		fs := computeFerberStats(events, nightEnd)
+		stats.Ferber = &fs
+	}
 	return stats, timeline
 }
 

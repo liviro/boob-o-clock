@@ -20,6 +20,11 @@ type TrendPoint struct {
 	WakeCount     int           `json:"wakeCount"`
 	FeedCount     int           `json:"feedCount"`
 
+	// Ferber fields (nil when the night did not have ferber_enabled)
+	FerberCryTime      *time.Duration `json:"ferberCryTime"`
+	FerberCheckIns     *int           `json:"ferberCheckIns"`
+	FerberTimeToSettle *time.Duration `json:"ferberTimeToSettle"`
+
 	// Moving averages (nil if insufficient data for the window)
 	AvgLongestSleep  *time.Duration `json:"avgLongestSleep"`
 	AvgTotalSleep    *time.Duration `json:"avgTotalSleep"`
@@ -44,6 +49,15 @@ func ComputeTrends(points []NightDataPoint, window int) []TrendPoint {
 			FeedTimeRight: p.Stats.FeedTimeRight,
 			WakeCount:     p.Stats.WakeCount,
 			FeedCount:     p.Stats.FeedCount,
+		}
+
+		if p.Stats.Ferber != nil {
+			cry := p.Stats.Ferber.CryTime
+			ci := p.Stats.Ferber.CheckIns
+			tts := p.Stats.Ferber.AvgTimeToSettle
+			trends[i].FerberCryTime = &cry
+			trends[i].FerberCheckIns = &ci
+			trends[i].FerberTimeToSettle = &tts
 		}
 
 		if i+1 >= window {

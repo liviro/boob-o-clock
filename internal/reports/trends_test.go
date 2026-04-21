@@ -87,6 +87,43 @@ func TestComputeTrendsSingleNight(t *testing.T) {
 	}
 }
 
+func TestComputeTrends_FerberFields(t *testing.T) {
+	n1 := NightDataPoint{
+		Date: time.Date(2026, 4, 18, 21, 0, 0, 0, time.UTC),
+		Stats: NightStats{
+			Ferber: &FerberStats{
+				CryTime:         10 * time.Minute,
+				CheckIns:        3,
+				AvgTimeToSettle: 20 * time.Minute,
+			},
+		},
+	}
+	n2 := NightDataPoint{
+		Date: time.Date(2026, 4, 19, 21, 0, 0, 0, time.UTC),
+		Stats: NightStats{
+			Ferber: &FerberStats{
+				CryTime:         6 * time.Minute,
+				CheckIns:        2,
+				AvgTimeToSettle: 15 * time.Minute,
+			},
+		},
+	}
+	trends := ComputeTrends([]NightDataPoint{n1, n2}, 2)
+
+	if trends[0].FerberCryTime == nil || *trends[0].FerberCryTime != 10*time.Minute {
+		t.Errorf("night 1 FerberCryTime = %v, want 10m", trends[0].FerberCryTime)
+	}
+	if trends[1].FerberCheckIns == nil || *trends[1].FerberCheckIns != 2 {
+		t.Errorf("night 2 FerberCheckIns = %v, want 2", trends[1].FerberCheckIns)
+	}
+	// Nights without Ferber should have nil fields.
+	nonFerber := NightDataPoint{Date: time.Now(), Stats: NightStats{}}
+	trends = ComputeTrends([]NightDataPoint{nonFerber}, 1)
+	if trends[0].FerberCryTime != nil {
+		t.Error("non-Ferber night should have nil FerberCryTime")
+	}
+}
+
 func TestComputeTrendsWakeCountAverage(t *testing.T) {
 	baseDate := time.Date(2026, 3, 20, 21, 0, 0, 0, time.Local)
 

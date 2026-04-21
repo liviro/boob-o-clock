@@ -1,4 +1,4 @@
-.PHONY: build test dev clean
+.PHONY: build test lint dev clean
 
 # Build frontend + Go binary
 build:
@@ -8,6 +8,10 @@ build:
 # Run all tests
 test:
 	go test ./...
+
+# Lint frontend (react-hooks rules)
+lint:
+	cd web && npm run lint
 
 # Dev mode: Go server on :8080, Vite dev server on :5173
 dev:

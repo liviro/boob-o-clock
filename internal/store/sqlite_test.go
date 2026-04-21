@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestCreateNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, err := s.CreateNight(now)
+	night, err := s.CreateNight(now, false, 0)
 	if err != nil {
 		t.Fatalf("CreateNight: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestEndNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now)
+	night, _ := s.CreateNight(now, false, 0)
 	endTime := now.Add(8 * time.Hour)
 
 	err := s.EndNight(night.ID, endTime)
@@ -74,7 +75,7 @@ func TestAddEventAndGetNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now)
+	night, _ := s.CreateNight(now, false, 0)
 
 	evt := &domain.Event{
 		NightID:   night.ID,
@@ -133,7 +134,7 @@ func TestPopEvent(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now)
+	night, _ := s.CreateNight(now, false, 0)
 
 	s.AddEvent(&domain.Event{
 		NightID: night.ID, FromState: domain.NightOff,
@@ -166,7 +167,7 @@ func TestPopEventEmpty(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now)
+	night, _ := s.CreateNight(now, false, 0)
 
 	_, err := s.PopEvent(night.ID)
 	if err == nil {
@@ -188,7 +189,7 @@ func TestCurrentSession(t *testing.T) {
 
 	// Start a night
 	now := time.Now().Truncate(time.Millisecond)
-	n, _ := s.CreateNight(now)
+	n, _ := s.CreateNight(now, false, 0)
 	s.AddEvent(&domain.Event{
 		NightID: n.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -223,10 +224,10 @@ func TestListNights(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateNight(now)
+	n1, _ := s.CreateNight(now, false, 0)
 	s.EndNight(n1.ID, now.Add(8*time.Hour))
 
-	n2, _ := s.CreateNight(now.Add(24 * time.Hour))
+	n2, _ := s.CreateNight(now.Add(24*time.Hour), false, 0)
 	s.EndNight(n2.ID, now.Add(32*time.Hour))
 
 	// Query all
@@ -252,7 +253,7 @@ func TestGetEventsForNights(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateNight(now)
+	n1, _ := s.CreateNight(now, false, 0)
 	s.AddEvent(&domain.Event{
 		NightID: n1.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -263,7 +264,7 @@ func TestGetEventsForNights(t *testing.T) {
 	})
 	s.EndNight(n1.ID, now.Add(time.Hour))
 
-	n2, _ := s.CreateNight(now.Add(24 * time.Hour))
+	n2, _ := s.CreateNight(now.Add(24*time.Hour), false, 0)
 	s.AddEvent(&domain.Event{
 		NightID: n2.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now.Add(24 * time.Hour),
@@ -296,7 +297,7 @@ func TestDeleteNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now)
+	night, _ := s.CreateNight(now, false, 0)
 	s.AddEvent(&domain.Event{
 		NightID: night.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -313,5 +314,126 @@ func TestDeleteNight(t *testing.T) {
 	}
 	if got != nil {
 		t.Error("expected nil night after delete")
+	}
+}
+
+func TestMigrateAddsFerberColumns(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Re-running New on the same file should be a no-op (idempotent migration).
+	s.Close()
+	s2, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New (re-open): %v", err)
+	}
+	defer s2.Close()
+
+	rows, err := s2.db.Query("PRAGMA table_info(nights)")
+	if err != nil {
+		t.Fatalf("PRAGMA: %v", err)
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		seen[name] = true
+	}
+	for _, col := range []string{"ferber_enabled", "ferber_night_number"} {
+		if !seen[col] {
+			t.Errorf("expected column %q on nights, not found", col)
+		}
+	}
+}
+
+func TestCreateNightWithFerber(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	started := time.Now()
+	n, err := s.CreateNight(started, true, 3)
+	if err != nil {
+		t.Fatalf("CreateNight: %v", err)
+	}
+	if !n.FerberEnabled {
+		t.Error("FerberEnabled = false, want true")
+	}
+	if n.FerberNightNumber == nil || *n.FerberNightNumber != 3 {
+		t.Errorf("FerberNightNumber = %v, want 3", n.FerberNightNumber)
+	}
+
+	// Round-trip via CurrentSession.
+	roundTrip, _, err := s.CurrentSession()
+	if err != nil {
+		t.Fatalf("CurrentSession: %v", err)
+	}
+	if roundTrip == nil || !roundTrip.FerberEnabled || *roundTrip.FerberNightNumber != 3 {
+		t.Errorf("round-trip lost Ferber fields: %+v", roundTrip)
+	}
+}
+
+func TestCreateNightWithoutFerber(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	n, err := s.CreateNight(time.Now(), false, 0)
+	if err != nil {
+		t.Fatalf("CreateNight: %v", err)
+	}
+	if n.FerberEnabled {
+		t.Error("FerberEnabled = true, want false")
+	}
+	if n.FerberNightNumber != nil {
+		t.Errorf("FerberNightNumber = %v, want nil", n.FerberNightNumber)
+	}
+}
+
+func TestLastNight(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	// No nights yet: LastNight returns nil with no error.
+	got, err := s.LastNight()
+	if err != nil {
+		t.Fatalf("LastNight empty: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+
+	// Create two nights; second one is the Ferber one.
+	_, _ = s.CreateNight(time.Now().Add(-48*time.Hour), false, 0)
+	n2, _ := s.CreateNight(time.Now().Add(-24*time.Hour), true, 2)
+	_ = s.EndNight(n2.ID, time.Now().Add(-23*time.Hour))
+
+	got, err = s.LastNight()
+	if err != nil {
+		t.Fatalf("LastNight: %v", err)
+	}
+	if got == nil || got.ID != n2.ID {
+		t.Fatalf("LastNight = %+v, want id %d", got, n2.ID)
+	}
+	if !got.FerberEnabled || *got.FerberNightNumber != 2 {
+		t.Errorf("LastNight = %+v, want FerberEnabled=true NightNumber=2", got)
 	}
 }

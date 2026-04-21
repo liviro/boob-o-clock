@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { getCurrentSession, postEvent, postUndo, SessionResponse } from '../api';
+import { getCurrentSession, postEvent, postStartNight, postUndo, SessionResponse, StartNightConfig } from '../api';
 
 const STALE_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -55,6 +55,15 @@ export function useSession() {
     }
   }, []);
 
+  const startNight = useCallback(async (config: StartNightConfig) => {
+    try {
+      applySession(await postStartNight(config));
+      if (navigator.vibrate) navigator.vibrate(10);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Start night failed');
+    }
+  }, []);
+
   const undo = useCallback(async () => {
     try {
       applySession(await postUndo());
@@ -66,5 +75,5 @@ export function useSession() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { session, loading, error, dispatch, undo, clearError };
+  return { session, loading, error, dispatch, startNight, undo, clearError };
 }

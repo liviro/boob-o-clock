@@ -8,7 +8,7 @@ type Page = 'tracker' | 'history';
 
 export function App() {
   const [page, setPage] = useState<Page>('tracker');
-  const { session, loading, error, dispatch, undo, clearError } = useSession();
+  const { session, loading, error, dispatch, startNight, undo, clearError } = useSession();
 
   if (loading) {
     return <div class="no-data">Loading...</div>;
@@ -32,7 +32,7 @@ export function App() {
       </div>
 
       {page === 'tracker' && session && (
-        <Tracker session={session} onDispatch={dispatch} onUndo={undo} />
+        <Tracker session={session} onDispatch={dispatch} onStartNight={startNight} onUndo={undo} />
       )}
 
       {page === 'history' && <History />}

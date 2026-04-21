@@ -10,6 +10,8 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   sleeping_stroller: { icon: '💤', label: 'Sleeping in Stroller' },
   self_soothing:     { icon: '🤫', label: 'Self-Soothing' },
   poop:              { icon: '💩', label: 'Diaper Change' },
+  learning:          { icon: '🌱', label: 'Learning' },
+  check_in:          { icon: '👣', label: 'Checking In' },
 };
 
 export interface ActionDef {
@@ -17,31 +19,38 @@ export interface ActionDef {
   label: string;
   cls: string;
   needsBreast?: boolean;
+  needsMood?: boolean;
   confirm?: boolean;
 }
 
 export const ACTION_INFO: Record<string, ActionDef> = {
-  start_night:            { icon: '🌙', label: 'Start Night',         cls: 'primary full-width' },
-  start_feed:             { icon: '🍼', label: 'Feed',                cls: 'feed', needsBreast: true },
-  dislatch_awake:         { icon: '👀', label: 'Dislatch\n(awake)',   cls: '' },
-  dislatch_asleep:        { icon: '😴', label: 'Dislatch\n(asleep)',  cls: 'sleep' },
-  switch_breast:          { icon: '🔄', label: 'Switch\nSide',        cls: 'feed' },
-  start_transfer:         { icon: '🤞', label: 'Transfer\nto Crib',   cls: '' },
-  transfer_success:       { icon: '😴', label: 'Asleep\nin Crib!',    cls: 'sleep' },
-  transfer_need_resettle: { icon: '🤚', label: 'Needs\nResettle',     cls: '' },
-  transfer_failed:        { icon: '❌', label: 'Transfer\nFailed',    cls: 'danger' },
-  start_resettle:         { icon: '🤚', label: 'Resettle',            cls: '' },
+  start_night:            { icon: '🌙', label: 'Start night',         cls: 'primary full-width' },
+  start_feed:             { icon: '🍼', label: 'Feed',                cls: 'feed full-width', needsBreast: true },
+  dislatch_awake:         { icon: '👀', label: 'Dislatch (awake)',    cls: '' },
+  dislatch_asleep:        { icon: '😴', label: 'Dislatch (asleep)',   cls: 'sleep' },
+  switch_breast:          { icon: '🔄', label: 'Switch side',         cls: 'feed' },
+  start_transfer:         { icon: '🤞', label: 'Transfer to crib',    cls: '' },
+  transfer_success:       { icon: '😴', label: 'Asleep in crib!',     cls: 'sleep' },
+  transfer_need_resettle: { icon: '🤚', label: 'Needs resettle',      cls: '' },
+  transfer_failed:        { icon: '❌', label: 'Transfer failed',     cls: 'danger' },
+  start_resettle:         { icon: '🤚', label: 'Resettle',            cls: 'full-width' },
   settled:                { icon: '😴', label: 'Settled!',             cls: 'sleep' },
-  resettle_failed:        { icon: '❌', label: 'Resettle\nFailed',    cls: 'danger' },
-  baby_woke:              { icon: '👀', label: 'Baby\nWoke',          cls: 'danger' },
+  resettle_failed:        { icon: '❌', label: 'Resettle failed',     cls: 'danger' },
+  baby_woke:              { icon: '👀', label: 'Baby woke',           cls: 'danger' },
   start_strolling:        { icon: '🚶', label: 'Stroller',            cls: '' },
-  fell_asleep:            { icon: '💤', label: 'Fell\nAsleep!',       cls: 'sleep' },
-  give_up:                { icon: '🏳️', label: 'Give Up',            cls: 'danger' },
-  put_down_awake:         { icon: '🙌', label: 'Put Down\nAwake',     cls: '' },
-  baby_stirred:           { icon: '🤫', label: 'Baby\nStirred',       cls: '' },
+  fell_asleep:            { icon: '💤', label: 'Fell asleep!',        cls: 'sleep' },
+  give_up:                { icon: '🏳️', label: 'Give up',            cls: 'danger' },
+  put_down_awake:         { icon: '🙌', label: 'Put down awake',      cls: 'full-width' },
+  baby_stirred:           { icon: '🤫', label: 'Baby stirred',        cls: '' },
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
-  poop_done:              { icon: '✅', label: 'Diaper\nChange Done', cls: 'primary full-width' },
-  end_night:              { icon: '☀️', label: 'End Night',           cls: 'danger full-width', confirm: true },
+  poop_done:              { icon: '✅', label: 'Diaper change done',  cls: 'primary full-width' },
+  end_night:              { icon: '☀️', label: 'End night',           cls: 'danger full-width', confirm: true },
+  put_down_awake_ferber:  { icon: '🌱', label: 'Put down awake',    cls: 'full-width', needsMood: true },
+  baby_stirred_ferber:    { icon: '🌱', label: 'Baby stirred',      cls: '',           needsMood: true },
+  mood_change:            { icon: '😐', label: 'Mood',              cls: '' },
+  check_in:               { icon: '👣', label: 'Check in',          cls: 'primary' },
+  end_check_in:           { icon: '🌱', label: 'Resume learning',   cls: '' },
+  exit_ferber:            { icon: '🏳️', label: 'Give up',         cls: 'danger' },
 };
 
 /** Get single-line label for an action */
@@ -119,4 +128,6 @@ export const STATE_COLORS: Record<string, string> = {
   transferring: '#666',
   self_soothing: '#4a6090',
   poop: '#8a6030',
+  learning: '#5a8060',
+  check_in: '#888888',
 };

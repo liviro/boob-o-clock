@@ -21,14 +21,19 @@ The app models your night as a state machine. Depending on the current state, on
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
 - **Diaper changes** — because shit happens, at any time.
+- **Ferber mode** — opt-in per night. Graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. No-op when off; the rest of the app works exactly the same.
 
 ## What it reports
 
 - Per-night summary: night duration, total sleep, total feed time, wake count, feed count, longest sleep block, individual sleep block durations, feed times
+- Ferber nights also show sessions, average time to settle, cry time, fuss time, check-ins, abandoned sessions, and quiet time
 - Color-coded timeline bar showing the night at a glance
 - Full event log with timestamps
 - Feed times scatter plot showing when feeds happen across nights
+- Real bedtime chart showing when the baby actually goes down
 - Trend charts with 3-night moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R)
+- Ferber trend charts (when any night had Ferber on): cry time per night, check-ins per night, avg time to settle
+- Ferber nights are highlighted as sage-green blocks on all non-Ferber trend charts, so you can correlate Ferber periods with broader sleep/feed changes
 - CSV export for backup or analysis
 
 ## Screenshots
@@ -117,13 +122,14 @@ go run ./cmd/seed -db ./dev.db          # 8 nights of plausible data
 go run ./cmd/server -addr :8080 -db ./dev.db
 ```
 
-Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, and breast alternation.
+Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, breast alternation, and two Ferber nights (Night 1 with two settled sessions, Night 2 with a settled bedtime and an abandoned mid-night session falling back to feed-to-sleep).
 
 ### Test
 
 ```bash
-make test              # Go tests (123 tests across 4 packages)
+make test              # Go tests (115 tests across 4 packages)
 cd web && npx tsc      # TypeScript type check
+cd web && npm run lint # ESLint (react-hooks rules)
 ```
 
 ### Project structure
@@ -131,9 +137,9 @@ cd web && npx tsc      # TypeScript type check
 ```
 ├── cmd/server/          Entry point, wiring, embed
 ├── internal/
-│   ├── domain/          State machine (11 states, 32 transitions, zero deps)
+│   ├── domain/          State machine (13 states, 41 transitions, zero deps)
 │   ├── store/           SQLite persistence (pure Go, no CGo)
-│   ├── reports/         Stats, timelines, trends, breast tracking
+│   ├── reports/         Stats, timelines, trends, breast tracking, Ferber session derivation
 │   ├── api/             REST handlers
 │   └── web/             Embedded frontend (go:embed)
 └── web/                 Preact + TypeScript + Vite source
@@ -144,6 +150,7 @@ cd web && npx tsc      # TypeScript type check
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/session/current` | Current state + valid actions |
+| POST | `/api/session/start` | Start a new night (optional Ferber config) |
 | POST | `/api/session/event` | Record an event |
 | POST | `/api/session/undo` | Undo last event |
 | GET | `/api/nights` | Night list with stats |

@@ -1,6 +1,7 @@
 # Binary
 boob-o-clock
 /server
+/seed
 
 # SQLite database
 *.db

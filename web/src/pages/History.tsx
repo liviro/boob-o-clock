@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getNights, getNightDetail, getTrends, NightSummary, NightDetail, TrendPoint } from '../api';
-import { fmtDur, ACTION_INFO, actionLabel } from '../constants';
+import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { TrendChart } from '../components/TrendChart';
-import { FeedScatterChart } from '../components/FeedScatterChart';
-import { BedtimeChart } from '../components/BedtimeChart';
+import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 
 type View = 'nights' | 'trends';
 
 const DISPLAY_LIMIT = 30;
+
+const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
 
 export function History() {
   const [nights, setNights] = useState<NightSummary[]>([]);
@@ -98,7 +99,7 @@ export function History() {
             return (
               <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
                 <h3>
-                  <span>{dateStr}</span>
+                  <span>{dateStr}{n.ferberEnabled && <span class="ferber-badge" title={`Night ${n.ferberNightNumber ?? ''}`}>🌱</span>}</span>
                   <span>{timeStr}</span>
                 </h3>
                 <div class="night-stats">
@@ -129,30 +130,35 @@ export function History() {
             series={[{ getValue: p => p.longestSleep, getAvg: p => p.avgLongestSleep, color: '#4a8aff' }]}
             formatValue={fmtDur}
             title="Longest Sleep Block"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.totalSleep, getAvg: p => p.avgTotalSleep, color: '#6a5aff' }]}
             formatValue={fmtDur}
             title="Total Sleep"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.wakeCount, getAvg: p => p.avgWakeCount, color: '#ff5a5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Wake Count"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.feedCount, getAvg: p => p.avgFeedCount, color: '#ffaa5a' }]}
             formatValue={v => String(Math.round(v))}
             title="Feed Count"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
             series={[{ getValue: p => p.totalFeed, getAvg: p => p.avgTotalFeed, color: '#ffaa5a' }]}
             formatValue={fmtDur}
             title="Total Feed Time"
+            highlightFerber
           />
           <TrendChart
             trends={trendsForCharts}
@@ -162,9 +168,46 @@ export function History() {
             ]}
             formatValue={fmtDur}
             title="Feed Time by Side"
+            highlightFerber
           />
-          <FeedScatterChart nights={nightsForCharts} />
-          <BedtimeChart nights={nightsForCharts} />
+          <NightHourChart
+            nights={nightsForCharts}
+            getHours={n => (n.stats.feedTimes ?? []).map(toNightHour)}
+            color="#c0b040"
+            title="Feed Times"
+            highlightFerber
+          />
+          <NightHourChart
+            nights={nightsForCharts}
+            getHours={n => n.stats.realBedtime ? [toNightHour(n.stats.realBedtime)] : []}
+            color="#6a9aff"
+            title="Real Bedtime"
+            highlightFerber
+          />
+          {trendsForCharts.some(t => t.ferberCryTime != null) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberCryTime != null)}
+              series={[{ getValue: p => nsToMinutes(p.ferberCryTime!), getAvg: () => null, color: '#ff5a8a' }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="🌱 Cry time per night"
+            />
+          )}
+          {trendsForCharts.some(t => t.ferberCheckIns != null) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberCheckIns != null)}
+              series={[{ getValue: p => p.ferberCheckIns!, getAvg: () => null, color: '#a05aff' }]}
+              formatValue={v => String(Math.round(v))}
+              title="🌱 Check-ins per night"
+            />
+          )}
+          {trendsForCharts.some(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0) && (
+            <TrendChart
+              trends={trendsForCharts.filter(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0)}
+              series={[{ getValue: p => nsToMinutes(p.ferberTimeToSettle!), getAvg: () => null, color: '#5affaa' }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="🌱 Avg time to settle"
+            />
+          )}
         </div>
       )}
 
@@ -194,6 +237,25 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
           <Stat value={fmtDur(s.totalFeedTime)} label="Feed Time" />
           <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
         </div>
+        {s.ferber && n.ferberEnabled && (
+          <div class="ferber-stats">
+            <div class="ferber-stats-header">🌱 Night {n.ferberNightNumber}</div>
+            <div class="night-stats">
+              <Stat value={String(s.ferber.sessions)} label="Sessions" />
+              <Stat value={fmtDur(s.ferber.avgTimeToSettle)} label="Session average" />
+              <Stat value={fmtDur(s.ferber.cryTime)} label="Cry time" />
+              <Stat value={fmtDur(s.ferber.fussTime)} label="Fuss time" />
+            </div>
+            <details class="ferber-details">
+              <summary>More</summary>
+              <div class="night-stats">
+                <Stat value={String(s.ferber.checkIns)} label="Check-ins" />
+                <Stat value={String(s.ferber.sessionsAbandoned)} label="Abandoned" />
+                <Stat value={fmtDur(s.ferber.quietTime)} label="Quiet time" />
+              </div>
+            </details>
+          </div>
+        )}
         <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
         <FeedTimesPills times={s.feedTimes} />
         <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
@@ -206,7 +268,7 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
             const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
             const ai = ACTION_INFO[evt.action];
             const label = ai ? `${ai.icon} ${actionLabel(evt.action)}` : evt.action;
-            const meta = evt.metadata ? ` (${Object.values(evt.metadata).join(', ')})` : '';
+            const meta = fmtEventMeta(evt.metadata);
             return <div key={i} class="event-row">{t} — {label}{meta}</div>;
           })}
         </div>
@@ -251,6 +313,12 @@ function FeedTimesPills({ times }: { times: string[] | null }) {
       </div>
     </div>
   );
+}
+
+function fmtEventMeta(m?: Record<string, string>): string {
+  if (!m) return '';
+  const vals = Object.values(m);
+  return vals.length ? ` (${vals.join(', ')})` : '';
 }
 
 function Stat({ value, label }: { value: string; label: string }) {

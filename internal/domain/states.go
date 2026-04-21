@@ -17,12 +17,15 @@ const (
 	SleepingStroller State = "sleeping_stroller"
 	SelfSoothing     State = "self_soothing"
 	Poop             State = "poop"
+	Learning         State = "learning"
+	CheckIn          State = "check_in"
 )
 
 // AllStates is the complete set of valid states.
 var AllStates = []State{
 	NightOff, Awake, Feeding, SleepingOnMe, Transferring,
 	Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing, Poop,
+	Learning, CheckIn,
 }
 
 // Action represents a user action that triggers a state transition.
@@ -50,6 +53,12 @@ const (
 	PoopStart            Action = "poop_start"
 	PoopDone             Action = "poop_done"
 	EndNight             Action = "end_night"
+	PutDownAwakeFerber   Action = "put_down_awake_ferber"
+	BabyStirredFerber    Action = "baby_stirred_ferber"
+	MoodChange           Action = "mood_change"
+	CheckInStart         Action = "check_in" // identifier differs from value to avoid clash with State CheckIn
+	EndCheckIn           Action = "end_check_in"
+	ExitFerber           Action = "exit_ferber"
 )
 
 // Breast side for feeding metadata.
@@ -75,9 +84,11 @@ type Event struct {
 
 // Night represents a tracking session from night start to night end.
 type Night struct {
-	ID        int64
-	StartedAt time.Time
-	EndedAt   *time.Time
-	CreatedAt time.Time
+	ID                int64
+	StartedAt         time.Time
+	EndedAt           *time.Time
+	CreatedAt         time.Time
+	FerberEnabled     bool
+	FerberNightNumber *int // nil when FerberEnabled is false
 }
 

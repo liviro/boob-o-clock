@@ -1,5 +1,6 @@
 import { TrendPoint } from '../api';
 import { fmtDayMonth } from '../constants';
+import { FerberHighlight } from './FerberHighlight';
 
 interface Series {
   getValue: (p: TrendPoint) => number;
@@ -13,6 +14,7 @@ interface Props {
   series: Series[];
   formatValue: (v: number) => string;
   title: string;
+  highlightFerber?: boolean;
 }
 
 const W = 320;
@@ -21,7 +23,7 @@ const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
-export function TrendChart({ trends, series, formatValue, title }: Props) {
+export function TrendChart({ trends, series, formatValue, title, highlightFerber }: Props) {
   if (trends.length === 0) return null;
 
   // Compute global min/max across all series
@@ -81,6 +83,18 @@ export function TrendChart({ trends, series, formatValue, title }: Props) {
         <text x={PAD.left - 4} y={PAD.top + CHART_H + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(minVal)}
         </text>
+        {highlightFerber && (
+          <FerberHighlight
+            count={trends.length}
+            isFerber={i => trends[i].ferberCryTime != null}
+            x={x}
+            left={PAD.left}
+            top={PAD.top}
+            width={CHART_W}
+            height={CHART_H}
+          />
+        )}
+
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
         {series.map((s, si) => {

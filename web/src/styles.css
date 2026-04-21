@@ -72,6 +72,7 @@ body {
   font-size: 20px;
   color: #999;
   margin-top: 6px;
+  text-align: center;
 }
 
 /* Page layout */
@@ -80,6 +81,14 @@ body {
   flex-direction: column;
   flex: 1;
 }
+
+/* Pin the bottom bar to the bottom of the page regardless of what fills the
+   space above (ActionGrid, LearningScreen, CheckInScreen, …). */
+.page-tracker .bottom-bar { margin-top: auto; }
+
+/* On night_off, group ActionGrid + ferber-start-row at the top so the Ferber
+   toggle sits right under the Start Night button. */
+.page-tracker.is-night-off .action-grid { flex: 0; }
 
 /* Action grid */
 .action-grid {
@@ -97,7 +106,6 @@ body {
   border: 1px solid #333;
   border-radius: 12px;
   font-size: 15px;
-  font-weight: 600;
   min-height: 64px;
   display: flex;
   flex-direction: column;
@@ -202,7 +210,6 @@ body {
   border: 1px solid #333;
   border-radius: 10px;
   font-size: 16px;
-  font-weight: 600;
   min-height: 56px;
   cursor: pointer;
   display: flex;
@@ -226,7 +233,6 @@ body {
   border: 2px solid #5a4a2a;
   border-radius: 16px;
   font-size: 28px;
-  font-weight: 700;
   min-height: 100px;
   cursor: pointer;
   display: flex;
@@ -236,6 +242,37 @@ body {
 
 .breast-btn:active { background: #5a4a2a; }
 .breast-btn.suggested { border-color: #8a7a3a; box-shadow: 0 0 12px rgba(138, 122, 58, 0.4); }
+
+/* Mood picker */
+.mood-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.mood-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 8px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #fff;
+  min-height: 120px;
+}
+
+.mood-btn-emoji {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.mood-btn-word {
+  font-size: 1.1rem;
+}
 
 /* Confirm modal */
 .confirm-grid {
@@ -251,7 +288,6 @@ body {
   border: 1px solid #333;
   border-radius: 10px;
   font-size: 16px;
-  font-weight: 600;
   min-height: 56px;
   cursor: pointer;
   display: flex;
@@ -482,4 +518,179 @@ body {
   text-align: center;
   font-size: 14px;
   z-index: 200;
+}
+
+.ferber-start-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.ferber-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  color: #ddd;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 4px;
+}
+
+.ferber-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ferber-toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  background: #444;
+  border-radius: 13px;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.ferber-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.ferber-toggle input:checked + .ferber-toggle-switch {
+  background: #5a8060;
+}
+
+.ferber-toggle input:checked + .ferber-toggle-switch::after {
+  transform: translateX(18px);
+}
+
+.ferber-toggle input:focus-visible + .ferber-toggle-switch {
+  outline: 2px solid #8fb89a;
+  outline-offset: 2px;
+}
+
+.ferber-night-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ddd;
+}
+
+.ferber-night-stepper.is-hidden {
+  visibility: hidden;
+}
+
+.ferber-night-stepper button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.ferber-night-stepper button.is-hidden {
+  visibility: hidden;
+}
+
+.ferber-night-stepper span {
+  min-width: 24px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.learning-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px;
+}
+
+.learning-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.btn-checkin {
+  grid-column: 1 / -1;
+  padding: 16px;
+  font-size: 1rem;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 12px;
+  min-height: 56px;
+}
+
+.btn-checkin.ready {
+  background: #1a3a1a;
+  color: #fff;
+  border-color: #2a5a2a;
+}
+
+.btn-checkin.locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-mood, .btn-settled, .btn-danger, .btn-return {
+  padding: 16px;
+  font-size: 1rem;
+  border-radius: 12px;
+  min-height: 56px;
+  color: #fff;
+}
+
+.btn-mood    { background: #1a1a1a; border: 1px solid #333; }
+.btn-settled { background: #1a1a3a; border: 1px solid #2a2a5a; grid-column: 1 / -1; }
+.btn-danger  { background: #3a1a1a; border: 1px solid #5a2a2a; grid-column: 1 / -1; }
+.btn-return  { background: #1a3a1a; border: 1px solid #2a5a2a; }
+
+.checkin-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px;
+}
+
+.checkin-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.ferber-stats {
+  margin: 16px -14px;
+  padding: 12px 14px;
+  background: #1a2a20;
+}
+
+.ferber-stats-header {
+  font-weight: bold;
+  color: #8fb89a;
+  margin-bottom: 8px;
+}
+
+.ferber-details summary {
+  cursor: pointer;
+  color: #aaa;
+  padding: 8px 0;
+}
+
+.ferber-badge {
+  margin-left: 6px;
+  font-size: 0.9em;
 }

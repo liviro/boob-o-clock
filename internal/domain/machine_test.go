@@ -4,6 +4,19 @@ import (
 	"testing"
 )
 
+func TestLearningAndCheckInStatesExist(t *testing.T) {
+	wantPresent := []State{Learning, CheckIn}
+	present := make(map[State]bool, len(AllStates))
+	for _, s := range AllStates {
+		present[s] = true
+	}
+	for _, s := range wantPresent {
+		if !present[s] {
+			t.Errorf("state %q missing from AllStates", s)
+		}
+	}
+}
+
 // TestAllValidTransitions verifies every row of the 32-transition table.
 func TestAllValidTransitions(t *testing.T) {
 	tests := []struct {
@@ -136,12 +149,12 @@ func TestValidActions(t *testing.T) {
 		actions []Action
 	}{
 		{NightOff, []Action{StartNight}},
-		{Awake, []Action{StartFeed, StartResettle, StartStrolling, PutDownAwake, PoopStart, EndNight}},
+		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, StartResettle, StartStrolling, PoopStart, EndNight}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
 		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},
 		{Resettling, []Action{Settled, ResettleFailed, PoopStart}},
-		{SleepingCrib, []Action{BabyWoke, BabyStirred, PoopStart}},
+		{SleepingCrib, []Action{BabyWoke, BabyStirred, BabyStirredFerber, PoopStart}},
 		{SelfSoothing, []Action{Settled, BabyWoke, PoopStart}},
 		{Strolling, []Action{FellAsleep, GiveUp, PoopStart}},
 		{SleepingStroller, []Action{BabyWoke, PoopStart}},
@@ -307,4 +320,109 @@ func TestEveryStateCanReachNightOff(t *testing.T) {
 			t.Errorf("state %s cannot reach NightOff within 5 hops", state)
 		}
 	}
+}
+
+func TestFerberActionsExist(t *testing.T) {
+	// Referencing the constants ensures they exist (any typo = compile error).
+	_ = PutDownAwakeFerber
+	_ = BabyStirredFerber
+	_ = MoodChange
+	_ = CheckInStart
+	_ = EndCheckIn
+	_ = ExitFerber
+}
+
+func TestFerberTransitions(t *testing.T) {
+	mood := map[string]string{"mood": "quiet"}
+	cases := []struct {
+		name     string
+		from     State
+		action   Action
+		meta     map[string]string
+		expected State
+	}{
+		{"put down awake (ferber)", Awake, PutDownAwakeFerber, mood, Learning},
+		{"baby stirred (ferber)", SleepingCrib, BabyStirredFerber, mood, Learning},
+		{"mood change", Learning, MoodChange, map[string]string{"mood": "crying"}, Learning},
+		{"check in", Learning, CheckInStart, nil, CheckIn},
+		{"settled from learning", Learning, Settled, nil, SleepingCrib},
+		{"exit ferber from learning", Learning, ExitFerber, nil, Awake},
+		{"end check in", CheckIn, EndCheckIn, mood, Learning},
+		{"settled from check in", CheckIn, Settled, nil, SleepingCrib},
+		{"exit ferber from check in", CheckIn, ExitFerber, nil, Awake},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Transition(c.from, c.action, c.meta)
+			if err != nil {
+				t.Fatalf("Transition(%s, %s): %v", c.from, c.action, err)
+			}
+			if got != c.expected {
+				t.Errorf("Transition(%s, %s) = %s, want %s", c.from, c.action, got, c.expected)
+			}
+		})
+	}
+}
+
+func TestFerberForbiddenTransitions(t *testing.T) {
+	// Explicitly-excluded transitions (spec §3.5).
+	cases := []struct {
+		name   string
+		from   State
+		action Action
+	}{
+		{"no poop from learning", Learning, PoopStart},
+		{"no poop from check-in", CheckIn, PoopStart},
+		{"no baby_woke from learning", Learning, BabyWoke},
+		{"no feed from learning", Learning, StartFeed},
+		{"no feed from check-in", CheckIn, StartFeed},
+		{"no check-in from self-soothing", SelfSoothing, CheckInStart},
+		{"no mood change from self-soothing", SelfSoothing, MoodChange},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Transition(c.from, c.action, map[string]string{"mood": "quiet", "breast": "L"})
+			if err == nil {
+				t.Errorf("expected error for %s -> %s, got none", c.from, c.action)
+			}
+		})
+	}
+}
+
+func TestMoodValidation(t *testing.T) {
+	t.Run("missing mood on put_down_awake_ferber", func(t *testing.T) {
+		_, err := Transition(Awake, PutDownAwakeFerber, nil)
+		if err == nil {
+			t.Error("expected mood-required error, got none")
+		}
+	})
+	t.Run("missing mood on mood_change", func(t *testing.T) {
+		_, err := Transition(Learning, MoodChange, map[string]string{})
+		if err == nil {
+			t.Error("expected mood-required error, got none")
+		}
+	})
+	t.Run("invalid mood value", func(t *testing.T) {
+		_, err := Transition(Awake, PutDownAwakeFerber, map[string]string{"mood": "angry"})
+		if err == nil {
+			t.Error("expected invalid-mood error, got none")
+		}
+	})
+	t.Run("all three valid moods accepted", func(t *testing.T) {
+		for _, m := range []string{"quiet", "fussy", "crying"} {
+			if _, err := Transition(Awake, PutDownAwakeFerber, map[string]string{"mood": m}); err != nil {
+				t.Errorf("mood %q rejected: %v", m, err)
+			}
+		}
+	})
+	t.Run("check_in does not require mood", func(t *testing.T) {
+		if _, err := Transition(Learning, CheckInStart, nil); err != nil {
+			t.Errorf("check_in should not require mood: %v", err)
+		}
+	})
+	t.Run("end_check_in requires mood", func(t *testing.T) {
+		if _, err := Transition(CheckIn, EndCheckIn, nil); err == nil {
+			t.Error("expected mood-required error on end_check_in, got none")
+		}
+	})
 }

@@ -1,7 +1,23 @@
 const API = '/api';
 
+// Mirrors internal/domain.State. Keep in sync with internal/domain/states.go.
+export type State =
+  | 'night_off'
+  | 'awake'
+  | 'feeding'
+  | 'sleeping_on_me'
+  | 'transferring'
+  | 'resettling'
+  | 'sleeping_crib'
+  | 'strolling'
+  | 'sleeping_stroller'
+  | 'self_soothing'
+  | 'poop'
+  | 'learning'
+  | 'check_in';
+
 export interface SessionResponse {
-  state: string;
+  state: State;
   validActions: string[];
   nightId: number | null;
   suggestBreast?: string;
@@ -14,13 +30,40 @@ export interface SessionResponse {
     metadata?: Record<string, string>;
     timestamp: string;
   } | null;
+  // Present when the current night is a Ferber night.
+  ferber?: {
+    nightNumber: number;
+    // Present when the current state is Learning or CheckIn.
+    current?: {
+      checkInCount: number;
+      startedAt: string;
+      // Absolute timestamp at which the next check-in becomes available.
+      // Present only in Learning state (absent during CheckIn).
+      checkInAvailableAt?: string;
+      mood: 'quiet' | 'fussy' | 'crying';
+    };
+  };
+  // Present on NightOff when a recent Ferber sequence exists.
+  suggestFerberNight?: number;
 }
 
 export interface NightSummary {
   id: number;
   startedAt: string;
   endedAt?: string;
+  ferberEnabled?: boolean;
+  ferberNightNumber?: number | null;
   stats: NightStats;
+}
+
+export interface FerberStats {
+  sessions: number;
+  checkIns: number;
+  cryTime: number;
+  fussTime: number;
+  quietTime: number;
+  sessionsAbandoned: number;
+  avgTimeToSettle: number;
 }
 
 export interface NightStats {
@@ -36,6 +79,7 @@ export interface NightStats {
   sleepBlocks: number[];
   feedTimes: string[] | null;
   realBedtime?: string | null;
+  ferber?: FerberStats;
 }
 
 export interface TimelineEntry {
@@ -69,10 +113,19 @@ export interface TrendPoint {
   avgFeedTimeRight: number | null;
   avgWakeCount: number | null;
   avgFeedCount: number | null;
+  ferberCryTime?: number | null;
+  ferberCheckIns?: number | null;
+  ferberTimeToSettle?: number | null;
 }
 
 export interface NightDetail {
-  night: { id: number; startedAt: string; endedAt?: string };
+  night: {
+    id: number;
+    startedAt: string;
+    endedAt?: string;
+    ferberEnabled?: boolean;
+    ferberNightNumber?: number | null;
+  };
   events: EventEntry[];
   timeline: TimelineEntry[];
   stats: NightStats;
@@ -114,6 +167,24 @@ export async function postEvent(
   if (timestamp) body.timestamp = toLocalISO(timestamp);
 
   const resp = await checkResponse(await fetch(`${API}/session/event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+  return resp.json();
+}
+
+export interface StartNightConfig {
+  ferber?: { nightNumber: number };
+  timestamp?: Date;
+}
+
+export async function postStartNight(config: StartNightConfig): Promise<SessionResponse> {
+  const body: Record<string, unknown> = {};
+  if (config.ferber) body.ferber = config.ferber;
+  if (config.timestamp) body.timestamp = toLocalISO(config.timestamp);
+
+  const resp = await checkResponse(await fetch(`${API}/session/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
