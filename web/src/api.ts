@@ -4,8 +4,6 @@ export interface SessionResponse {
   state: string;
   validActions: string[];
   nightId: number | null;
-  ferberEnabled?: boolean;
-  ferberNightNumber?: number | null;
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
@@ -16,10 +14,18 @@ export interface SessionResponse {
     metadata?: Record<string, string>;
     timestamp: string;
   } | null;
-  ferberCheckInCount?: number;
-  ferberSessionStart?: string;
-  ferberLastTick?: string;
-  ferberCurrentMood?: 'quiet' | 'fussy' | 'crying';
+  // Present when the current night is a Ferber night.
+  ferber?: {
+    nightNumber: number;
+    // Present when the current state is Learning or CheckIn.
+    current?: {
+      checkInCount: number;
+      startedAt: string;
+      lastTick: string;
+      mood: 'quiet' | 'fussy' | 'crying';
+    };
+  };
+  // Present on NightOff when a recent Ferber sequence exists.
   suggestFerberNight?: number;
 }
 

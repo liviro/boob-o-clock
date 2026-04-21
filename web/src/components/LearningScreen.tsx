@@ -14,15 +14,16 @@ export function LearningScreen({ session, dispatch }: Props) {
   const now = useNow();
   const [confirmExit, setConfirmExit] = useState(false);
 
-  const nightNumber = session.ferberNightNumber ?? 1;
-  const checkInCount = session.ferberCheckInCount ?? 0;
-  const lastTickMs = session.ferberLastTick ? new Date(session.ferberLastTick).getTime() : now;
+  const nightNumber = session.ferber?.nightNumber ?? 1;
+  const current = session.ferber?.current;
+  const checkInCount = current?.checkInCount ?? 0;
+  const lastTickMs = current?.lastTick ? new Date(current.lastTick).getTime() : now;
   const intervalSec = intervalMinutes(nightNumber, checkInCount + 1) * 60;
   const sinceTickSec = Math.max(0, Math.floor((now - lastTickMs) / 1000));
   const countdownSec = Math.max(0, intervalSec - sinceTickSec);
   const readyToCheck = countdownSec === 0;
 
-  const currentMood = (session.ferberCurrentMood ?? 'quiet') as Mood;
+  const currentMood = (current?.mood ?? 'quiet') as Mood;
   const [mA, mB] = otherMoods(currentMood);
 
   const moodLabel = (m: Mood) => `${MOOD_LABELS[m].emoji} ${MOOD_LABELS[m].word}`;

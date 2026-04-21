@@ -168,11 +168,11 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
         lastEventTimestamp={session.lastEvent?.timestamp}
         currentBreast={session.currentBreast}
         lastFeedStartedAt={session.lastFeedStartedAt}
-        sessionStartIso={session.state === 'learning' ? session.ferberSessionStart : undefined}
-        moodLabel={session.state === 'learning' ? moodWord(session.ferberCurrentMood) : undefined}
+        sessionStartIso={session.state === 'learning' ? session.ferber?.current?.startedAt : undefined}
+        moodLabel={session.state === 'learning' ? moodWord(session.ferber?.current?.mood) : undefined}
       />
 
-      {session.state === 'learning' && session.ferberEnabled
+      {session.state === 'learning' && session.ferber
         ? (
           <LearningScreen
             session={session}

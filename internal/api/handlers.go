@@ -30,22 +30,34 @@ type eventRequest struct {
 	Timestamp string            `json:"timestamp"`
 }
 
+// ferberCurrent captures the in-progress Ferber learning session. Present only
+// when the current state is Learning or CheckIn.
+type ferberCurrent struct {
+	CheckInCount int       `json:"checkInCount"`
+	StartedAt    time.Time `json:"startedAt"`
+	LastTick     time.Time `json:"lastTick"`
+	Mood         string    `json:"mood"`
+}
+
+// ferberNight is the Ferber-specific context for the current night. Absent
+// when the current night is non-Ferber (or there is no current night).
+type ferberNight struct {
+	NightNumber int            `json:"nightNumber"`
+	Current     *ferberCurrent `json:"current,omitempty"`
+}
+
 type sessionResponse struct {
-	State               domain.State    `json:"state"`
-	ValidActions        []domain.Action `json:"validActions"`
-	NightID             *int64          `json:"nightId"`
-	LastEvent           *eventResponse  `json:"lastEvent"`
-	SuggestBreast       string          `json:"suggestBreast,omitempty"`
-	CurrentBreast       string          `json:"currentBreast,omitempty"`
-	LastFeedStartedAt   *time.Time      `json:"lastFeedStartedAt,omitempty"`
-	FerberEnabled       bool            `json:"ferberEnabled"`
-	FerberNightNumber   *int            `json:"ferberNightNumber,omitempty"`
-	FerberCheckInCount  *int            `json:"ferberCheckInCount,omitempty"`
-	FerberSessionStart  *time.Time      `json:"ferberSessionStart,omitempty"`
-	FerberLastTick      *time.Time      `json:"ferberLastTick,omitempty"`
-	FerberCurrentMood   string          `json:"ferberCurrentMood,omitempty"`
-	// Only populated on NightOff: suggested Ferber night number (last Ferber
-	// night + 1) for the Start Night form. Absent when no recent Ferber night.
+	State             domain.State    `json:"state"`
+	ValidActions      []domain.Action `json:"validActions"`
+	NightID           *int64          `json:"nightId"`
+	LastEvent         *eventResponse  `json:"lastEvent"`
+	SuggestBreast     string          `json:"suggestBreast,omitempty"`
+	CurrentBreast     string          `json:"currentBreast,omitempty"`
+	LastFeedStartedAt *time.Time      `json:"lastFeedStartedAt,omitempty"`
+	// Present when the current night is a Ferber night; absent otherwise.
+	Ferber *ferberNight `json:"ferber,omitempty"`
+	// Present on NightOff when a recent Ferber sequence exists: the suggested
+	// next Ferber night number (last + 1) for the Start Night form.
 	SuggestFerberNight *int `json:"suggestFerberNight,omitempty"`
 }
 
@@ -78,17 +90,20 @@ func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, 
 	}
 	if night != nil {
 		resp.NightID = &night.ID
-		resp.FerberEnabled = night.FerberEnabled
-		resp.FerberNightNumber = night.FerberNightNumber
+		if night.FerberEnabled && night.FerberNightNumber != nil {
+			resp.Ferber = &ferberNight{NightNumber: *night.FerberNightNumber}
+			if live := reports.CurrentFerberSession(state, events); live != nil {
+				resp.Ferber.Current = &ferberCurrent{
+					CheckInCount: live.CheckIns,
+					StartedAt:    live.SessionStart,
+					LastTick:     live.LastTick,
+					Mood:         live.Mood,
+				}
+			}
+		}
 	}
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
-	}
-	if live := reports.CurrentFerberSession(state, events); live != nil {
-		resp.FerberCheckInCount = &live.CheckIns
-		resp.FerberSessionStart = &live.SessionStart
-		resp.FerberLastTick = &live.LastTick
-		resp.FerberCurrentMood = live.Mood
 	}
 	if state == domain.NightOff {
 		last, err := h.store.LastNight()

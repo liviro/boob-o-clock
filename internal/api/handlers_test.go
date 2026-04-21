@@ -711,17 +711,18 @@ func TestSessionResponseIncludesFerberFields(t *testing.T) {
 	defer resp.Body.Close()
 
 	var got struct {
-		FerberEnabled     bool `json:"ferberEnabled"`
-		FerberNightNumber *int `json:"ferberNightNumber,omitempty"`
+		Ferber *struct {
+			NightNumber int `json:"nightNumber"`
+		} `json:"ferber,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !got.FerberEnabled {
-		t.Error("FerberEnabled = false, want true")
+	if got.Ferber == nil {
+		t.Fatal("ferber = nil, want non-nil on a Ferber night")
 	}
-	if got.FerberNightNumber == nil || *got.FerberNightNumber != 2 {
-		t.Errorf("FerberNightNumber = %v, want 2", got.FerberNightNumber)
+	if got.Ferber.NightNumber != 2 {
+		t.Errorf("ferber.nightNumber = %d, want 2", got.Ferber.NightNumber)
 	}
 }
 
@@ -834,8 +835,8 @@ func TestValidActions_FerberNight(t *testing.T) {
 	if got.State != "awake" {
 		t.Fatalf("state = %q, want awake", got.State)
 	}
-	if !got.FerberEnabled {
-		t.Fatal("FerberEnabled = false, want true")
+	if got.Ferber == nil {
+		t.Fatal("ferber = nil, want non-nil on a Ferber night")
 	}
 
 	has := func(a string) bool {
@@ -871,8 +872,8 @@ func TestValidActions_NonFerberNight(t *testing.T) {
 	var got sessionResponse
 	decodeJSON(t, resp, &got)
 
-	if got.FerberEnabled {
-		t.Fatal("FerberEnabled = true, want false")
+	if got.Ferber != nil {
+		t.Fatal("ferber != nil, want nil on a non-Ferber night")
 	}
 
 	has := func(a string) bool {
@@ -889,6 +890,59 @@ func TestValidActions_NonFerberNight(t *testing.T) {
 	}
 	if has("put_down_awake_ferber") {
 		t.Errorf("validActions contains put_down_awake_ferber; should be hidden on non-Ferber nights; got %v", got.ValidActions)
+	}
+}
+
+// TestFerberSessionResponseShape verifies the nested ferber/current structure:
+// - ferber.current is absent right after start_night (state=Awake)
+// - ferber.current is populated after PutDownAwakeFerber (state=Learning)
+// - all current fields carry the expected values
+func TestFerberSessionResponseShape(t *testing.T) {
+	ts := newTestServer(t)
+
+	if r := doPost(t, ts, "/api/session/event", map[string]any{
+		"action": "start_night",
+		"metadata": map[string]string{
+			"ferber_enabled":      "true",
+			"ferber_night_number": "1",
+		},
+	}); r.StatusCode != 200 {
+		t.Fatalf("start_night: %d", r.StatusCode)
+	}
+
+	var awakeResp sessionResponse
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &awakeResp)
+	if awakeResp.Ferber == nil {
+		t.Fatal("ferber = nil on Ferber night Awake, want non-nil")
+	}
+	if awakeResp.Ferber.Current != nil {
+		t.Error("ferber.current non-nil on Awake, want nil (no active learning session yet)")
+	}
+
+	if r := doPost(t, ts, "/api/session/event", map[string]any{
+		"action":   "put_down_awake_ferber",
+		"metadata": map[string]string{"mood": "fussy"},
+	}); r.StatusCode != 200 {
+		t.Fatalf("put_down_awake_ferber: %d", r.StatusCode)
+	}
+
+	var learningResp sessionResponse
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &learningResp)
+	if learningResp.Ferber == nil || learningResp.Ferber.Current == nil {
+		t.Fatal("ferber.current = nil on Learning, want populated")
+	}
+	cur := learningResp.Ferber.Current
+	if cur.CheckInCount != 0 {
+		t.Errorf("checkInCount = %d, want 0 (no check-ins yet)", cur.CheckInCount)
+	}
+	if cur.Mood != "fussy" {
+		t.Errorf("mood = %q, want fussy", cur.Mood)
+	}
+	if cur.StartedAt.IsZero() {
+		t.Error("startedAt is zero, want populated")
+	}
+	if !cur.LastTick.Equal(cur.StartedAt) {
+		t.Errorf("lastTick = %v, want equal to startedAt (no check-ins yet)", cur.LastTick)
 	}
 }
 
