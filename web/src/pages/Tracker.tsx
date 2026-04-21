@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { SessionResponse, getFerberDefaults } from '../api';
+import { SessionResponse } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
 import { Mood, moodWord } from '../ferber';
 import { StateDisplay } from '../components/StateDisplay';
@@ -33,14 +33,18 @@ export function Tracker({ session, onDispatch, onUndo }: Props) {
   const [ferberOn, setFerberOn] = useState(false);
   const [ferberNight, setFerberNight] = useState(1);
 
+  // Seed the Start Night controls from the server-computed suggestion.
+  // Reseeds when the suggestion changes (e.g. after End Night).
   useEffect(() => {
-    getFerberDefaults()
-      .then(d => {
-        setFerberOn(d.enabled);
-        setFerberNight(d.nightNumber);
-      })
-      .catch(() => {/* swallow: defaults stay off/1 */});
-  }, []);
+    const suggested = session.suggestFerberNight;
+    if (suggested != null) {
+      setFerberOn(true);
+      setFerberNight(suggested);
+    } else {
+      setFerberOn(false);
+      setFerberNight(1);
+    }
+  }, [session.suggestFerberNight]);
 
   // Cleanup timer on unmount
   useEffect(() => {

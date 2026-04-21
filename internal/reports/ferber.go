@@ -18,6 +18,17 @@ type FerberStats struct {
 	AvgTimeToSettle   time.Duration `json:"avgTimeToSettle"`
 }
 
+// SuggestFerberNight returns the suggested Ferber night number for the next
+// night (last + 1) based on the most recent night, or nil when the last night
+// was not Ferber (or there is no history). Used to seed the Start Night form.
+func SuggestFerberNight(last *domain.Night) *int {
+	if last == nil || !last.FerberEnabled || last.FerberNightNumber == nil {
+		return nil
+	}
+	n := *last.FerberNightNumber + 1
+	return &n
+}
+
 // SelectActionsForNight returns the actions appropriate for the night's Ferber
 // state: on Ferber nights, drop the plain variants and keep the _ferber
 // aliases; on normal nights, drop the _ferber aliases and keep the plain ones.

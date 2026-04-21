@@ -148,6 +148,27 @@ func TestComputeFerberStats_OpenSession(t *testing.T) {
 	}
 }
 
+func TestSuggestFerberNight(t *testing.T) {
+	if got := SuggestFerberNight(nil); got != nil {
+		t.Errorf("nil night → want nil, got %v", *got)
+	}
+	nonFerber := &domain.Night{FerberEnabled: false}
+	if got := SuggestFerberNight(nonFerber); got != nil {
+		t.Errorf("non-Ferber → want nil, got %v", *got)
+	}
+	n := 4
+	ferber := &domain.Night{FerberEnabled: true, FerberNightNumber: &n}
+	got := SuggestFerberNight(ferber)
+	if got == nil || *got != 5 {
+		t.Errorf("Ferber night 4 → want 5, got %v", got)
+	}
+	// Enabled without a number (shouldn't happen in practice, but guard) → nil.
+	enabledNoNumber := &domain.Night{FerberEnabled: true}
+	if got := SuggestFerberNight(enabledNoNumber); got != nil {
+		t.Errorf("enabled with nil number → want nil, got %v", *got)
+	}
+}
+
 func TestCurrentFerberSession_NotInLearningOrCheckIn(t *testing.T) {
 	t0 := time.Now()
 	events := []domain.Event{

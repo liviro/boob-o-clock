@@ -750,35 +750,62 @@ func TestGetTrendsIncludesOldNights(t *testing.T) {
 	}
 }
 
-func TestGetFerberDefaults(t *testing.T) {
+func TestSuggestFerberNight_OnSessionCurrent(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 
-	// No previous nights: defaults are off / 1.
-	resp, err := http.Get(ts.URL + "/api/ferber/defaults")
+	// No previous nights: field should be absent on the NightOff session.
+	resp, err := http.Get(ts.URL + "/api/session/current")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
 	defer resp.Body.Close()
 	var got struct {
-		Enabled     bool `json:"enabled"`
-		NightNumber int  `json:"nightNumber"`
+		State              string `json:"state"`
+		SuggestFerberNight *int   `json:"suggestFerberNight,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Enabled || got.NightNumber != 1 {
-		t.Errorf("defaults (empty) = %+v, want {false, 1}", got)
+	if got.State != "night_off" {
+		t.Fatalf("state = %q, want night_off", got.State)
+	}
+	if got.SuggestFerberNight != nil {
+		t.Errorf("suggestFerberNight = %v, want nil with no prior Ferber nights", *got.SuggestFerberNight)
 	}
 
-	// With a previous Ferber night at number 4, defaults become {true, 5}.
+	// With a previous Ferber night at number 4, the field becomes 5.
 	n, _ := s.CreateNight(time.Now().Add(-12*time.Hour), true, 4)
 	_ = s.EndNight(n.ID, time.Now().Add(-2*time.Hour))
 
-	resp2, _ := http.Get(ts.URL + "/api/ferber/defaults")
+	resp2, _ := http.Get(ts.URL + "/api/session/current")
 	defer resp2.Body.Close()
 	_ = json.NewDecoder(resp2.Body).Decode(&got)
-	if !got.Enabled || got.NightNumber != 5 {
-		t.Errorf("defaults (with prev) = %+v, want {true, 5}", got)
+	if got.SuggestFerberNight == nil || *got.SuggestFerberNight != 5 {
+		t.Errorf("suggestFerberNight = %v, want 5", got.SuggestFerberNight)
+	}
+}
+
+func TestSuggestFerberNight_AbsentMidNight(t *testing.T) {
+	// The suggestion only belongs on NightOff. A mid-night session response
+	// must not carry it.
+	ts := newTestServer(t)
+
+	_ = doPost(t, ts, "/api/session/event", map[string]any{
+		"action": "start_night",
+	})
+
+	resp, _ := http.Get(ts.URL + "/api/session/current")
+	defer resp.Body.Close()
+	var got struct {
+		State              string `json:"state"`
+		SuggestFerberNight *int   `json:"suggestFerberNight,omitempty"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got.State == "night_off" {
+		t.Fatalf("state = night_off, expected mid-night")
+	}
+	if got.SuggestFerberNight != nil {
+		t.Errorf("suggestFerberNight = %v, want nil mid-night", *got.SuggestFerberNight)
 	}
 }
 

@@ -44,6 +44,9 @@ type sessionResponse struct {
 	FerberSessionStart  *time.Time      `json:"ferberSessionStart,omitempty"`
 	FerberLastTick      *time.Time      `json:"ferberLastTick,omitempty"`
 	FerberCurrentMood   string          `json:"ferberCurrentMood,omitempty"`
+	// Only populated on NightOff: suggested Ferber night number (last Ferber
+	// night + 1) for the Start Night form. Absent when no recent Ferber night.
+	SuggestFerberNight *int `json:"suggestFerberNight,omitempty"`
 }
 
 type eventResponse struct {
@@ -64,7 +67,7 @@ func toEventResponse(e domain.Event) *eventResponse {
 	}
 }
 
-func buildSessionResponse(state domain.State, night *domain.Night, events []domain.Event) sessionResponse {
+func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, events []domain.Event) sessionResponse {
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
 		State:             state,
@@ -87,6 +90,16 @@ func buildSessionResponse(state domain.State, night *domain.Night, events []doma
 		resp.FerberLastTick = &live.LastTick
 		resp.FerberCurrentMood = live.Mood
 	}
+	if state == domain.NightOff {
+		last, err := h.store.LastNight()
+		if err != nil {
+			// Don't fail the whole session fetch over a missing hint, but log so
+			// the developer can see if this starts happening systematically.
+			log.Printf("buildSessionResponse: LastNight lookup failed: %v", err)
+		} else {
+			resp.SuggestFerberNight = reports.SuggestFerberNight(last)
+		}
+	}
 	return resp
 }
 
@@ -107,7 +120,7 @@ func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 
 	state := domain.DeriveState(events)
 
-	writeJSON(w, http.StatusOK, buildSessionResponse(state, night, events))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, night, events))
 }
 
 // PostEvent records a new event and returns the updated session.
@@ -188,7 +201,7 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 	if nextState != domain.NightOff {
 		responseNight = night
 	}
-	writeJSON(w, http.StatusOK, buildSessionResponse(nextState, responseNight, append(events, *evt)))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, responseNight, append(events, *evt)))
 }
 
 // PostUndo removes the last event and returns the updated session.
@@ -216,7 +229,7 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, buildSessionResponse(domain.NightOff, nil, nil))
+		writeJSON(w, http.StatusOK, h.buildSessionResponse(domain.NightOff, nil, nil))
 		return
 	}
 
@@ -227,7 +240,7 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
-	writeJSON(w, http.StatusOK, buildSessionResponse(state, night, remaining))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, night, remaining))
 }
 
 // GetNightDetail returns a night with its timeline, stats, and raw events.
@@ -363,26 +376,6 @@ func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trends": trends,
 		"window": window,
-	})
-}
-
-// GetFerberDefaults returns the default toggle and night-number values for the
-// start-of-night UI, based on the most recent night's Ferber state.
-func (h *Handler) GetFerberDefaults(w http.ResponseWriter, r *http.Request) {
-	last, err := h.store.LastNight()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	enabled := false
-	nightNumber := 1
-	if last != nil && last.FerberEnabled && last.FerberNightNumber != nil {
-		enabled = true
-		nightNumber = *last.FerberNightNumber + 1
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":     enabled,
-		"nightNumber": nightNumber,
 	})
 }
 

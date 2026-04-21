@@ -20,6 +20,7 @@ export interface SessionResponse {
   ferberSessionStart?: string;
   ferberLastTick?: string;
   ferberCurrentMood?: 'quiet' | 'fussy' | 'crying';
+  suggestFerberNight?: number;
 }
 
 export interface NightSummary {
@@ -166,16 +167,5 @@ export async function getNightDetail(id: number): Promise<NightDetail> {
 
 export async function getTrends(): Promise<{ trends: TrendPoint[]; window: number }> {
   const resp = await checkResponse(await fetch(`${API}/trends`));
-  return resp.json();
-}
-
-export interface FerberDefaults {
-  enabled: boolean;
-  nightNumber: number;
-}
-
-export async function getFerberDefaults(): Promise<FerberDefaults> {
-  const resp = await fetch(`${API}/ferber/defaults`);
-  if (!resp.ok) throw new Error(`GET ${API}/ferber/defaults: ${resp.status}`);
   return resp.json();
 }

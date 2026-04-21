@@ -155,7 +155,6 @@ cd web && npm run lint # ESLint (react-hooks rules)
 | GET | `/api/nights` | Night list with stats |
 | GET | `/api/nights/:id` | Night detail with timeline |
 | GET | `/api/trends` | Trend data with moving averages |
-| GET | `/api/ferber/defaults` | Seeds the Ferber toggle/night on Start Night from the most recent Ferber night |
 | GET | `/api/export/csv` | Download all events as CSV |
 | GET | `/healthz` | Health check (DB ping) |
 
