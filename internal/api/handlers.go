@@ -4,8 +4,8 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"log"
-	"net/http"
 	"maps"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +24,8 @@ func NewHandler(s *store.Store) *Handler {
 	return &Handler{store: s}
 }
 
+// --- request / response types ---
+
 type eventRequest struct {
 	Action    string            `json:"action"`
 	Metadata  map[string]string `json:"metadata"`
@@ -33,44 +35,39 @@ type eventRequest struct {
 // ferberCurrent captures the in-progress Ferber learning session. Present only
 // when the current state is Learning or CheckIn.
 type ferberCurrent struct {
-	CheckInCount int       `json:"checkInCount"`
-	StartedAt    time.Time `json:"startedAt"`
-	// CheckInAvailableAt is populated only in Learning state — the moment
-	// the next check-in button becomes tappable. Absent during CheckIn.
+	CheckInCount       int        `json:"checkInCount"`
+	StartedAt          time.Time  `json:"startedAt"`
 	CheckInAvailableAt *time.Time `json:"checkInAvailableAt,omitempty"`
 	Mood               string     `json:"mood"`
 }
 
-// ferberNight is the Ferber-specific context for the current night. Absent
-// when the current night is non-Ferber (or there is no current night).
 type ferberNight struct {
 	NightNumber int            `json:"nightNumber"`
 	Current     *ferberCurrent `json:"current,omitempty"`
 }
 
 type sessionResponse struct {
-	State             domain.State    `json:"state"`
-	ValidActions      []domain.Action `json:"validActions"`
-	NightID           *int64          `json:"nightId"`
-	LastEvent         *eventResponse  `json:"lastEvent"`
-	SuggestBreast     string          `json:"suggestBreast,omitempty"`
-	CurrentBreast     string          `json:"currentBreast,omitempty"`
-	LastFeedStartedAt *time.Time      `json:"lastFeedStartedAt,omitempty"`
-	// Present when the current night is a Ferber night; absent otherwise.
-	Ferber *ferberNight `json:"ferber,omitempty"`
-	// Present on NightOff when a recent Ferber sequence exists: the suggested
-	// next Ferber night number (last + 1) for the Start Night form.
-	SuggestFerberNight *int `json:"suggestFerberNight,omitempty"`
+	// Kind is nil iff there is no active session (state == NightOff, no row).
+	Kind               *domain.SessionKind `json:"kind"`
+	State              domain.State        `json:"state"`
+	ValidActions       []domain.Action     `json:"validActions"`
+	SessionID          *int64              `json:"sessionId"`
+	LastEvent          *eventResponse      `json:"lastEvent"`
+	SuggestBreast      string              `json:"suggestBreast,omitempty"`
+	CurrentBreast      string              `json:"currentBreast,omitempty"`
+	LastFeedStartedAt  *time.Time          `json:"lastFeedStartedAt,omitempty"`
+	Ferber             *ferberNight        `json:"ferber,omitempty"`
+	SuggestFerberNight *int                `json:"suggestFerberNight,omitempty"`
 }
 
 type ferberConfigRequest struct {
 	NightNumber int `json:"nightNumber"`
 }
 
-// startNightRequest is the typed body for POST /api/session/start.
-// Presence of Ferber implies the night runs in Ferber mode with the given
-// night number; absence means a plain night.
-type startNightRequest struct {
+// startSessionRequest is the typed body for POST /api/session/start.
+// Kind is required; ferber is only valid when kind == "night".
+type startSessionRequest struct {
+	Kind      string               `json:"kind"`
 	Timestamp string               `json:"timestamp,omitempty"`
 	Ferber    *ferberConfigRequest `json:"ferber,omitempty"`
 }
@@ -93,38 +90,46 @@ func toEventResponse(e domain.Event) *eventResponse {
 	}
 }
 
-func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, events []domain.Event) sessionResponse {
+// --- session response builder ---
+
+func (h *Handler) buildSessionResponse(state domain.State, session *domain.Session, events []domain.Event) sessionResponse {
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
 		State:             state,
-		ValidActions:      reports.SelectActionsForNight(domain.ValidActions(state), night != nil && night.FerberEnabled),
 		SuggestBreast:     reports.SuggestedBreast(lastBreast),
 		CurrentBreast:     lastBreast,
 		LastFeedStartedAt: reports.LastFeedStart(events),
 	}
-	if night != nil {
-		resp.NightID = &night.ID
-		if night.FerberEnabled && night.FerberNightNumber != nil {
-			resp.Ferber = &ferberNight{NightNumber: *night.FerberNightNumber}
-			if session := reports.CurrentFerberSession(state, events, *night.FerberNightNumber); session != nil {
+
+	ferberEnabled := session != nil && session.IsNight() && session.FerberEnabled
+	resp.ValidActions = reports.SelectActionsForNight(domain.ValidActions(state), ferberEnabled)
+
+	if session != nil {
+		resp.Kind = &session.Kind
+		resp.SessionID = &session.ID
+		if ferberEnabled && session.FerberNightNumber != nil {
+			resp.Ferber = &ferberNight{NightNumber: *session.FerberNightNumber}
+			if fs := reports.CurrentFerberSession(state, events, *session.FerberNightNumber); fs != nil {
 				resp.Ferber.Current = &ferberCurrent{
-					CheckInCount:       session.CheckIns,
-					StartedAt:          session.SessionStart,
-					CheckInAvailableAt: session.CheckInAvailableAt,
-					Mood:               session.Mood,
+					CheckInCount:       fs.CheckIns,
+					StartedAt:          fs.SessionStart,
+					CheckInAvailableAt: fs.CheckInAvailableAt,
+					Mood:               fs.Mood,
 				}
 			}
 		}
 	}
+
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
 	}
-	if state == domain.NightOff {
-		last, err := h.store.LastNight()
+
+	// Suggest Ferber night wherever start_night is a valid action: that's
+	// NightOff (first-start) AND DayAwake (chain advance at bedtime).
+	if state == domain.NightOff || state == domain.DayAwake {
+		last, err := h.store.LastSession(domain.SessionKindNight)
 		if err != nil {
-			// Don't fail the whole session fetch over a missing hint, but log so
-			// the developer can see if this starts happening systematically.
-			log.Printf("buildSessionResponse: LastNight lookup failed: %v", err)
+			log.Printf("buildSessionResponse: LastSession(night) lookup failed: %v", err)
 		} else {
 			resp.SuggestFerberNight = reports.SuggestFerberNight(last)
 		}
@@ -132,104 +137,52 @@ func (h *Handler) buildSessionResponse(state domain.State, night *domain.Night, 
 	return resp
 }
 
+// --- session endpoints ---
+
 // GetCurrentSession returns the current state and valid actions.
 func (h *Handler) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
-	night, events, err := h.store.CurrentSession()
+	session, events, err := h.store.CurrentSession()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	state := domain.DeriveState(events)
-
-	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, night, events))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, session, events))
 }
 
-// PostEvent records a new event and returns the updated session.
-func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
-	var req eventRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	action := domain.Action(req.Action)
-	if action == domain.StartNight {
-		writeError(w, http.StatusBadRequest, "use POST /api/session/start to start a night")
-		return
-	}
-
-	ts := time.Now()
-	if req.Timestamp != "" {
-		parsed, err := time.Parse(time.RFC3339, req.Timestamp)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid timestamp format (use RFC3339)")
-			return
-		}
-		ts = parsed
-	}
-
-	night, events, err := h.store.CurrentSession()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if night == nil {
-		writeError(w, http.StatusBadRequest, "no active night session")
-		return
-	}
-
-	currentState := domain.DeriveState(events)
-
-	nextState, err := domain.Transition(currentState, action, req.Metadata)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	evt := &domain.Event{
-		NightID:   night.ID,
-		FromState: currentState,
-		Action:    action,
-		ToState:   nextState,
-		Timestamp: ts,
-		Metadata:  req.Metadata,
-	}
-	if err := h.store.AddEvent(evt); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if action == domain.EndNight {
-		if err := h.store.EndNight(night.ID, ts); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-
-	var responseNight *domain.Night
-	if nextState != domain.NightOff {
-		responseNight = night
-	}
-	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, responseNight, append(events, *evt)))
-}
-
-// StartNight creates a new night with optional Ferber config and records the
-// start_night event. Separate from PostEvent because start_night is the only
-// action that creates a nights row, and its config is typed (not string-keyed
-// event metadata).
-func (h *Handler) StartNight(w http.ResponseWriter, r *http.Request) {
-	var req startNightRequest
+// StartSession creates a new session of the specified kind. Atomically closes
+// any currently-open session (chain advance). Also handles first-start (no
+// prior session) identically.
+func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request) {
+	var req startSessionRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Ferber != nil && req.Ferber.NightNumber < 1 {
-		writeError(w, http.StatusBadRequest, "ferber.nightNumber must be >= 1")
+
+	var kind domain.SessionKind
+	switch req.Kind {
+	case string(domain.SessionKindNight):
+		kind = domain.SessionKindNight
+	case string(domain.SessionKindDay):
+		kind = domain.SessionKindDay
+	default:
+		writeError(w, http.StatusBadRequest, "kind must be 'night' or 'day'")
 		return
+	}
+
+	if req.Ferber != nil {
+		if kind != domain.SessionKindNight {
+			writeError(w, http.StatusBadRequest, "ferber config only valid when kind=night")
+			return
+		}
+		if req.Ferber.NightNumber < 1 {
+			writeError(w, http.StatusBadRequest, "ferber.nightNumber must be >= 1")
+			return
+		}
 	}
 
 	ts := time.Now()
@@ -242,13 +195,19 @@ func (h *Handler) StartNight(w http.ResponseWriter, r *http.Request) {
 		ts = parsed
 	}
 
-	_, events, err := h.store.CurrentSession()
+	// Derive current state to validate the transition.
+	_, priorEvents, err := h.store.CurrentSession()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	currentState := domain.DeriveState(events)
-	nextState, err := domain.Transition(currentState, domain.StartNight, nil)
+	currentState := domain.DeriveState(priorEvents)
+
+	startAction := domain.StartNight
+	if kind == domain.SessionKindDay {
+		startAction = domain.StartDay
+	}
+	nextState, err := domain.Transition(currentState, startAction, nil)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -259,40 +218,106 @@ func (h *Handler) StartNight(w http.ResponseWriter, r *http.Request) {
 	if ferberEnabled {
 		ferberNightNumber = req.Ferber.NightNumber
 	}
-	night, err := h.store.CreateNight(ts, ferberEnabled, ferberNightNumber)
+
+	startEvent := &domain.Event{
+		FromState: currentState,
+		Action:    startAction,
+		ToState:   nextState,
+		Timestamp: ts,
+	}
+	session, err := h.store.StartNewSession(kind, ferberEnabled, ferberNightNumber, startEvent)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, session, []domain.Event{*startEvent}))
+}
+
+// PostEvent records a new within-session event.
+func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
+	var req eventRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	action := domain.Action(req.Action)
+	if action == domain.StartNight || action == domain.StartDay {
+		writeError(w, http.StatusBadRequest, "use POST /api/session/start to create a session")
+		return
+	}
+
+	ts := time.Now()
+	if req.Timestamp != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Timestamp)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid timestamp format (use RFC3339)")
+			return
+		}
+		ts = parsed
+	}
+
+	session, events, err := h.store.CurrentSession()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if session == nil {
+		writeError(w, http.StatusBadRequest, "no active session")
+		return
+	}
+
+	currentState := domain.DeriveState(events)
+	metadata := req.Metadata
+
+	// Implicit location fill for dislatch_asleep during day feeding: the baby
+	// fell asleep on the breast; location is always "on_me" in that moment.
+	// (Handler-layer magic, not domain — keeps validators pure.)
+	if action == domain.DislatchAsleep && currentState == domain.DayFeeding {
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		if _, set := metadata["location"]; !set {
+			metadata["location"] = string(domain.LocationOnMe)
+		}
+	}
+
+	nextState, err := domain.Transition(currentState, action, metadata)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	evt := &domain.Event{
-		NightID:   night.ID,
+		SessionID: session.ID,
 		FromState: currentState,
-		Action:    domain.StartNight,
+		Action:    action,
 		ToState:   nextState,
 		Timestamp: ts,
+		Metadata:  metadata,
 	}
 	if err := h.store.AddEvent(evt); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, night, []domain.Event{*evt}))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(nextState, session, append(events, *evt)))
 }
 
-// PostUndo removes the last event and returns the updated session.
+// PostUndo removes the last event and returns the updated session. Chain-aware:
+// undoing a start_day/start_night event that is a chain advance reopens the
+// prior session.
 func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
-	night, events, err := h.store.CurrentSession()
+	session, events, err := h.store.CurrentSession()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	if night == nil {
-		writeError(w, http.StatusBadRequest, "no active night session to undo")
+	if session == nil {
+		writeError(w, http.StatusBadRequest, "no active session to undo")
 		return
 	}
-
 	if len(events) == 0 {
 		writeError(w, http.StatusBadRequest, "no events to undo")
 		return
@@ -300,8 +325,34 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 
 	lastEvent := events[len(events)-1]
 
-	if lastEvent.Action == domain.StartNight {
-		if err := h.store.DeleteNight(night.ID); err != nil {
+	// Chain-advance undo: last event is a start_* AND there's a prior session
+	// whose ended_at matches the current session's started_at.
+	if lastEvent.Action == domain.StartNight || lastEvent.Action == domain.StartDay {
+		prev, err := h.store.PrevSessionBefore(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if prev != nil && prev.EndedAt != nil && prev.EndedAt.Equal(session.StartedAt) {
+			// Chain-advance undo.
+			if err := h.store.UndoChainAdvance(session.ID, prev.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			reopened, reopenedEvents, err := h.store.GetSession(prev.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			// UndoChainAdvance cleared ended_at in the DB; reflect that
+			// locally instead of refetching.
+			reopened.EndedAt = nil
+			reopenedState := domain.DeriveState(reopenedEvents)
+			writeJSON(w, http.StatusOK, h.buildSessionResponse(reopenedState, reopened, reopenedEvents))
+			return
+		}
+		// First-ever start: delete the lone session.
+		if err := h.store.DeleteSession(session.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -309,55 +360,232 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.store.PopEvent(night.ID); err != nil {
+	if _, err := h.store.PopEvent(session.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
-	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, night, remaining))
+	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, session, remaining))
 }
 
-// GetNightDetail returns a night with its timeline, stats, and raw events.
-func (h *Handler) GetNightDetail(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid night ID")
-		return
-	}
+// --- cycle endpoints ---
 
-	night, events, err := h.store.GetNight(id)
+// GetCycles returns cycles (day, night pairs) with per-cycle stats and moving
+// averages for trend charts. Replaces /api/nights and /api/trends.
+func (h *Handler) GetCycles(w http.ResponseWriter, r *http.Request) {
+	from, to := parseDateRange(r)
+	sessions, err := h.store.ListSessions(from, to, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if night == nil {
-		writeError(w, http.StatusNotFound, "night not found")
+
+	ids := make([]int64, len(sessions))
+	for i, s := range sessions {
+		ids[i] = s.ID
+	}
+	eventsMap, err := h.store.GetEventsForSessions(ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	eventJSONs := make([]eventResponse, len(events))
-	for i, e := range events {
+	// Pair sessions into cycles: walk in chain order; day precedes its paired
+	// night. A lone night (no preceding day) is an orphan cycle; a trailing day
+	// (no following night) is in-progress "today."
+	cycles := pairSessionsIntoCycles(sessions)
+
+	const cycleTrendWindow = 3
+	summaries := make([]reports.CycleSummary, len(cycles))
+	for i, c := range cycles {
+		var dayEvents, nightEvents []domain.Event
+		if c.Day != nil {
+			dayEvents = eventsMap[c.Day.ID]
+		}
+		if c.Night != nil {
+			nightEvents = eventsMap[c.Night.ID]
+		}
+		summaries[i] = reports.CycleSummary{
+			Day:    toCycleSessionMeta(c.Day),
+			Night:  toCycleSessionMeta(c.Night),
+			Events: concatCycleEvents(dayEvents, nightEvents),
+			Stats:  reports.ComputeCycleStats(c.Day, c.Night, dayEvents, nightEvents),
+		}
+	}
+	reports.AttachMovingAverages(summaries, cycleTrendWindow)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cycles": summaries,
+		"window": cycleTrendWindow,
+	})
+}
+
+type cyclePair struct {
+	Day   *domain.Session
+	Night *domain.Session
+}
+
+// pairSessionsIntoCycles walks a chronologically-ordered session list and pairs
+// each day with the immediately-following night. Unpaired nights (no preceding
+// day) are orphan cycles; unpaired days (no following night) are in-progress.
+func pairSessionsIntoCycles(sessions []domain.Session) []cyclePair {
+	var cycles []cyclePair
+	for i := 0; i < len(sessions); i++ {
+		s := &sessions[i]
+		switch s.Kind {
+		case domain.SessionKindDay:
+			cycle := cyclePair{Day: s}
+			if i+1 < len(sessions) && sessions[i+1].Kind == domain.SessionKindNight {
+				cycle.Night = &sessions[i+1]
+				i++ // skip the night — consumed into this pair
+			}
+			cycles = append(cycles, cycle)
+		case domain.SessionKindNight:
+			// Orphan night (no preceding day in this range).
+			cycles = append(cycles, cyclePair{Night: s})
+		}
+	}
+	return cycles
+}
+
+// concatCycleEvents returns day events followed by night events. Both slices
+// arrive ordered by seq/timestamp; since day.StartedAt < night.StartedAt by
+// chain construction, concatenation preserves timestamp ordering without a
+// re-sort. Either slice may be empty (orphan cycles, in-progress today).
+func concatCycleEvents(dayEvents, nightEvents []domain.Event) []reports.CycleEvent {
+	out := make([]reports.CycleEvent, 0, len(dayEvents)+len(nightEvents))
+	for _, e := range dayEvents {
+		out = append(out, eventToCycleEvent(e))
+	}
+	for _, e := range nightEvents {
+		out = append(out, eventToCycleEvent(e))
+	}
+	return out
+}
+
+func eventToCycleEvent(e domain.Event) reports.CycleEvent {
+	return reports.CycleEvent{
+		Action:    string(e.Action),
+		FromState: string(e.FromState),
+		ToState:   string(e.ToState),
+		Metadata:  e.Metadata,
+		Timestamp: e.Timestamp,
+	}
+}
+
+func toCycleSessionMeta(s *domain.Session) *reports.SessionMeta {
+	if s == nil {
+		return nil
+	}
+	return &reports.SessionMeta{
+		ID:                s.ID,
+		Kind:              s.Kind,
+		StartedAt:         s.StartedAt,
+		EndedAt:           s.EndedAt,
+		FerberEnabled:     s.FerberEnabled,
+		FerberNightNumber: s.FerberNightNumber,
+	}
+}
+
+// GetCycleDetail returns the cycle containing the given session ID, with both
+// sessions' events, a combined timeline, and full cycle stats.
+func (h *Handler) GetCycleDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid session ID")
+		return
+	}
+
+	session, events, err := h.store.GetSession(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if session == nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	// Branch on the requested session's kind so we can reuse its already-loaded
+	// events instead of refetching. Only the *other* half of the cycle (if any)
+	// needs a second round-trip.
+	var day, night *domain.Session
+	var dayEvents, nightEvents []domain.Event
+	switch session.Kind {
+	case domain.SessionKindNight:
+		night, nightEvents = session, events
+		prev, err := h.store.PrevSessionBefore(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if prev != nil && prev.Kind == domain.SessionKindDay {
+			if _, dayEvents, err = h.store.GetSession(prev.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			day = prev
+		}
+	case domain.SessionKindDay:
+		day, dayEvents = session, events
+		next, err := h.store.NextSessionAfter(session.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if next != nil && next.Kind == domain.SessionKindNight {
+			if _, nightEvents, err = h.store.GetSession(next.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			night = next
+		}
+	}
+
+	// Combined event log, ordered by timestamp.
+	combined := make([]domain.Event, 0, len(dayEvents)+len(nightEvents))
+	combined = append(combined, dayEvents...)
+	combined = append(combined, nightEvents...)
+	eventJSONs := make([]eventResponse, len(combined))
+	for i, e := range combined {
 		eventJSONs[i] = *toEventResponse(e)
 	}
 
-	stats, timeline := reports.ComputeStats(events, night)
+	// Night timeline (existing behavior) only if night session exists.
+	var timeline []reports.TimelineEntry
+	if night != nil {
+		_, timeline = reports.ComputeStats(nightEvents, night)
+	}
+
+	// Day timeline — symmetric to night, but without the Ferber-specific
+	// stats computation. BuildTimeline is kind-agnostic (events + end time
+	// → segments), so we pass the day's end (or now, if still open).
+	var dayTimeline []reports.TimelineEntry
+	if day != nil {
+		dayEnd := time.Now()
+		if day.EndedAt != nil {
+			dayEnd = *day.EndedAt
+		}
+		dayTimeline = reports.BuildTimeline(dayEvents, dayEnd)
+	}
+
+	stats := reports.ComputeCycleStats(day, night, dayEvents, nightEvents)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"night": nightDetailJSON{
-			ID:                night.ID,
-			StartedAt:         night.StartedAt,
-			EndedAt:           night.EndedAt,
-			FerberEnabled:     night.FerberEnabled,
-			FerberNightNumber: night.FerberNightNumber,
+		"cycle": map[string]any{
+			"day":   toCycleSessionMeta(day),
+			"night": toCycleSessionMeta(night),
 		},
-		"events":   eventJSONs,
-		"timeline": timeline,
-		"stats":    stats,
+		"events":      eventJSONs,
+		"timeline":    timeline,    // night segments (preserved name for the night block)
+		"dayTimeline": dayTimeline, // day segments
+		"stats":       stats,
 	})
 }
+
+// --- helpers ---
 
 func parseDateRange(r *http.Request) (from, to time.Time) {
 	to = time.Now().Add(24 * time.Hour)
@@ -376,84 +604,6 @@ func parseDateRange(r *http.Request) (from, to time.Time) {
 	return
 }
 
-// loadNightsWithEvents fetches nights and their events for a date range.
-func (h *Handler) loadNightsWithEvents(r *http.Request) ([]domain.Night, map[int64][]domain.Event, error) {
-	from, to := parseDateRange(r)
-	nights, err := h.store.ListNights(from, to)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	nightIDs := make([]int64, len(nights))
-	for i, n := range nights {
-		nightIDs[i] = n.ID
-	}
-	eventsMap, err := h.store.GetEventsForNights(nightIDs)
-	if err != nil {
-		return nil, nil, err
-	}
-	return nights, eventsMap, nil
-}
-
-// GetNights returns a list of nights with summary stats.
-func (h *Handler) GetNights(w http.ResponseWriter, r *http.Request) {
-	nights, eventsMap, err := h.loadNightsWithEvents(r)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	type nightSummary struct {
-		nightDetailJSON
-		Stats reports.NightStats `json:"stats"`
-	}
-
-	summaries := make([]nightSummary, 0, len(nights))
-	for _, n := range nights {
-		stats, _ := reports.ComputeStats(eventsMap[n.ID], &n)
-		summaries = append(summaries, nightSummary{
-			nightDetailJSON: nightDetailJSON{
-				ID:                n.ID,
-				StartedAt:         n.StartedAt,
-				EndedAt:           n.EndedAt,
-				FerberEnabled:     n.FerberEnabled,
-				FerberNightNumber: n.FerberNightNumber,
-			},
-			Stats: stats,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"nights": summaries,
-	})
-}
-
-// GetTrends returns trend data with moving averages for charting.
-func (h *Handler) GetTrends(w http.ResponseWriter, r *http.Request) {
-	nights, eventsMap, err := h.loadNightsWithEvents(r)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	points := make([]reports.NightDataPoint, len(nights))
-	for i, n := range nights {
-		stats, _ := reports.ComputeStats(eventsMap[n.ID], &n)
-		points[i] = reports.NightDataPoint{
-			Date:  n.StartedAt,
-			Stats: stats,
-		}
-	}
-
-	window := 3
-	trends := reports.ComputeTrends(points, window)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"trends": trends,
-		"window": window,
-	})
-}
-
 // ExportCSV streams all events as a CSV file.
 func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	events, err := h.store.GetAllEvents()
@@ -466,7 +616,7 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="boob-o-clock-export.csv"`)
 
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"night_id", "seq", "from_state", "action", "to_state", "timestamp", "breast", "metadata"})
+	cw.Write([]string{"session_id", "seq", "from_state", "action", "to_state", "timestamp", "breast", "metadata"})
 
 	for _, e := range events {
 		breast := e.Metadata["breast"]
@@ -478,7 +628,7 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 			metaParts = append(metaParts, k+"="+e.Metadata[k])
 		}
 		cw.Write([]string{
-			strconv.FormatInt(e.NightID, 10),
+			strconv.FormatInt(e.SessionID, 10),
 			strconv.Itoa(e.Seq),
 			string(e.FromState),
 			string(e.Action),
@@ -492,14 +642,6 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	if err := cw.Error(); err != nil {
 		log.Printf("CSV flush error: %v", err)
 	}
-}
-
-type nightDetailJSON struct {
-	ID                int64      `json:"id"`
-	StartedAt         time.Time  `json:"startedAt"`
-	EndedAt           *time.Time `json:"endedAt,omitempty"`
-	FerberEnabled     bool       `json:"ferberEnabled"`
-	FerberNightNumber *int       `json:"ferberNightNumber,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

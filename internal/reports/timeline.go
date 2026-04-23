@@ -212,10 +212,13 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 	return stats, timeline
 }
 
-// ComputeStats returns the full per-night stat bag for a single night,
-// including Ferber stats when the night is a Ferber night. An unended night
+// ComputeStats returns the full per-night stat bag for a single night session,
+// including Ferber stats when the night has Ferber enabled. An unended session
 // closes out at now so in-progress state spans still contribute.
-func ComputeStats(events []domain.Event, night *domain.Night) (NightStats, []TimelineEntry) {
+//
+// Night-only: callers should pass a session with Kind == Night. Day sessions
+// use a separate day-stats computation (not yet migrated to this file).
+func ComputeStats(events []domain.Event, night *domain.Session) (NightStats, []TimelineEntry) {
 	nightEnd := time.Now()
 	if night.EndedAt != nil {
 		nightEnd = *night.EndedAt
