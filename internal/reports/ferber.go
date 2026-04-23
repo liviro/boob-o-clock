@@ -21,8 +21,10 @@ type FerberStats struct {
 // SuggestFerberNight returns the suggested Ferber night number for the next
 // night (last + 1) based on the most recent night, or nil when the last night
 // was not Ferber (or there is no history). Used to seed the Start Night form.
-func SuggestFerberNight(last *domain.Night) *int {
-	if last == nil || !last.FerberEnabled || last.FerberNightNumber == nil {
+// Callers pass the most recent night session (kind=night); day sessions never
+// have FerberEnabled, so the Kind check is belt-and-suspenders.
+func SuggestFerberNight(last *domain.Session) *int {
+	if last == nil || last.Kind != domain.SessionKindNight || !last.FerberEnabled || last.FerberNightNumber == nil {
 		return nil
 	}
 	n := *last.FerberNightNumber + 1

@@ -6,16 +6,27 @@ interface Props {
   totalDurationNs: number;
 }
 
-/** Legend entries grouped by category: sleep, active, transitional */
+/**
+ * Legend entries grouped by category: sleep, active, transitional.
+ *
+ * Day state variants share colors with their night counterparts (except
+ * `day_sleeping`, which has its own teal). Duplicate labels are acceptable
+ * here because a TimelineBar instance renders either day OR night events in
+ * a given context — never both — so the filter by "present states" shows at
+ * most one variant per category.
+ */
 const LEGEND_GROUPS: { key: string; label: string }[][] = [
   [
     { key: 'sleeping_crib', label: 'Crib' },
     { key: 'sleeping_on_me', label: 'On Me' },
     { key: 'sleeping_stroller', label: 'Stroller' },
+    { key: 'day_sleeping', label: 'Nap' },
   ],
   [
     { key: 'feeding', label: 'Feed' },
+    { key: 'day_feeding', label: 'Feed' },
     { key: 'awake', label: 'Awake' },
+    { key: 'day_awake', label: 'Awake' },
   ],
   [
     { key: 'resettling', label: 'Resettle' },
@@ -23,6 +34,7 @@ const LEGEND_GROUPS: { key: string; label: string }[][] = [
     { key: 'transferring', label: 'Transfer' },
     { key: 'strolling', label: 'Stroll' },
     { key: 'poop', label: 'Diaper' },
+    { key: 'day_poop', label: 'Diaper' },
   ],
 ];
 

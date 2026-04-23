@@ -51,7 +51,7 @@ func realisticNight() ([]domain.Event, time.Time, time.Time) {
 		mkEvent(11, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(4*time.Hour+30*time.Minute), nil),
 		// Sleep 01:30 - 06:00 (4h30m)
 		mkEvent(12, domain.SleepingCrib, domain.BabyWoke, domain.Awake, end, nil),
-		mkEvent(13, domain.Awake, domain.EndNight, domain.NightOff, end, nil),
+		mkEvent(13, domain.Awake, domain.Action("end_night"), domain.NightOff, end, nil),
 	}
 
 	return events, start, end
@@ -161,7 +161,7 @@ func TestStatsWithPoop(t *testing.T) {
 		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
 		mkEvent(2, domain.Awake, domain.PoopStart, domain.Poop, start, nil),
 		mkEvent(3, domain.Poop, domain.PoopDone, domain.Awake, start.Add(10*time.Minute), nil),
-		mkEvent(4, domain.Awake, domain.EndNight, domain.NightOff, start.Add(10*time.Minute), nil),
+		mkEvent(4, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(10*time.Minute), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(10*time.Minute))
@@ -187,7 +187,7 @@ func TestStatsWithStroller(t *testing.T) {
 		mkEvent(7, domain.Strolling, domain.FellAsleep, domain.SleepingStroller, start.Add(35*time.Minute), nil),
 		// Sleep in stroller: 35min to 4h
 		mkEvent(8, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
-		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+		mkEvent(9, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
@@ -210,7 +210,7 @@ func TestStatsWithSwitchBreast(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
 		mkEvent(3, domain.Feeding, domain.SwitchBreast, domain.Feeding, start.Add(10*time.Minute), breast("R")),
 		mkEvent(4, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(20*time.Minute), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(20*time.Minute), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(20*time.Minute), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(20*time.Minute))
@@ -250,7 +250,7 @@ func TestStatsWithRootBack(t *testing.T) {
 		mkEvent(9, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
 		mkEvent(10, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+15*time.Minute), nil),
 		mkEvent(11, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(8*time.Hour), nil),
-		mkEvent(12, domain.Awake, domain.EndNight, domain.NightOff, start.Add(8*time.Hour), nil),
+		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(8*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(8*time.Hour))
@@ -280,7 +280,7 @@ func TestFeedCountNoRealSleep(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
 		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
 		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(2*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(2*time.Hour))
@@ -309,7 +309,7 @@ func TestSleepBlocksExcludeOnMeOnly(t *testing.T) {
 		mkEvent(9, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(1*time.Hour+2*time.Minute), nil),
 		// Sleep in crib until wake
 		mkEvent(10, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(11, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(11, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
@@ -333,7 +333,7 @@ func TestSleepBlockOnMeOnlyLong(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
 		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
 		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(2*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(2*time.Hour))
@@ -361,7 +361,7 @@ func TestFeedCountAfterStrollerSleep(t *testing.T) {
 		mkEvent(6, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
 		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
 		mkEvent(8, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(4*time.Hour+15*time.Minute), nil),
-		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour+15*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour+15*time.Minute), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour+15*time.Minute))
@@ -383,7 +383,7 @@ func TestTimelineEntries(t *testing.T) {
 		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
 		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(2*time.Minute), breast("L")),
 		mkEvent(3, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(12*time.Minute), nil),
-		mkEvent(4, domain.Awake, domain.EndNight, domain.NightOff, start.Add(15*time.Minute), nil),
+		mkEvent(4, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(15*time.Minute), nil),
 	}
 
 	tl := BuildTimeline(events, start.Add(15*time.Minute))
@@ -470,15 +470,24 @@ func TestStatsInProgressNight(t *testing.T) {
 // accounted for in the sleep classification maps. Adding a new state without
 // classifying it here will fail this test.
 func TestEveryStateClassified(t *testing.T) {
-	// States that are explicitly not sleep-related.
+	// States that are explicitly not sleep-related in the NIGHT timeline.
 	// When adding a new state, put it here OR in the appropriate sleep map.
+	// Day states are vacuously non-night-sleep: they never appear in a night
+	// session's event stream (chain boundary is also a session boundary), so
+	// their classification under night logic is never exercised. Listing them
+	// here keeps TestEveryStateClassified honest without polluting the
+	// night-only sleep maps in timeline.go.
 	nonSleepStates := map[domain.State]bool{
-		domain.NightOff: true,
-		domain.Awake:    true,
-		domain.Feeding:  true,
-		domain.Poop:     true,
-		domain.Learning: true, // Ferber: awake in crib, not sleep (spec §3.8)
-		domain.CheckIn:  true, // Ferber: parent in the room, not sleep (spec §3.8)
+		domain.NightOff:    true,
+		domain.Awake:       true,
+		domain.Feeding:     true,
+		domain.Poop:        true,
+		domain.Learning:    true, // Ferber: awake in crib, not sleep (spec §3.8)
+		domain.CheckIn:     true, // Ferber: parent in the room, not sleep (spec §3.8)
+		domain.DayAwake:    true, // day subgraph — never appears in night timelines
+		domain.DayFeeding:  true,
+		domain.DaySleeping: true,
+		domain.DayPoop:     true,
 	}
 
 	for _, state := range domain.AllStates {
@@ -514,7 +523,7 @@ func TestTransferSuccessCountsAsSleep(t *testing.T) {
 		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(23*time.Minute), nil),
 		// Sleep in crib
 		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
-		mkEvent(7, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 
 	stats, tl := computeBaseStats(events, start, start.Add(4*time.Hour))
@@ -558,7 +567,7 @@ func TestTransferFailedCountsAsAwake(t *testing.T) {
 		// Transfer takes 5 minutes and fails
 		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(20*time.Minute), nil),
 		mkEvent(5, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(25*time.Minute), nil),
-		mkEvent(6, domain.Awake, domain.EndNight, domain.NightOff, start.Add(25*time.Minute), nil),
+		mkEvent(6, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(25*time.Minute), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(25*time.Minute))
@@ -585,7 +594,7 @@ func TestTransferNeedResettleCountsAsSleep(t *testing.T) {
 		mkEvent(5, domain.Transferring, domain.TransferNeedResettle, domain.Resettling, start.Add(24*time.Minute), nil),
 		mkEvent(6, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(30*time.Minute), nil),
 		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
-		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
@@ -647,7 +656,7 @@ func TestSelfSoothingCountsAsAwake(t *testing.T) {
 		mkEvent(7, domain.SelfSoothing, domain.Settled, domain.SleepingCrib, start.Add(35*time.Minute), nil),
 		// Sleeping in crib 00:35 → 01:05 (30m)
 		mkEvent(8, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(65*time.Minute), nil),
-		mkEvent(9, domain.Awake, domain.EndNight, domain.NightOff, start.Add(65*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(65*time.Minute), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(65*time.Minute))
@@ -692,7 +701,7 @@ func TestRealBedtimeFromDislatchAsleep(t *testing.T) {
 		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(25*time.Minute), nil),
 		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(25*time.Minute), nil),
 		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
-		mkEvent(7, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(20*time.Minute), "dislatch_asleep")
@@ -707,7 +716,7 @@ func TestRealBedtimeFromSettledAfterSelfSoothing(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.PutDownAwake, domain.SelfSoothing, start.Add(10*time.Minute), nil),
 		mkEvent(3, domain.SelfSoothing, domain.Settled, domain.SleepingCrib, start.Add(25*time.Minute), nil),
 		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(25*time.Minute), "settled from self-soothing")
@@ -722,7 +731,7 @@ func TestRealBedtimeFromSettledAfterResettling(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartResettle, domain.Resettling, start, nil),
 		mkEvent(3, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(12*time.Minute), nil),
 		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(12*time.Minute), "settled from resettling")
@@ -737,7 +746,7 @@ func TestRealBedtimeFromStrollerFellAsleep(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartStrolling, domain.Strolling, start, nil),
 		mkEvent(3, domain.Strolling, domain.FellAsleep, domain.SleepingStroller, start.Add(18*time.Minute), nil),
 		mkEvent(4, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(18*time.Minute), "fell_asleep in stroller")
@@ -751,7 +760,7 @@ func TestRealBedtimeNilForContactOnlyNight(t *testing.T) {
 		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
 		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
 		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
-		mkEvent(5, domain.Awake, domain.EndNight, domain.NightOff, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(2*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(2*time.Hour))
 	if stats.RealBedtime != nil {
@@ -777,7 +786,7 @@ func TestRealBedtimeUsesSecondBlockWhenFirstFails(t *testing.T) {
 		mkEvent(8, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(40*time.Minute), nil),
 		mkEvent(9, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(40*time.Minute), nil),
 		mkEvent(10, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(11, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(11, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(35*time.Minute), "second block dislatch_asleep")
@@ -834,7 +843,7 @@ func TestRealBedtimeWithSwitchBreast(t *testing.T) {
 		mkEvent(5, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(30*time.Minute), nil),
 		mkEvent(6, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
 		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
-		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(3*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(25*time.Minute), "dislatch_asleep after switch_breast")
@@ -852,7 +861,7 @@ func TestRealBedtimeViaTransferNeedResettle(t *testing.T) {
 		mkEvent(5, domain.Transferring, domain.TransferNeedResettle, domain.Resettling, start.Add(24*time.Minute), nil),
 		mkEvent(6, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(30*time.Minute), nil),
 		mkEvent(7, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
-		mkEvent(8, domain.Awake, domain.EndNight, domain.NightOff, start.Add(4*time.Hour), nil),
+		mkEvent(8, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(15*time.Minute), "dislatch_asleep (block that reaches crib via resettle)")

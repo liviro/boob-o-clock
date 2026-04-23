@@ -3,6 +3,7 @@ const API = '/api';
 // Mirrors internal/domain.State. Keep in sync with internal/domain/states.go.
 export type State =
   | 'night_off'
+  // Night subgraph
   | 'awake'
   | 'feeding'
   | 'sleeping_on_me'
@@ -14,12 +15,23 @@ export type State =
   | 'self_soothing'
   | 'poop'
   | 'learning'
-  | 'check_in';
+  | 'check_in'
+  // Day subgraph
+  | 'day_awake'
+  | 'day_feeding'
+  | 'day_sleeping'
+  | 'day_poop';
+
+export type SessionKind = 'night' | 'day';
+
+export type Location = 'crib' | 'stroller' | 'on_me' | 'car';
 
 export interface SessionResponse {
+  // Null iff no active session (state === 'night_off').
+  kind: SessionKind | null;
   state: State;
   validActions: string[];
-  nightId: number | null;
+  sessionId: number | null;
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
@@ -30,7 +42,7 @@ export interface SessionResponse {
     metadata?: Record<string, string>;
     timestamp: string;
   } | null;
-  // Present when the current night is a Ferber night.
+  // Present when the current session is a Ferber night.
   ferber?: {
     nightNumber: number;
     // Present when the current state is Learning or CheckIn.
@@ -43,17 +55,39 @@ export interface SessionResponse {
       mood: 'quiet' | 'fussy' | 'crying';
     };
   };
-  // Present on NightOff when a recent Ferber sequence exists.
+  // Present whenever start_night is a valid action: night_off AND day_awake.
   suggestFerberNight?: number;
 }
 
-export interface NightSummary {
+// --- cycle types ---
+
+export interface SessionMeta {
   id: number;
+  kind: SessionKind;
   startedAt: string;
   endedAt?: string;
   ferberEnabled?: boolean;
   ferberNightNumber?: number | null;
-  stats: NightStats;
+}
+
+export interface DaySegment {
+  kind: 'awake' | 'nap';
+  duration: number;               // ns
+}
+
+export interface DayStats {
+  napCount: number;
+  totalNapTime: number;          // ns
+  longestNap: number;             // ns
+  dayFeedCount: number;
+  dayTotalFeedTime: number;       // ns
+  // Start timestamp of every start_feed during the day. Unfiltered, unlike
+  // NightStats.feedTimes which is scoped to feeds preceding independent sleep.
+  dayFeedTimes: string[];
+  wakeWindows: number[];          // ns — awake-kind subset of daySegments
+  lastWakeWindow: number | null;  // ns
+  // Alternating awake/nap rhythm in order. Drives the "Day rhythm" pills.
+  daySegments: DaySegment[];
 }
 
 export interface FerberStats {
@@ -66,20 +100,37 @@ export interface FerberStats {
   avgTimeToSettle: number;
 }
 
+// NightStats retains the same shape as today; now only present on the night
+// half of a CycleStats.
 export interface NightStats {
   nightDuration: number;
   totalSleepTime: number;
   totalFeedTime: number;
   feedTimeLeft: number;
   feedTimeRight: number;
-  totalAwakeTime: number;
+  totalAwakeTime?: number;
   feedCount: number;
   wakeCount: number;
   longestSleepBlock: number;
   sleepBlocks: number[];
   feedTimes: string[] | null;
   realBedtime?: string | null;
-  ferber?: FerberStats;
+  ferber?: FerberStats | null;
+}
+
+export interface CycleStats {
+  day: DayStats | null;
+  night: NightStats | null;
+}
+
+export interface CycleSummary {
+  day: SessionMeta | null;
+  night: SessionMeta | null;
+  // All events in the cycle (day + night), timestamp-ordered. Always present;
+  // empty for a cycle with no sessions (shouldn't occur, but tolerate).
+  events: EventEntry[];
+  stats: CycleStats;
+  avg: CycleStats | null;
 }
 
 export interface TimelineEntry {
@@ -97,43 +148,24 @@ export interface EventEntry {
   timestamp: string;
 }
 
-export interface TrendPoint {
-  date: string;
-  longestSleep: number;
-  totalSleep: number;
-  totalFeed: number;
-  feedTimeLeft: number;
-  feedTimeRight: number;
-  wakeCount: number;
-  feedCount: number;
-  avgLongestSleep: number | null;
-  avgTotalSleep: number | null;
-  avgTotalFeed: number | null;
-  avgFeedTimeLeft: number | null;
-  avgFeedTimeRight: number | null;
-  avgWakeCount: number | null;
-  avgFeedCount: number | null;
-  ferberCryTime?: number | null;
-  ferberCheckIns?: number | null;
-  ferberTimeToSettle?: number | null;
-}
-
-export interface NightDetail {
-  night: {
-    id: number;
-    startedAt: string;
-    endedAt?: string;
-    ferberEnabled?: boolean;
-    ferberNightNumber?: number | null;
+export interface CycleDetail {
+  cycle: {
+    day: SessionMeta | null;
+    night: SessionMeta | null;
   };
   events: EventEntry[];
+  // Night-only timeline segments.
   timeline: TimelineEntry[];
-  stats: NightStats;
+  // Day-only timeline segments (same shape as `timeline`, scoped to the day
+  // session's events and end time).
+  dayTimeline: TimelineEntry[];
+  stats: CycleStats;
 }
+
+// --- helpers ---
 
 /** Format a Date as RFC3339 with local timezone offset (not UTC). */
 function toLocalISO(d: Date): string {
-  // getTimezoneOffset() returns minutes *behind* UTC, but ISO 8601 wants minutes *ahead*
   const off = -d.getTimezoneOffset();
   const sign = off >= 0 ? '+' : '-';
   const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
@@ -151,6 +183,8 @@ async function checkResponse(resp: Response): Promise<Response> {
   }
   return resp;
 }
+
+// --- fetch functions ---
 
 export async function getCurrentSession(): Promise<SessionResponse> {
   const resp = await checkResponse(await fetch(`${API}/session/current`));
@@ -174,13 +208,14 @@ export async function postEvent(
   return resp.json();
 }
 
-export interface StartNightConfig {
-  ferber?: { nightNumber: number };
+export interface StartSessionConfig {
+  kind: SessionKind;
+  ferber?: { nightNumber: number };  // only valid when kind === 'night'
   timestamp?: Date;
 }
 
-export async function postStartNight(config: StartNightConfig): Promise<SessionResponse> {
-  const body: Record<string, unknown> = {};
+export async function postStartSession(config: StartSessionConfig): Promise<SessionResponse> {
+  const body: Record<string, unknown> = { kind: config.kind };
   if (config.ferber) body.ferber = config.ferber;
   if (config.timestamp) body.timestamp = toLocalISO(config.timestamp);
 
@@ -197,17 +232,12 @@ export async function postUndo(): Promise<SessionResponse> {
   return resp.json();
 }
 
-export async function getNights(): Promise<{ nights: NightSummary[] }> {
-  const resp = await checkResponse(await fetch(`${API}/nights`));
+export async function getCycles(): Promise<{ cycles: CycleSummary[]; window: number }> {
+  const resp = await checkResponse(await fetch(`${API}/cycles`));
   return resp.json();
 }
 
-export async function getNightDetail(id: number): Promise<NightDetail> {
-  const resp = await checkResponse(await fetch(`${API}/nights/${id}`));
-  return resp.json();
-}
-
-export async function getTrends(): Promise<{ trends: TrendPoint[]; window: number }> {
-  const resp = await checkResponse(await fetch(`${API}/trends`));
+export async function getCycleDetail(sessionId: number): Promise<CycleDetail> {
+  const resp = await checkResponse(await fetch(`${API}/cycles/${sessionId}`));
   return resp.json();
 }

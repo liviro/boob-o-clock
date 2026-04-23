@@ -11,7 +11,10 @@ type transitionKey struct {
 }
 
 // transitions is the complete state machine transition table.
+// Night subgraph + day subgraph + two cross-boundary edges joining them.
 var transitions = map[transitionKey]State{
+	// === Night subgraph ===
+
 	// 1: NIGHT_OFF → AWAKE
 	{NightOff, StartNight}: Awake,
 
@@ -25,86 +28,120 @@ var transitions = map[transitionKey]State{
 	{Awake, PoopStart}: Poop,
 	// 6: AWAKE → SELF_SOOTHING
 	{Awake, PutDownAwake}: SelfSoothing,
-	// 7: AWAKE → NIGHT_OFF
-	{Awake, EndNight}: NightOff,
 
-	// 8: FEEDING → AWAKE
+	// 7: FEEDING → AWAKE
 	{Feeding, DislatchAwake}: Awake,
-	// 9: FEEDING → SLEEPING_ON_ME
+	// 8: FEEDING → SLEEPING_ON_ME
 	{Feeding, DislatchAsleep}: SleepingOnMe,
-	// 10: FEEDING → FEEDING (switch breast)
+	// 9: FEEDING → FEEDING (switch breast)
 	{Feeding, SwitchBreast}: Feeding,
 
-	// 11: SLEEPING_ON_ME → TRANSFERRING
+	// 10: SLEEPING_ON_ME → TRANSFERRING
 	{SleepingOnMe, StartTransfer}: Transferring,
-	// 12: SLEEPING_ON_ME → FEEDING
+	// 11: SLEEPING_ON_ME → FEEDING
 	{SleepingOnMe, StartFeed}: Feeding,
-	// 13: SLEEPING_ON_ME → AWAKE
+	// 12: SLEEPING_ON_ME → AWAKE
 	{SleepingOnMe, BabyWoke}: Awake,
-	// 14: SLEEPING_ON_ME → POOP
+	// 13: SLEEPING_ON_ME → POOP
 	{SleepingOnMe, PoopStart}: Poop,
 
-	// 15: TRANSFERRING → SLEEPING_CRIB
+	// 14: TRANSFERRING → SLEEPING_CRIB
 	{Transferring, TransferSuccess}: SleepingCrib,
-	// 16: TRANSFERRING → RESETTLING
+	// 15: TRANSFERRING → RESETTLING
 	{Transferring, TransferNeedResettle}: Resettling,
-	// 17: TRANSFERRING → AWAKE
+	// 16: TRANSFERRING → AWAKE
 	{Transferring, TransferFailed}: Awake,
 
-	// 18: RESETTLING → SLEEPING_CRIB
+	// 17: RESETTLING → SLEEPING_CRIB
 	{Resettling, Settled}: SleepingCrib,
-	// 19: RESETTLING → AWAKE
+	// 18: RESETTLING → AWAKE
 	{Resettling, ResettleFailed}: Awake,
-	// 20: RESETTLING → POOP
+	// 19: RESETTLING → POOP
 	{Resettling, PoopStart}: Poop,
 
-	// 21: SLEEPING_CRIB → AWAKE
+	// 20: SLEEPING_CRIB → AWAKE
 	{SleepingCrib, BabyWoke}: Awake,
-	// 22: SLEEPING_CRIB → POOP
+	// 21: SLEEPING_CRIB → POOP
 	{SleepingCrib, PoopStart}: Poop,
-	// 23: SLEEPING_CRIB → SELF_SOOTHING
+	// 22: SLEEPING_CRIB → SELF_SOOTHING
 	{SleepingCrib, BabyStirred}: SelfSoothing,
 
-	// 24: SELF_SOOTHING → SLEEPING_CRIB
+	// 23: SELF_SOOTHING → SLEEPING_CRIB
 	{SelfSoothing, Settled}: SleepingCrib,
-	// 25: SELF_SOOTHING → AWAKE
+	// 24: SELF_SOOTHING → AWAKE
 	{SelfSoothing, BabyWoke}: Awake,
-	// 26: SELF_SOOTHING → POOP
+	// 25: SELF_SOOTHING → POOP
 	{SelfSoothing, PoopStart}: Poop,
 
-	// 27: STROLLING → SLEEPING_STROLLER
+	// 26: STROLLING → SLEEPING_STROLLER
 	{Strolling, FellAsleep}: SleepingStroller,
-	// 28: STROLLING → AWAKE
+	// 27: STROLLING → AWAKE
 	{Strolling, GiveUp}: Awake,
-	// 29: STROLLING → POOP
+	// 28: STROLLING → POOP
 	{Strolling, PoopStart}: Poop,
 
-	// 30: SLEEPING_STROLLER → AWAKE
+	// 29: SLEEPING_STROLLER → AWAKE
 	{SleepingStroller, BabyWoke}: Awake,
-	// 31: SLEEPING_STROLLER → POOP
+	// 30: SLEEPING_STROLLER → POOP
 	{SleepingStroller, PoopStart}: Poop,
 
-	// 32: POOP → AWAKE
+	// 31: POOP → AWAKE
 	{Poop, PoopDone}: Awake,
 
-	// 33: AWAKE → LEARNING
+	// Ferber sub-machine (still within night subgraph).
+	// 32: AWAKE → LEARNING
 	{Awake, PutDownAwakeFerber}: Learning,
-	// 34: SLEEPING_CRIB → LEARNING
+	// 33: SLEEPING_CRIB → LEARNING
 	{SleepingCrib, BabyStirredFerber}: Learning,
-	// 35: LEARNING → LEARNING (mood change)
+	// 34: LEARNING → LEARNING (mood change)
 	{Learning, MoodChange}: Learning,
-	// 36: LEARNING → CHECK_IN
+	// 35: LEARNING → CHECK_IN
 	{Learning, CheckInStart}: CheckIn,
-	// 37: LEARNING → SLEEPING_CRIB
+	// 36: LEARNING → SLEEPING_CRIB
 	{Learning, Settled}: SleepingCrib,
-	// 38: LEARNING → AWAKE
+	// 37: LEARNING → AWAKE
 	{Learning, ExitFerber}: Awake,
-	// 39: CHECK_IN → LEARNING
+	// 38: CHECK_IN → LEARNING
 	{CheckIn, EndCheckIn}: Learning,
-	// 40: CHECK_IN → SLEEPING_CRIB
+	// 39: CHECK_IN → SLEEPING_CRIB
 	{CheckIn, Settled}: SleepingCrib,
-	// 41: CHECK_IN → AWAKE
+	// 40: CHECK_IN → AWAKE
 	{CheckIn, ExitFerber}: Awake,
+
+	// === Cross-boundary chain advances (Awake ↔ DayAwake) ===
+
+	// 41: AWAKE → DAY_AWAKE (chain advance: morning)
+	{Awake, StartDay}: DayAwake,
+	// 42: DAY_AWAKE → AWAKE (chain advance: bedtime)
+	{DayAwake, StartNight}: Awake,
+	// 43: NIGHT_OFF → DAY_AWAKE (first-ever-start in day mode or post-migration)
+	{NightOff, StartDay}: DayAwake,
+
+	// === Day subgraph ===
+
+	// 44: DAY_AWAKE → DAY_FEEDING
+	{DayAwake, StartFeed}: DayFeeding,
+	// 45: DAY_AWAKE → DAY_SLEEPING
+	{DayAwake, StartSleep}: DaySleeping,
+	// 46: DAY_AWAKE → DAY_POOP
+	{DayAwake, PoopStart}: DayPoop,
+
+	// 47: DAY_FEEDING → DAY_AWAKE
+	{DayFeeding, DislatchAwake}: DayAwake,
+	// 48: DAY_FEEDING → DAY_SLEEPING (handler implicitly fills location=on_me)
+	{DayFeeding, DislatchAsleep}: DaySleeping,
+	// 49: DAY_FEEDING → DAY_FEEDING (switch breast)
+	{DayFeeding, SwitchBreast}: DayFeeding,
+	// 50: DAY_FEEDING → DAY_POOP
+	{DayFeeding, PoopStart}: DayPoop,
+
+	// 51: DAY_SLEEPING → DAY_AWAKE
+	{DaySleeping, BabyWoke}: DayAwake,
+	// 52: DAY_SLEEPING → DAY_POOP
+	{DaySleeping, PoopStart}: DayPoop,
+
+	// 53: DAY_POOP → DAY_AWAKE
+	{DayPoop, PoopDone}: DayAwake,
 }
 
 // actionsRequiringBreast is the set of actions that need breast metadata.
@@ -121,6 +158,11 @@ var actionsRequiringMood = map[Action]bool{
 	EndCheckIn:         true,
 }
 
+// actionsRequiringLocation is the set of actions that need location metadata.
+var actionsRequiringLocation = map[Action]bool{
+	StartSleep: true,
+}
+
 // Transition attempts a state transition and returns the new state.
 // Returns an error if the transition is invalid or required metadata is missing.
 func Transition(from State, action Action, metadata map[string]string) (State, error) {
@@ -134,6 +176,11 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 			return "", err
 		}
 	}
+	if actionsRequiringLocation[action] {
+		if err := validateLocation(metadata); err != nil {
+			return "", err
+		}
+	}
 
 	to, ok := transitions[transitionKey{from, action}]
 	if !ok {
@@ -144,16 +191,32 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 }
 
 // actionOrder defines the canonical display order for actions.
+//
+// Chain-advance actions (StartNight, StartDay) sort LAST so they appear at
+// the bottom of the grid rather than the top — they terminate the current
+// session and aren't the primary daytime/nighttime activities, so visual
+// de-emphasis helps. Session-creation flow for new users still works because
+// these are the only valid actions from NightOff.
 var actionOrder = func() map[Action]int {
 	all := []Action{
-		StartNight, StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
+		// Feeding cluster.
+		StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
+		// Transfer / resettle / crib cluster.
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
 		PutDownAwake, PutDownAwakeFerber,
 		StartResettle, Settled, ResettleFailed, BabyWoke,
+		// Stroller cluster.
 		StartStrolling, FellAsleep, GiveUp,
+		// Day-specific sleep entry (parallel to StartStrolling).
+		StartSleep,
+		// Crib-stirring cluster.
 		BabyStirred, BabyStirredFerber,
+		// Ferber cluster.
 		MoodChange, CheckInStart, EndCheckIn, ExitFerber,
-		PoopStart, PoopDone, EndNight,
+		// Poop cluster.
+		PoopStart, PoopDone,
+		// Session-creation actions (chain-advance) sort LAST.
+		StartNight, StartDay,
 	}
 	m := make(map[Action]int, len(all))
 	for i, a := range all {
@@ -182,7 +245,13 @@ func ValidActions(state State) []Action {
 }
 
 // DeriveState returns the current state from an event log.
-// Returns NightOff if the event log is empty.
+// Returns NightOff if the event log is empty (brand-new install or
+// chain-off after all events undone).
+//
+// Nuance: under option-B chain semantics a closed session's last event
+// lands in Awake or DayAwake, not a terminal *_Off state. DeriveState is
+// authoritative only for OPEN sessions. Callers that need to know whether
+// a session is closed must consult session.EndedAt, not DeriveState.
 func DeriveState(events []Event) State {
 	if len(events) == 0 {
 		return NightOff
@@ -216,4 +285,20 @@ func validateMood(metadata map[string]string) error {
 		return fmt.Errorf("invalid mood: %s (must be quiet, fussy, or crying)", m)
 	}
 	return nil
+}
+
+func validateLocation(metadata map[string]string) error {
+	if metadata == nil {
+		return fmt.Errorf("location metadata required")
+	}
+	loc, ok := metadata["location"]
+	if !ok {
+		return fmt.Errorf("location metadata required")
+	}
+	switch loc {
+	case string(LocationCrib), string(LocationStroller), string(LocationOnMe), string(LocationCar):
+		return nil
+	default:
+		return fmt.Errorf("invalid location: %s (must be crib, stroller, on_me, or car)", loc)
+	}
 }
