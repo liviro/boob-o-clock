@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,6 +20,44 @@ func newTestStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+// openLegacyDB creates a fresh SQLite file at dbPath with the pre-day-mode
+// schema (nights table + events with night_id FK). Returns the open handle
+// so the caller can seed rows; closing is the caller's responsibility.
+// Shared by the three migration tests so the legacy shape is defined once.
+func openLegacyDB(t *testing.T, dbPath string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE nights (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			started_at TEXT NOT NULL,
+			ended_at TEXT,
+			created_at TEXT NOT NULL,
+			ferber_enabled INTEGER NOT NULL DEFAULT 0,
+			ferber_night_number INTEGER
+		)`); err != nil {
+		t.Fatalf("create nights: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
+			from_state TEXT NOT NULL,
+			action TEXT NOT NULL,
+			to_state TEXT NOT NULL,
+			timestamp TEXT NOT NULL,
+			metadata TEXT,
+			created_at TEXT NOT NULL,
+			seq INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatalf("create events: %v", err)
+	}
+	return db
 }
 
 func TestSchemaCreation(t *testing.T) {
@@ -446,39 +485,10 @@ func TestPrevSessionBeforeAndNextSessionAfter(t *testing.T) {
 // migration produced the new schema with data intact.
 func TestLegacyMigration(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
-	// Open a raw sqlite connection and seed the pre-day-mode schema.
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open raw: %v", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE nights (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			started_at TEXT NOT NULL,
-			ended_at TEXT,
-			created_at TEXT NOT NULL,
-			ferber_enabled INTEGER NOT NULL DEFAULT 0,
-			ferber_night_number INTEGER
-		)`); err != nil {
-		t.Fatalf("create nights: %v", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE events (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
-			from_state TEXT NOT NULL,
-			action TEXT NOT NULL,
-			to_state TEXT NOT NULL,
-			timestamp TEXT NOT NULL,
-			metadata TEXT,
-			created_at TEXT NOT NULL,
-			seq INTEGER NOT NULL
-		)`); err != nil {
-		t.Fatalf("create events: %v", err)
-	}
+	db := openLegacyDB(t, dbPath)
 	// Seed two historical nights, one with Ferber, both ending with end_night.
 	now := time.Now().Truncate(time.Second)
-	_, err = db.Exec(`INSERT INTO nights (id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number) VALUES
+	_, err := db.Exec(`INSERT INTO nights (id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number) VALUES
 		(1, ?, ?, ?, 0, NULL),
 		(2, ?, ?, ?, 1, 3)`,
 		now.Add(-48*time.Hour).Format(time.RFC3339Nano), now.Add(-40*time.Hour).Format(time.RFC3339Nano), now.Add(-48*time.Hour).Format(time.RFC3339Nano),
@@ -565,36 +575,11 @@ func TestLegacyMigration(t *testing.T) {
 // or lose real user data, so the assertions compare the full round-trip.
 func TestLegacyMigrationFidelity(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy-fidelity.db")
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open raw: %v", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE nights (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			started_at TEXT NOT NULL,
-			ended_at TEXT,
-			created_at TEXT NOT NULL,
-			ferber_enabled INTEGER NOT NULL DEFAULT 0,
-			ferber_night_number INTEGER
-		)`); err != nil {
-		t.Fatalf("create nights: %v", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE events (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
-			from_state TEXT NOT NULL,
-			action TEXT NOT NULL,
-			to_state TEXT NOT NULL,
-			timestamp TEXT NOT NULL,
-			metadata TEXT,
-			created_at TEXT NOT NULL,
-			seq INTEGER NOT NULL
-		)`); err != nil {
-		t.Fatalf("create events: %v", err)
-	}
+	db := openLegacyDB(t, dbPath)
 
+	// Event state/action strings are hard-coded (not domain.* constants) because
+	// a migration must preserve whatever bytes were in the legacy DB — even if a
+	// domain constant is later renamed, the old rows should still round-trip.
 	// Seed 20 historical nights + 1 still-open "tonight". Stretch back 3 weeks.
 	// Varied: some Ferber, some not; metadata mixing breast + mood.
 	type evtSeed struct {
@@ -870,9 +855,8 @@ func TestLegacyMigrationFidelity(t *testing.T) {
 		if got.Seq != want.seq {
 			t.Errorf("event %d Seq=%d, want %d", got.ID, got.Seq, want.seq)
 		}
-		// Metadata: compare parsed map equivalence (order-independent) to
-		// a parse of the original JSON, since the migration copies the raw
-		// text column unchanged and the scanner re-parses it.
+		// Migration copies metadata as raw text; scanner re-parses. Compare
+		// as maps so key order in the JSON doesn't matter.
 		if want.metadata == "" {
 			if got.Metadata != nil {
 				t.Errorf("event %d Metadata=%v, want nil", got.ID, got.Metadata)
@@ -882,13 +866,8 @@ func TestLegacyMigrationFidelity(t *testing.T) {
 			if err := json.Unmarshal([]byte(want.metadata), &wantMap); err != nil {
 				t.Fatalf("parse seeded metadata: %v", err)
 			}
-			if len(got.Metadata) != len(wantMap) {
-				t.Errorf("event %d Metadata len=%d, want %d", got.ID, len(got.Metadata), len(wantMap))
-			}
-			for k, v := range wantMap {
-				if got.Metadata[k] != v {
-					t.Errorf("event %d Metadata[%q]=%q, want %q", got.ID, k, got.Metadata[k], v)
-				}
+			if !maps.Equal(got.Metadata, wantMap) {
+				t.Errorf("event %d Metadata=%v, want %v", got.ID, got.Metadata, wantMap)
 			}
 		}
 	}
@@ -941,36 +920,7 @@ func TestLegacyMigrationFidelity(t *testing.T) {
 // broken, the legacy tables would be lost or corrupted.
 func TestLegacyMigrationAtomic(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy-atomic.db")
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open raw: %v", err)
-	}
-	// Seed legacy schema + a small amount of data.
-	if _, err := db.Exec(`
-		CREATE TABLE nights (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			started_at TEXT NOT NULL,
-			ended_at TEXT,
-			created_at TEXT NOT NULL,
-			ferber_enabled INTEGER NOT NULL DEFAULT 0,
-			ferber_night_number INTEGER
-		)`); err != nil {
-		t.Fatalf("create nights: %v", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE events (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
-			from_state TEXT NOT NULL,
-			action TEXT NOT NULL,
-			to_state TEXT NOT NULL,
-			timestamp TEXT NOT NULL,
-			metadata TEXT,
-			created_at TEXT NOT NULL,
-			seq INTEGER NOT NULL
-		)`); err != nil {
-		t.Fatalf("create events: %v", err)
-	}
+	db := openLegacyDB(t, dbPath)
 	now := time.Now().Truncate(time.Microsecond)
 	if _, err := db.Exec(`INSERT INTO nights (id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number) VALUES (1, ?, ?, ?, 0, NULL)`,
 		now.Add(-10*time.Hour).Format(time.RFC3339Nano), now.Add(-2*time.Hour).Format(time.RFC3339Nano), now.Add(-10*time.Hour).Format(time.RFC3339Nano),

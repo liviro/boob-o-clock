@@ -45,9 +45,12 @@ export interface SessionResponse {
   // Present when the current session is a Ferber night.
   ferber?: {
     nightNumber: number;
+    // Present when the current state is Learning or CheckIn.
     current?: {
       checkInCount: number;
       startedAt: string;
+      // Absolute timestamp at which the next check-in becomes available.
+      // Present only in Learning state (absent during CheckIn).
       checkInAvailableAt?: string;
       mood: 'quiet' | 'fussy' | 'crying';
     };

@@ -59,7 +59,9 @@ const sessionsTableDDL = `CREATE TABLE IF NOT EXISTS sessions (
 // makes the UNIQUE constraint bite — at most one row may match the predicate.
 const oneOpenSessionIndexDDL = `CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON sessions((1)) WHERE ended_at IS NULL`
 
-const newEventsTableDDL = `CREATE TABLE IF NOT EXISTS events (
+// The column list is shared between the fresh-install DDL below and the
+// phase-C table rewrite in migrateLegacy, so both paths stay in sync.
+const eventsColumnsDDL = `(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 	from_state TEXT NOT NULL,
@@ -70,6 +72,8 @@ const newEventsTableDDL = `CREATE TABLE IF NOT EXISTS events (
 	created_at TEXT NOT NULL,
 	seq INTEGER NOT NULL
 )`
+
+const newEventsTableDDL = `CREATE TABLE IF NOT EXISTS events ` + eventsColumnsDDL
 
 const eventsSeqIndexDDL = `CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`
 
@@ -133,9 +137,8 @@ func (s *Store) migrateLegacy() error {
 	}
 	defer tx.Rollback()
 
-	// Phase A: sessions table + indexes. Each DDL in its own Exec —
-	// database/sql's Exec does not reliably run multi-statement strings
-	// with modernc.org/sqlite.
+	// Each DDL needs its own Exec — database/sql does not reliably run
+	// multi-statement strings through modernc.org/sqlite.
 	if _, err := tx.Exec(sessionsTableDDL); err != nil {
 		return fmt.Errorf("sessions ddl: %w", err)
 	}
@@ -143,34 +146,17 @@ func (s *Store) migrateLegacy() error {
 		return fmt.Errorf("sessions unique index: %w", err)
 	}
 
-	// Phase B: copy night rows into sessions, preserving every column
-	// (id, started_at, ended_at, created_at, ferber_*). ON CONFLICT is a
-	// belt-and-suspenders no-op in the single-tx flow; kept for safety
-	// if someone ever re-introduces partial retries.
+	// night.id becomes session.id 1:1 so the events copy below can alias
+	// night_id → session_id without a mapping table.
 	if _, err := tx.Exec(`
 		INSERT INTO sessions (id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number)
 		SELECT id, 'night', started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights
-		WHERE true
-		ON CONFLICT(id) DO NOTHING
 	`); err != nil {
 		return fmt.Errorf("backfill sessions: %w", err)
 	}
 
-	// Phase C: recreate the events table with session_id NOT NULL REFERENCES
-	// sessions. Since the sessions table above preserves night IDs as session
-	// IDs 1:1, the copy just aliases night_id → session_id.
-	if _, err := tx.Exec(`
-		CREATE TABLE events_new (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-			from_state TEXT NOT NULL,
-			action TEXT NOT NULL,
-			to_state TEXT NOT NULL,
-			timestamp TEXT NOT NULL,
-			metadata TEXT,
-			created_at TEXT NOT NULL,
-			seq INTEGER NOT NULL
-		)`); err != nil {
+	// Rebuild events with the new session_id FK, preserving every column.
+	if _, err := tx.Exec(`CREATE TABLE events_new ` + eventsColumnsDDL); err != nil {
 		return fmt.Errorf("create events_new: %w", err)
 	}
 	if _, err := tx.Exec(`
@@ -188,8 +174,6 @@ func (s *Store) migrateLegacy() error {
 	if _, err := tx.Exec(eventsSeqIndexDDL); err != nil {
 		return fmt.Errorf("events seq index: %w", err)
 	}
-
-	// Phase D: drop the legacy nights table (events no longer references it).
 	if _, err := tx.Exec(`DROP TABLE nights`); err != nil {
 		return fmt.Errorf("drop nights: %w", err)
 	}
