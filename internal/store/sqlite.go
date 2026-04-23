@@ -40,18 +40,154 @@ func (s *Store) Ping() error {
 	return s.db.Ping()
 }
 
-func (s *Store) migrate() error {
-	if _, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS nights (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			started_at TEXT NOT NULL,
-			ended_at TEXT,
-			created_at TEXT NOT NULL
-		);
+// --- schema DDL (as constants so fresh and legacy paths stay in sync) ---
 
-		CREATE TABLE IF NOT EXISTS events (
+const sessionsTableDDL = `CREATE TABLE IF NOT EXISTS sessions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind TEXT NOT NULL CHECK (kind IN ('night','day')),
+	started_at TEXT NOT NULL,
+	ended_at TEXT,
+	created_at TEXT NOT NULL,
+	ferber_enabled INTEGER NOT NULL DEFAULT 0,
+	ferber_night_number INTEGER
+)`
+
+// Indexing a constant expression rather than ended_at is deliberate: SQLite
+// treats multiple NULLs as distinct even inside partial UNIQUE indexes, so
+// UNIQUE(ended_at) WHERE ended_at IS NULL would silently permit any number of
+// open sessions. Indexing the constant 1 (same value for every matching row)
+// makes the UNIQUE constraint bite — at most one row may match the predicate.
+const oneOpenSessionIndexDDL = `CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON sessions((1)) WHERE ended_at IS NULL`
+
+const newEventsTableDDL = `CREATE TABLE IF NOT EXISTS events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+	from_state TEXT NOT NULL,
+	action TEXT NOT NULL,
+	to_state TEXT NOT NULL,
+	timestamp TEXT NOT NULL,
+	metadata TEXT,
+	created_at TEXT NOT NULL,
+	seq INTEGER NOT NULL
+)`
+
+const eventsSeqIndexDDL = `CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`
+
+// migrate runs once per process start. Three paths:
+//   - sessions table already exists → already migrated, no-op (just set pragma).
+//   - nights table exists, sessions doesn't → legacy DB, run full migration.
+//   - neither exists → fresh install, create new schema directly.
+func (s *Store) migrate() error {
+	sessionsExists, err := tableExists(s.db, "sessions")
+	if err != nil {
+		return err
+	}
+	if sessionsExists {
+		_, err := s.db.Exec(`PRAGMA foreign_keys = ON`)
+		return err
+	}
+
+	nightsExists, err := tableExists(s.db, "nights")
+	if err != nil {
+		return err
+	}
+	if nightsExists {
+		return s.migrateLegacy()
+	}
+	return s.createFreshSchema()
+}
+
+// createFreshSchema is the first-install path.
+func (s *Store) createFreshSchema() error {
+	stmts := []string{
+		sessionsTableDDL,
+		oneOpenSessionIndexDDL,
+		newEventsTableDDL,
+		eventsSeqIndexDDL,
+		`PRAGMA foreign_keys = ON`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("createFreshSchema: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateLegacy migrates a pre-day-mode DB (nights + events with night_id)
+// to the new schema (sessions + events with session_id).
+//
+// One-time anomaly: there is a timestamp gap between the last pre-migration
+// end_night event and the first post-migration start_day/start_night event.
+// See design doc §7.4 — not worth bespoke code; user can manually close via
+// long-press timestamp picker if visual continuity is desired.
+func (s *Store) migrateLegacy() error {
+	// Phase A: sessions table + backfill in one transaction.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("migrateLegacy begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Each DDL in its own Exec — database/sql's Exec does not reliably run
+	// multi-statement strings with modernc.org/sqlite.
+	if _, err := tx.Exec(sessionsTableDDL); err != nil {
+		return fmt.Errorf("sessions ddl: %w", err)
+	}
+	if _, err := tx.Exec(oneOpenSessionIndexDDL); err != nil {
+		return fmt.Errorf("sessions unique index: %w", err)
+	}
+
+	// Backfill sessions from nights (kind='night', preserve IDs).
+	// ON CONFLICT DO NOTHING handles the case where a prior partial crash
+	// left some rows already inserted.
+	if _, err := tx.Exec(`
+		INSERT INTO sessions (id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number)
+		SELECT id, 'night', started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights
+		WHERE true
+		ON CONFLICT(id) DO NOTHING
+	`); err != nil {
+		return fmt.Errorf("backfill sessions: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrateLegacy commit A: %w", err)
+	}
+
+	// Phase B: recreate events table with proper session_id NOT NULL + FK.
+	// Runs in its own transaction so phase A's durability is guaranteed before
+	// the schema rewrite begins.
+	if err := s.recreateEventsTable(); err != nil {
+		return fmt.Errorf("recreateEventsTable: %w", err)
+	}
+
+	// Phase C: drop the legacy nights table (events no longer references it).
+	if _, err := s.db.Exec(`DROP TABLE nights`); err != nil {
+		return fmt.Errorf("drop nights: %w", err)
+	}
+
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("pragma foreign_keys: %w", err)
+	}
+
+	return nil
+}
+
+// recreateEventsTable rebuilds the events table with the new schema
+// (session_id NOT NULL, REFERENCES sessions ON DELETE CASCADE), copying legacy
+// rows and mapping night_id → session_id (values are identical since sessions
+// preserved IDs from nights).
+func (s *Store) recreateEventsTable() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("recreate begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		CREATE TABLE events_new (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
+			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 			from_state TEXT NOT NULL,
 			action TEXT NOT NULL,
 			to_state TEXT NOT NULL,
@@ -59,51 +195,53 @@ func (s *Store) migrate() error {
 			metadata TEXT,
 			created_at TEXT NOT NULL,
 			seq INTEGER NOT NULL
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_events_night_seq ON events(night_id, seq);
-
-		PRAGMA foreign_keys = ON;
+		)
 	`); err != nil {
-		return err
+		return fmt.Errorf("create events_new: %w", err)
 	}
 
-	// Idempotent column additions for Ferber mode.
-	if err := s.addColumnIfMissing("nights", "ferber_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
+	if _, err := tx.Exec(`
+		INSERT INTO events_new (id, session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
+		SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq FROM events
+	`); err != nil {
+		return fmt.Errorf("copy events: %w", err)
 	}
-	if err := s.addColumnIfMissing("nights", "ferber_night_number", "INTEGER"); err != nil {
-		return err
+
+	if _, err := tx.Exec(`DROP TABLE events`); err != nil {
+		return fmt.Errorf("drop old events: %w", err)
 	}
-	return nil
+
+	if _, err := tx.Exec(`ALTER TABLE events_new RENAME TO events`); err != nil {
+		return fmt.Errorf("rename events_new: %w", err)
+	}
+
+	if _, err := tx.Exec(eventsSeqIndexDDL); err != nil {
+		return fmt.Errorf("events seq index: %w", err)
+	}
+
+	return tx.Commit()
 }
 
-func (s *Store) addColumnIfMissing(table, column, typeDecl string) error {
-	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+// tableExists reports whether a table by the given name exists in the DB.
+func tableExists(db *sql.DB, name string) (bool, error) {
+	var got string
+	err := db.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, name,
+	).Scan(&got)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	if err != nil {
-		return fmt.Errorf("pragma %s: %w", table, err)
+		return false, fmt.Errorf("tableExists(%s): %w", name, err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			return err
-		}
-		if name == column {
-			return nil // already present
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, typeDecl))
-	return err
+	return true, nil
 }
 
-func (s *Store) CreateNight(startedAt time.Time, ferberEnabled bool, ferberNightNumber int) (*domain.Night, error) {
+// --- session mutators ---
+
+// CreateSession inserts a new session row. ferberEnabled only meaningful when
+// kind == SessionKindNight; callers must pass false (and a zero number) for day.
+func (s *Store) CreateSession(kind domain.SessionKind, startedAt time.Time, ferberEnabled bool, ferberNightNumber int) (*domain.Session, error) {
 	now := time.Now()
 	var ferberNumArg any
 	var ferberNumPtr *int
@@ -116,21 +254,23 @@ func (s *Store) CreateNight(startedAt time.Time, ferberEnabled bool, ferberNight
 	}
 
 	result, err := s.db.Exec(
-		`INSERT INTO nights (started_at, created_at, ferber_enabled, ferber_night_number)
-		 VALUES (?, ?, ?, ?)`,
+		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number)
+		 VALUES (?, ?, ?, ?, ?)`,
+		string(kind),
 		startedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
 		ferberEnabledInt, ferberNumArg,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("insert night: %w", err)
+		return nil, fmt.Errorf("insert session: %w", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
 		return nil, fmt.Errorf("last insert id: %w", err)
 	}
-	return &domain.Night{
+	return &domain.Session{
 		ID:                id,
+		Kind:              kind,
 		StartedAt:         startedAt,
 		CreatedAt:         now,
 		FerberEnabled:     ferberEnabled,
@@ -138,32 +278,164 @@ func (s *Store) CreateNight(startedAt time.Time, ferberEnabled bool, ferberNight
 	}, nil
 }
 
-func (s *Store) EndNight(nightID int64, endedAt time.Time) error {
-	_, err := s.db.Exec(
-		"UPDATE nights SET ended_at = ? WHERE id = ?",
-		endedAt.Format(time.RFC3339Nano), nightID,
+// StartNewSession atomically closes any currently-open session and creates a
+// new session, writing startEvent as the new session's first event. All three
+// operations happen inside one BEGIN/COMMIT so the unique partial index
+// invariant "at most one open session" is never transiently violated.
+//
+// Used by POST /api/session/start for both first-start (no prior session) and
+// chain advance (close old, open new). On first-start, the UPDATE is a no-op.
+//
+// startEvent is mutated: SessionID, Seq (=1), ID, and CreatedAt are populated.
+// The session's started_at is set to startEvent.Timestamp — they must match for
+// the chain-advance invariant (old.ended_at == new.started_at).
+func (s *Store) StartNewSession(
+	kind domain.SessionKind,
+	ferberEnabled bool,
+	ferberNightNumber int,
+	startEvent *domain.Event,
+) (*domain.Session, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("start session: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	ts := startEvent.Timestamp.Format(time.RFC3339Nano)
+
+	// 1. Close any currently-open session at startEvent.Timestamp.
+	if _, err := tx.Exec(
+		"UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL",
+		ts,
+	); err != nil {
+		return nil, fmt.Errorf("start session: close prior: %w", err)
+	}
+
+	// 2. Insert new session row.
+	now := time.Now()
+	var ferberNumArg any
+	var ferberNumPtr *int
+	ferberEnabledInt := 0
+	if ferberEnabled {
+		n := ferberNightNumber
+		ferberNumArg = n
+		ferberNumPtr = &n
+		ferberEnabledInt = 1
+	}
+
+	res, err := tx.Exec(
+		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number)
+		 VALUES (?, ?, ?, ?, ?)`,
+		string(kind), ts, now.Format(time.RFC3339Nano),
+		ferberEnabledInt, ferberNumArg,
 	)
 	if err != nil {
-		return fmt.Errorf("end night: %w", err)
+		return nil, fmt.Errorf("start session: insert session: %w", err)
+	}
+	sessID, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("start session: session last id: %w", err)
+	}
+
+	// 3. Insert start event with seq=1.
+	startEvent.SessionID = sessID
+	startEvent.Seq = 1
+	startEvent.CreatedAt = now
+
+	var metadataJSON []byte
+	if startEvent.Metadata != nil {
+		metadataJSON, err = json.Marshal(startEvent.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("start session: marshal metadata: %w", err)
+		}
+	}
+
+	evtRes, err := tx.Exec(
+		`INSERT INTO events (session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		startEvent.SessionID,
+		string(startEvent.FromState), string(startEvent.Action), string(startEvent.ToState),
+		ts, metadataJSON,
+		startEvent.CreatedAt.Format(time.RFC3339Nano), startEvent.Seq,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("start session: insert event: %w", err)
+	}
+	startEvent.ID, err = evtRes.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("start session: event last id: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("start session: commit: %w", err)
+	}
+
+	return &domain.Session{
+		ID:                sessID,
+		Kind:              kind,
+		StartedAt:         startEvent.Timestamp,
+		CreatedAt:         now,
+		FerberEnabled:     ferberEnabled,
+		FerberNightNumber: ferberNumPtr,
+	}, nil
+}
+
+// UndoChainAdvance atomically reverses a chain advance: deletes the newSession
+// (and its single start event) and clears ended_at on prevSession. Ordering
+// is critical — delete first, then clear — so the unique partial index never
+// sees two open sessions within the transaction (SQLite checks UNIQUE at
+// statement level).
+func (s *Store) UndoChainAdvance(newSessionID, prevSessionID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("undo chain: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 1. Delete events for the new session first (explicit, not relying on FK cascade).
+	if _, err := tx.Exec("DELETE FROM events WHERE session_id = ?", newSessionID); err != nil {
+		return fmt.Errorf("undo chain: delete events: %w", err)
+	}
+	// 2. Delete the new session row.
+	if _, err := tx.Exec("DELETE FROM sessions WHERE id = ?", newSessionID); err != nil {
+		return fmt.Errorf("undo chain: delete session: %w", err)
+	}
+	// 3. Now safe to reopen the prior session — no other open session exists.
+	if _, err := tx.Exec("UPDATE sessions SET ended_at = NULL WHERE id = ?", prevSessionID); err != nil {
+		return fmt.Errorf("undo chain: reopen prior: %w", err)
+	}
+	return tx.Commit()
+}
+
+// EndSession sets ended_at on the given session. Kind-agnostic.
+func (s *Store) EndSession(sessionID int64, endedAt time.Time) error {
+	_, err := s.db.Exec(
+		"UPDATE sessions SET ended_at = ? WHERE id = ?",
+		endedAt.Format(time.RFC3339Nano), sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("end session: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) DeleteNight(nightID int64) error {
+// DeleteSession removes a session and (via ON DELETE CASCADE) its events.
+func (s *Store) DeleteSession(sessionID int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("delete night: begin tx: %w", err)
+		return fmt.Errorf("delete session: begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec("DELETE FROM events WHERE night_id = ?", nightID); err != nil {
-		return fmt.Errorf("delete night: delete events: %w", err)
+	// Explicit events delete for safety; FK cascade would also do this.
+	if _, err := tx.Exec("DELETE FROM events WHERE session_id = ?", sessionID); err != nil {
+		return fmt.Errorf("delete session: delete events: %w", err)
 	}
-	if _, err := tx.Exec("DELETE FROM nights WHERE id = ?", nightID); err != nil {
-		return fmt.Errorf("delete night: delete row: %w", err)
+	if _, err := tx.Exec("DELETE FROM sessions WHERE id = ?", sessionID); err != nil {
+		return fmt.Errorf("delete session: delete row: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("delete night: commit: %w", err)
+		return fmt.Errorf("delete session: commit: %w", err)
 	}
 	return nil
 }
@@ -177,7 +449,7 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 
 	var maxSeq sql.NullInt64
 	err = tx.QueryRow(
-		"SELECT MAX(seq) FROM events WHERE night_id = ?", evt.NightID,
+		"SELECT MAX(seq) FROM events WHERE session_id = ?", evt.SessionID,
 	).Scan(&maxSeq)
 	if err != nil {
 		return fmt.Errorf("get max seq: %w", err)
@@ -198,9 +470,9 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 
 	evt.CreatedAt = time.Now()
 	result, err := tx.Exec(
-		`INSERT INTO events (night_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
+		`INSERT INTO events (session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		evt.NightID, string(evt.FromState), string(evt.Action), string(evt.ToState),
+		evt.SessionID, string(evt.FromState), string(evt.Action), string(evt.ToState),
 		evt.Timestamp.Format(time.RFC3339Nano), metadataJSON,
 		evt.CreatedAt.Format(time.RFC3339Nano), evt.Seq,
 	)
@@ -215,7 +487,7 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 	return tx.Commit()
 }
 
-func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
+func (s *Store) PopEvent(sessionID int64) (*domain.Event, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -223,8 +495,8 @@ func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
 	defer tx.Rollback()
 
 	evt, err := scanEvent(tx.QueryRow(
-		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
-		 FROM events WHERE night_id = ? ORDER BY seq DESC LIMIT 1`, nightID,
+		`SELECT id, session_id, from_state, action, to_state, timestamp, metadata, created_at, seq
+		 FROM events WHERE session_id = ? ORDER BY seq DESC LIMIT 1`, sessionID,
 	))
 	if err != nil {
 		return nil, fmt.Errorf("query last event: %w", err)
@@ -237,131 +509,141 @@ func (s *Store) PopEvent(nightID int64) (*domain.Event, error) {
 	return evt, tx.Commit()
 }
 
-func (s *Store) CurrentSession() (*domain.Night, []domain.Event, error) {
-	night, err := s.scanNight(
-		s.db.QueryRow("SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1"),
+// --- session queries ---
+
+const sessionColumns = `id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number`
+
+func (s *Store) CurrentSession() (*domain.Session, []domain.Event, error) {
+	session, err := s.scanSession(
+		s.db.QueryRow(`SELECT ` + sessionColumns + ` FROM sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1`),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("query current night: %w", err)
+		return nil, nil, fmt.Errorf("query current session: %w", err)
 	}
 
-	events, err := s.GetEvents(night.ID)
+	events, err := s.GetEvents(session.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("current session: %w", err)
 	}
 
-	return night, events, nil
+	return session, events, nil
 }
 
-func (s *Store) GetNight(id int64) (*domain.Night, []domain.Event, error) {
-	night, err := s.scanNight(
-		s.db.QueryRow("SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE id = ?", id),
+func (s *Store) GetSession(id int64) (*domain.Session, []domain.Event, error) {
+	session, err := s.scanSession(
+		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("query night: %w", err)
+		return nil, nil, fmt.Errorf("query session: %w", err)
 	}
 
 	events, err := s.GetEvents(id)
 	if err != nil {
-		return nil, nil, fmt.Errorf("get night: %w", err)
+		return nil, nil, fmt.Errorf("get session: %w", err)
 	}
 
-	return night, events, nil
+	return session, events, nil
 }
 
-func (s *Store) ListNights(from, to time.Time) ([]domain.Night, error) {
-	rows, err := s.db.Query(
-		"SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights WHERE started_at >= ? AND started_at < ? ORDER BY started_at",
-		from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano),
-	)
+// ListSessions returns all sessions whose started_at is in [from, to), ordered
+// chronologically. An empty kind filter returns sessions of both kinds.
+func (s *Store) ListSessions(from, to time.Time, kind domain.SessionKind) ([]domain.Session, error) {
+	var rows *sql.Rows
+	var err error
+	if kind == "" {
+		rows, err = s.db.Query(
+			`SELECT `+sessionColumns+` FROM sessions WHERE started_at >= ? AND started_at < ? ORDER BY started_at`,
+			from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano),
+		)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT `+sessionColumns+` FROM sessions WHERE started_at >= ? AND started_at < ? AND kind = ? ORDER BY started_at`,
+			from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano), string(kind),
+		)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("query nights: %w", err)
+		return nil, fmt.Errorf("query sessions: %w", err)
 	}
 	defer rows.Close()
 
-	var nights []domain.Night
+	var sessions []domain.Session
 	for rows.Next() {
-		n, err := s.scanNight(rows)
+		sess, err := s.scanSession(rows)
 		if err != nil {
-			return nil, fmt.Errorf("scan night: %w", err)
+			return nil, fmt.Errorf("scan session: %w", err)
 		}
-		nights = append(nights, *n)
+		sessions = append(sessions, *sess)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list nights: iterate: %w", err)
+		return nil, fmt.Errorf("list sessions: iterate: %w", err)
 	}
-	return nights, nil
+	return sessions, nil
 }
 
-// LastNight returns the most recently started night (by started_at),
-// regardless of whether it has ended. Returns nil if no nights exist.
-func (s *Store) LastNight() (*domain.Night, error) {
-	night, err := s.scanNight(
-		s.db.QueryRow(
-			`SELECT id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number
-			 FROM nights ORDER BY started_at DESC LIMIT 1`,
-		),
+// LastSession returns the most recently started session matching the kind
+// filter. Empty kind matches any. Returns nil if none exist.
+func (s *Store) LastSession(kind domain.SessionKind) (*domain.Session, error) {
+	var row *sql.Row
+	if kind == "" {
+		row = s.db.QueryRow(`SELECT ` + sessionColumns + ` FROM sessions ORDER BY started_at DESC LIMIT 1`)
+	} else {
+		row = s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE kind = ? ORDER BY started_at DESC LIMIT 1`, string(kind))
+	}
+	sess, err := s.scanSession(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query last session: %w", err)
+	}
+	return sess, nil
+}
+
+// PrevSessionBefore returns the session with the largest id strictly less than
+// the given id, or nil if none exists. Used by the cycle resolver and
+// chain-advance undo detection.
+func (s *Store) PrevSessionBefore(id int64) (*domain.Session, error) {
+	sess, err := s.scanSession(
+		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id < ? ORDER BY id DESC LIMIT 1`, id),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query last night: %w", err)
+		return nil, fmt.Errorf("prev session: %w", err)
 	}
-	return night, nil
+	return sess, nil
 }
 
-// -- internal helpers --
-
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-func (s *Store) scanNight(row scanner) (*domain.Night, error) {
-	var n domain.Night
-	var startedAt, createdAt string
-	var endedAt sql.NullString
-	var ferberEnabled int
-	var ferberNightNumber sql.NullInt64
-
-	if err := row.Scan(&n.ID, &startedAt, &endedAt, &createdAt, &ferberEnabled, &ferberNightNumber); err != nil {
-		return nil, err
+// NextSessionAfter returns the session with the smallest id strictly greater
+// than the given id, or nil if none exists.
+func (s *Store) NextSessionAfter(id int64) (*domain.Session, error) {
+	sess, err := s.scanSession(
+		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id > ? ORDER BY id ASC LIMIT 1`, id),
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-	var err error
-	n.StartedAt, err = time.Parse(time.RFC3339Nano, startedAt)
 	if err != nil {
-		return nil, fmt.Errorf("parse startedAt: %w", err)
+		return nil, fmt.Errorf("next session: %w", err)
 	}
-	n.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse createdAt: %w", err)
-	}
-	if endedAt.Valid {
-		t, err := time.Parse(time.RFC3339Nano, endedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("parse endedAt: %w", err)
-		}
-		n.EndedAt = &t
-	}
-	n.FerberEnabled = ferberEnabled == 1
-	if ferberNightNumber.Valid {
-		v := int(ferberNightNumber.Int64)
-		n.FerberNightNumber = &v
-	}
-	return &n, nil
+	return sess, nil
 }
 
-// GetAllEvents returns all events across all nights, ordered by night and sequence.
+// --- event queries ---
+
+const eventColumns = `id, session_id, from_state, action, to_state, timestamp, metadata, created_at, seq`
+
+// GetAllEvents returns all events across all sessions, ordered by session and sequence.
 func (s *Store) GetAllEvents() ([]domain.Event, error) {
 	rows, err := s.db.Query(
-		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
-		 FROM events ORDER BY night_id, seq`,
+		`SELECT ` + eventColumns + ` FROM events ORDER BY session_id, seq`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query all events: %w", err)
@@ -382,23 +664,22 @@ func (s *Store) GetAllEvents() ([]domain.Event, error) {
 	return events, nil
 }
 
-// GetEventsForNights fetches events for multiple nights in a single query,
-// returning them partitioned by night ID.
-func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, error) {
-	if len(nightIDs) == 0 {
+// GetEventsForSessions fetches events for multiple sessions in a single query,
+// returning them partitioned by session ID.
+func (s *Store) GetEventsForSessions(sessionIDs []int64) (map[int64][]domain.Event, error) {
+	if len(sessionIDs) == 0 {
 		return map[int64][]domain.Event{}, nil
 	}
 
-	args := make([]any, len(nightIDs))
-	for i, id := range nightIDs {
+	args := make([]any, len(sessionIDs))
+	for i, id := range sessionIDs {
 		args[i] = id
 	}
-	placeholders := strings.Repeat("?,", len(nightIDs))
-	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+	placeholders := strings.Repeat("?,", len(sessionIDs))
+	placeholders = placeholders[:len(placeholders)-1]
 
 	rows, err := s.db.Query(
-		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
-		 FROM events WHERE night_id IN (`+placeholders+`) ORDER BY night_id, seq`, args...,
+		`SELECT `+eventColumns+` FROM events WHERE session_id IN (`+placeholders+`) ORDER BY session_id, seq`, args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query events batch: %w", err)
@@ -411,7 +692,7 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 		if err != nil {
 			return nil, fmt.Errorf("get events batch: %w", err)
 		}
-		result[evt.NightID] = append(result[evt.NightID], *evt)
+		result[evt.SessionID] = append(result[evt.SessionID], *evt)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("get events batch: iterate: %w", err)
@@ -419,10 +700,9 @@ func (s *Store) GetEventsForNights(nightIDs []int64) (map[int64][]domain.Event, 
 	return result, nil
 }
 
-func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
+func (s *Store) GetEvents(sessionID int64) ([]domain.Event, error) {
 	rows, err := s.db.Query(
-		`SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq
-		 FROM events WHERE night_id = ? ORDER BY seq`, nightID,
+		`SELECT `+eventColumns+` FROM events WHERE session_id = ? ORDER BY seq`, sessionID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query events: %w", err)
@@ -443,12 +723,53 @@ func (s *Store) GetEvents(nightID int64) ([]domain.Event, error) {
 	return events, nil
 }
 
+// --- scanners ---
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func (s *Store) scanSession(row scanner) (*domain.Session, error) {
+	var sess domain.Session
+	var kindStr, startedAt, createdAt string
+	var endedAt sql.NullString
+	var ferberEnabled int
+	var ferberNightNumber sql.NullInt64
+
+	if err := row.Scan(&sess.ID, &kindStr, &startedAt, &endedAt, &createdAt, &ferberEnabled, &ferberNightNumber); err != nil {
+		return nil, err
+	}
+	sess.Kind = domain.SessionKind(kindStr)
+	var err error
+	sess.StartedAt, err = time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse startedAt: %w", err)
+	}
+	sess.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse createdAt: %w", err)
+	}
+	if endedAt.Valid {
+		t, err := time.Parse(time.RFC3339Nano, endedAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse endedAt: %w", err)
+		}
+		sess.EndedAt = &t
+	}
+	sess.FerberEnabled = ferberEnabled == 1
+	if ferberNightNumber.Valid {
+		v := int(ferberNightNumber.Int64)
+		sess.FerberNightNumber = &v
+	}
+	return &sess, nil
+}
+
 func scanEvent(row scanner) (*domain.Event, error) {
 	var evt domain.Event
 	var ts, createdAt string
 	var metadataJSON sql.NullString
 
-	if err := row.Scan(&evt.ID, &evt.NightID, &evt.FromState, &evt.Action, &evt.ToState,
+	if err := row.Scan(&evt.ID, &evt.SessionID, &evt.FromState, &evt.Action, &evt.ToState,
 		&ts, &metadataJSON, &createdAt, &evt.Seq); err != nil {
 		return nil, fmt.Errorf("scan event: %w", err)
 	}

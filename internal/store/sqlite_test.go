@@ -23,7 +23,7 @@ func newTestStore(t *testing.T) *Store {
 func TestSchemaCreation(t *testing.T) {
 	s := newTestStore(t)
 
-	// Opening again should be idempotent (migrations run twice without error)
+	// Opening again should be idempotent (migrations run twice without error).
 	s2, err := New(s.dbPath)
 	if err != nil {
 		t.Fatalf("second open failed: %v", err)
@@ -31,63 +31,117 @@ func TestSchemaCreation(t *testing.T) {
 	s2.Close()
 }
 
-func TestCreateNight(t *testing.T) {
+func TestCreateSessionNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, err := s.CreateNight(now, false, 0)
+	sess, err := s.CreateSession(domain.SessionKindNight, now, false, 0)
 	if err != nil {
-		t.Fatalf("CreateNight: %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if night.ID == 0 {
-		t.Error("expected non-zero night ID")
+	if sess.ID == 0 {
+		t.Error("expected non-zero session ID")
 	}
-	if !night.StartedAt.Equal(now) {
-		t.Errorf("StartedAt = %v, want %v", night.StartedAt, now)
+	if sess.Kind != domain.SessionKindNight {
+		t.Errorf("Kind = %s, want night", sess.Kind)
 	}
-	if night.EndedAt != nil {
-		t.Error("EndedAt should be nil for new night")
+	if !sess.StartedAt.Equal(now) {
+		t.Errorf("StartedAt = %v, want %v", sess.StartedAt, now)
+	}
+	if sess.EndedAt != nil {
+		t.Error("EndedAt should be nil for new session")
 	}
 }
 
-func TestEndNight(t *testing.T) {
+func TestCreateSessionDay(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now, false, 0)
-	endTime := now.Add(8 * time.Hour)
-
-	err := s.EndNight(night.ID, endTime)
+	sess, err := s.CreateSession(domain.SessionKindDay, now, false, 0)
 	if err != nil {
-		t.Fatalf("EndNight: %v", err)
+		t.Fatalf("CreateSession day: %v", err)
+	}
+	if sess.Kind != domain.SessionKindDay {
+		t.Errorf("Kind = %s, want day", sess.Kind)
+	}
+	if sess.FerberEnabled {
+		t.Error("day session should never have FerberEnabled")
+	}
+}
+
+func TestCreateNightWithFerber(t *testing.T) {
+	s := newTestStore(t)
+	started := time.Now()
+	sess, err := s.CreateSession(domain.SessionKindNight, started, true, 3)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if !sess.FerberEnabled {
+		t.Error("FerberEnabled = false, want true")
+	}
+	if sess.FerberNightNumber == nil || *sess.FerberNightNumber != 3 {
+		t.Errorf("FerberNightNumber = %v, want 3", sess.FerberNightNumber)
 	}
 
-	got, _, err := s.GetNight(night.ID)
+	roundTrip, _, err := s.CurrentSession()
 	if err != nil {
-		t.Fatalf("GetNight: %v", err)
+		t.Fatalf("CurrentSession: %v", err)
+	}
+	if roundTrip == nil || !roundTrip.FerberEnabled || *roundTrip.FerberNightNumber != 3 {
+		t.Errorf("round-trip lost Ferber fields: %+v", roundTrip)
+	}
+}
+
+func TestEndSession(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().Truncate(time.Millisecond)
+
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	endTime := now.Add(8 * time.Hour)
+
+	if err := s.EndSession(sess.ID, endTime); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	got, _, err := s.GetSession(sess.ID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
 	}
 	if got.EndedAt == nil || !got.EndedAt.Equal(endTime) {
 		t.Errorf("EndedAt = %v, want %v", got.EndedAt, endTime)
 	}
 }
 
-func TestAddEventAndGetNight(t *testing.T) {
+func TestOneOpenSessionInvariant(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now, false, 0)
+	// First open session is fine.
+	if _, err := s.CreateSession(domain.SessionKindNight, now, false, 0); err != nil {
+		t.Fatalf("first CreateSession: %v", err)
+	}
+
+	// Second open session (without closing the first) must fail via the
+	// unique partial index on ended_at.
+	if _, err := s.CreateSession(domain.SessionKindDay, now.Add(time.Hour), false, 0); err == nil {
+		t.Error("expected unique constraint error on second open session, got none")
+	}
+}
+
+func TestAddEventAndGetSession(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().Truncate(time.Millisecond)
+
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 
 	evt := &domain.Event{
-		NightID:   night.ID,
+		SessionID: sess.ID,
 		FromState: domain.NightOff,
 		Action:    domain.StartNight,
 		ToState:   domain.Awake,
 		Timestamp: now,
-		Metadata:  nil,
 	}
-
-	err := s.AddEvent(evt)
-	if err != nil {
+	if err := s.AddEvent(evt); err != nil {
 		t.Fatalf("AddEvent: %v", err)
 	}
 	if evt.ID == 0 {
@@ -97,27 +151,24 @@ func TestAddEventAndGetNight(t *testing.T) {
 		t.Errorf("first event Seq = %d, want 1", evt.Seq)
 	}
 
-	// Add a second event, verify seq increments
 	evt2 := &domain.Event{
-		NightID:   night.ID,
+		SessionID: sess.ID,
 		FromState: domain.Awake,
 		Action:    domain.StartFeed,
 		ToState:   domain.Feeding,
 		Timestamp: now.Add(5 * time.Minute),
 		Metadata:  map[string]string{"breast": "L"},
 	}
-	err = s.AddEvent(evt2)
-	if err != nil {
+	if err := s.AddEvent(evt2); err != nil {
 		t.Fatalf("AddEvent 2: %v", err)
 	}
 	if evt2.Seq != 2 {
 		t.Errorf("second event Seq = %d, want 2", evt2.Seq)
 	}
 
-	// Read back
-	_, events, err := s.GetNight(night.ID)
+	_, events, err := s.GetSession(sess.ID)
 	if err != nil {
-		t.Fatalf("GetNight: %v", err)
+		t.Fatalf("GetSession: %v", err)
 	}
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
@@ -134,21 +185,20 @@ func TestPopEvent(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 
 	s.AddEvent(&domain.Event{
-		NightID: night.ID, FromState: domain.NightOff,
+		SessionID: sess.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
 	})
 	s.AddEvent(&domain.Event{
-		NightID: night.ID, FromState: domain.Awake,
+		SessionID: sess.ID, FromState: domain.Awake,
 		Action: domain.StartFeed, ToState: domain.Feeding,
 		Timestamp: now.Add(5 * time.Minute),
 		Metadata:  map[string]string{"breast": "L"},
 	})
 
-	// Pop the second event
-	popped, err := s.PopEvent(night.ID)
+	popped, err := s.PopEvent(sess.ID)
 	if err != nil {
 		t.Fatalf("PopEvent: %v", err)
 	}
@@ -156,8 +206,7 @@ func TestPopEvent(t *testing.T) {
 		t.Errorf("popped action = %s, want start_feed", popped.Action)
 	}
 
-	// Should have 1 event left
-	_, events, _ := s.GetNight(night.ID)
+	_, events, _ := s.GetSession(sess.ID)
 	if len(events) != 1 {
 		t.Fatalf("got %d events after pop, want 1", len(events))
 	}
@@ -167,273 +216,342 @@ func TestPopEventEmpty(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 
-	_, err := s.PopEvent(night.ID)
-	if err == nil {
-		t.Error("PopEvent on empty night should return error")
+	if _, err := s.PopEvent(sess.ID); err == nil {
+		t.Error("PopEvent on empty session should return error")
 	}
 }
 
 func TestCurrentSession(t *testing.T) {
 	s := newTestStore(t)
 
-	// No active night
-	night, events, err := s.CurrentSession()
+	// No active session.
+	sess, _, err := s.CurrentSession()
 	if err != nil {
 		t.Fatalf("CurrentSession: %v", err)
 	}
-	if night != nil {
-		t.Error("expected nil night when no active session")
+	if sess != nil {
+		t.Error("expected nil session when none active")
 	}
 
-	// Start a night
 	now := time.Now().Truncate(time.Millisecond)
-	n, _ := s.CreateNight(now, false, 0)
+	opened, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 	s.AddEvent(&domain.Event{
-		NightID: n.ID, FromState: domain.NightOff,
+		SessionID: opened.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
 	})
 
-	night, events, err = s.CurrentSession()
+	sess, events, err := s.CurrentSession()
 	if err != nil {
 		t.Fatalf("CurrentSession: %v", err)
 	}
-	if night == nil {
-		t.Fatal("expected active night")
-	}
-	if night.ID != n.ID {
-		t.Errorf("night ID = %d, want %d", night.ID, n.ID)
+	if sess == nil || sess.ID != opened.ID {
+		t.Fatalf("CurrentSession ID = %v, want %d", sess, opened.ID)
 	}
 	if len(events) != 1 {
 		t.Errorf("got %d events, want 1", len(events))
 	}
 
-	// End the night — should no longer be current
-	s.EndNight(n.ID, now.Add(8*time.Hour))
-	night, _, err = s.CurrentSession()
+	s.EndSession(opened.ID, now.Add(8*time.Hour))
+	sess, _, err = s.CurrentSession()
 	if err != nil {
 		t.Fatalf("CurrentSession after end: %v", err)
 	}
-	if night != nil {
-		t.Error("expected nil night after ending session")
+	if sess != nil {
+		t.Error("expected nil session after ending")
 	}
 }
 
-func TestListNights(t *testing.T) {
+func TestListSessions(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateNight(now, false, 0)
-	s.EndNight(n1.ID, now.Add(8*time.Hour))
+	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	s.EndSession(n1.ID, now.Add(8*time.Hour))
 
-	n2, _ := s.CreateNight(now.Add(24*time.Hour), false, 0)
-	s.EndNight(n2.ID, now.Add(32*time.Hour))
+	d1, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0)
+	s.EndSession(d1.ID, now.Add(22*time.Hour))
 
-	// Query all
-	nights, err := s.ListNights(now.Add(-time.Hour), now.Add(48*time.Hour))
+	n2, _ := s.CreateSession(domain.SessionKindNight, now.Add(22*time.Hour), false, 0)
+	s.EndSession(n2.ID, now.Add(32*time.Hour))
+
+	// Unfiltered: all three.
+	all, err := s.ListSessions(now.Add(-time.Hour), now.Add(48*time.Hour), "")
 	if err != nil {
-		t.Fatalf("ListNights: %v", err)
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("got %d sessions, want 3", len(all))
+	}
+
+	// Nights only.
+	nights, err := s.ListSessions(now.Add(-time.Hour), now.Add(48*time.Hour), domain.SessionKindNight)
+	if err != nil {
+		t.Fatalf("ListSessions night: %v", err)
 	}
 	if len(nights) != 2 {
 		t.Errorf("got %d nights, want 2", len(nights))
 	}
 
-	// Query subset
-	nights, err = s.ListNights(now.Add(12*time.Hour), now.Add(48*time.Hour))
+	// Days only.
+	days, err := s.ListSessions(now.Add(-time.Hour), now.Add(48*time.Hour), domain.SessionKindDay)
 	if err != nil {
-		t.Fatalf("ListNights: %v", err)
+		t.Fatalf("ListSessions day: %v", err)
 	}
-	if len(nights) != 1 {
-		t.Errorf("got %d nights, want 1", len(nights))
+	if len(days) != 1 {
+		t.Errorf("got %d days, want 1", len(days))
 	}
 }
 
-func TestGetEventsForNights(t *testing.T) {
+func TestGetEventsForSessions(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateNight(now, false, 0)
+	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 	s.AddEvent(&domain.Event{
-		NightID: n1.ID, FromState: domain.NightOff,
+		SessionID: n1.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
 	})
 	s.AddEvent(&domain.Event{
-		NightID: n1.ID, FromState: domain.Awake,
-		Action: domain.EndNight, ToState: domain.NightOff, Timestamp: now.Add(time.Hour),
+		SessionID: n1.ID, FromState: domain.Awake,
+		Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: now.Add(8 * time.Hour),
 	})
-	s.EndNight(n1.ID, now.Add(time.Hour))
+	s.EndSession(n1.ID, now.Add(8*time.Hour))
 
-	n2, _ := s.CreateNight(now.Add(24*time.Hour), false, 0)
+	n2, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0)
 	s.AddEvent(&domain.Event{
-		NightID: n2.ID, FromState: domain.NightOff,
-		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now.Add(24 * time.Hour),
+		SessionID: n2.ID, FromState: domain.Awake,
+		Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: now.Add(8 * time.Hour),
 	})
-	s.EndNight(n2.ID, now.Add(25*time.Hour))
 
-	// Batch fetch
-	eventsMap, err := s.GetEventsForNights([]int64{n1.ID, n2.ID})
+	eventsMap, err := s.GetEventsForSessions([]int64{n1.ID, n2.ID})
 	if err != nil {
-		t.Fatalf("GetEventsForNights: %v", err)
+		t.Fatalf("GetEventsForSessions: %v", err)
 	}
 	if len(eventsMap[n1.ID]) != 2 {
-		t.Errorf("night 1: got %d events, want 2", len(eventsMap[n1.ID]))
+		t.Errorf("session 1: got %d events, want 2", len(eventsMap[n1.ID]))
 	}
 	if len(eventsMap[n2.ID]) != 1 {
-		t.Errorf("night 2: got %d events, want 1", len(eventsMap[n2.ID]))
+		t.Errorf("session 2: got %d events, want 1", len(eventsMap[n2.ID]))
 	}
 
-	// Empty input
-	eventsMap, err = s.GetEventsForNights(nil)
+	emptyMap, err := s.GetEventsForSessions(nil)
 	if err != nil {
-		t.Fatalf("GetEventsForNights(nil): %v", err)
+		t.Fatalf("GetEventsForSessions(nil): %v", err)
 	}
-	if len(eventsMap) != 0 {
-		t.Errorf("empty input: got %d entries, want 0", len(eventsMap))
+	if len(emptyMap) != 0 {
+		t.Errorf("empty input: got %d entries, want 0", len(emptyMap))
 	}
 }
 
-func TestDeleteNight(t *testing.T) {
+func TestDeleteSession(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	night, _ := s.CreateNight(now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
 	s.AddEvent(&domain.Event{
-		NightID: night.ID, FromState: domain.NightOff,
+		SessionID: sess.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
 	})
 
-	err := s.DeleteNight(night.ID)
-	if err != nil {
-		t.Fatalf("DeleteNight: %v", err)
+	if err := s.DeleteSession(sess.ID); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
 	}
 
-	got, _, err := s.GetNight(night.ID)
+	got, _, err := s.GetSession(sess.ID)
 	if err != nil {
-		t.Fatalf("GetNight: %v", err)
+		t.Fatalf("GetSession: %v", err)
 	}
 	if got != nil {
-		t.Error("expected nil night after delete")
+		t.Error("expected nil session after delete")
 	}
 }
 
-func TestMigrateAddsFerberColumns(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	s, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	// Re-running New on the same file should be a no-op (idempotent migration).
-	s.Close()
-	s2, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("New (re-open): %v", err)
-	}
-	defer s2.Close()
+func TestLastSession(t *testing.T) {
+	s := newTestStore(t)
 
-	rows, err := s2.db.Query("PRAGMA table_info(nights)")
+	// Empty DB.
+	got, err := s.LastSession("")
 	if err != nil {
-		t.Fatalf("PRAGMA: %v", err)
-	}
-	defer rows.Close()
-	seen := map[string]bool{}
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		seen[name] = true
-	}
-	for _, col := range []string{"ferber_enabled", "ferber_night_number"} {
-		if !seen[col] {
-			t.Errorf("expected column %q on nights, not found", col)
-		}
-	}
-}
-
-func TestCreateNightWithFerber(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	s, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer s.Close()
-
-	started := time.Now()
-	n, err := s.CreateNight(started, true, 3)
-	if err != nil {
-		t.Fatalf("CreateNight: %v", err)
-	}
-	if !n.FerberEnabled {
-		t.Error("FerberEnabled = false, want true")
-	}
-	if n.FerberNightNumber == nil || *n.FerberNightNumber != 3 {
-		t.Errorf("FerberNightNumber = %v, want 3", n.FerberNightNumber)
-	}
-
-	// Round-trip via CurrentSession.
-	roundTrip, _, err := s.CurrentSession()
-	if err != nil {
-		t.Fatalf("CurrentSession: %v", err)
-	}
-	if roundTrip == nil || !roundTrip.FerberEnabled || *roundTrip.FerberNightNumber != 3 {
-		t.Errorf("round-trip lost Ferber fields: %+v", roundTrip)
-	}
-}
-
-func TestCreateNightWithoutFerber(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	s, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer s.Close()
-
-	n, err := s.CreateNight(time.Now(), false, 0)
-	if err != nil {
-		t.Fatalf("CreateNight: %v", err)
-	}
-	if n.FerberEnabled {
-		t.Error("FerberEnabled = true, want false")
-	}
-	if n.FerberNightNumber != nil {
-		t.Errorf("FerberNightNumber = %v, want nil", n.FerberNightNumber)
-	}
-}
-
-func TestLastNight(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	s, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer s.Close()
-
-	// No nights yet: LastNight returns nil with no error.
-	got, err := s.LastNight()
-	if err != nil {
-		t.Fatalf("LastNight empty: %v", err)
+		t.Fatalf("LastSession empty: %v", err)
 	}
 	if got != nil {
 		t.Errorf("expected nil, got %+v", got)
 	}
 
-	// Create two nights; second one is the Ferber one.
-	_, _ = s.CreateNight(time.Now().Add(-48*time.Hour), false, 0)
-	n2, _ := s.CreateNight(time.Now().Add(-24*time.Hour), true, 2)
-	_ = s.EndNight(n2.ID, time.Now().Add(-23*time.Hour))
+	// Create two nights.
+	_, _ = s.CreateSession(domain.SessionKindNight, time.Now().Add(-48*time.Hour), false, 0)
+	s.EndSession(1, time.Now().Add(-40*time.Hour))
+	n2, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), true, 2)
+	_ = s.EndSession(n2.ID, time.Now().Add(-23*time.Hour))
 
-	got, err = s.LastNight()
+	got, err = s.LastSession(domain.SessionKindNight)
 	if err != nil {
-		t.Fatalf("LastNight: %v", err)
+		t.Fatalf("LastSession: %v", err)
 	}
 	if got == nil || got.ID != n2.ID {
-		t.Fatalf("LastNight = %+v, want id %d", got, n2.ID)
+		t.Fatalf("LastSession = %+v, want id %d", got, n2.ID)
 	}
 	if !got.FerberEnabled || *got.FerberNightNumber != 2 {
-		t.Errorf("LastNight = %+v, want FerberEnabled=true NightNumber=2", got)
+		t.Errorf("LastSession = %+v, want FerberEnabled=true NightNumber=2", got)
 	}
+}
+
+func TestPrevSessionBeforeAndNextSessionAfter(t *testing.T) {
+	s := newTestStore(t)
+	t0 := time.Now().Truncate(time.Millisecond)
+
+	n1, _ := s.CreateSession(domain.SessionKindNight, t0, false, 0)
+	s.EndSession(n1.ID, t0.Add(8*time.Hour))
+	d1, _ := s.CreateSession(domain.SessionKindDay, t0.Add(8*time.Hour), false, 0)
+	s.EndSession(d1.ID, t0.Add(22*time.Hour))
+	n2, _ := s.CreateSession(domain.SessionKindNight, t0.Add(22*time.Hour), false, 0)
+	s.EndSession(n2.ID, t0.Add(30*time.Hour))
+
+	// Prev of n1 is nil (first session).
+	prev, err := s.PrevSessionBefore(n1.ID)
+	if err != nil {
+		t.Fatalf("PrevSessionBefore: %v", err)
+	}
+	if prev != nil {
+		t.Errorf("prev of first session should be nil, got %+v", prev)
+	}
+
+	// Prev of d1 is n1.
+	prev, err = s.PrevSessionBefore(d1.ID)
+	if err != nil || prev == nil || prev.ID != n1.ID {
+		t.Errorf("prev of d1 should be n1, got %+v err=%v", prev, err)
+	}
+
+	// Next of n1 is d1.
+	next, err := s.NextSessionAfter(n1.ID)
+	if err != nil || next == nil || next.ID != d1.ID {
+		t.Errorf("next of n1 should be d1, got %+v err=%v", next, err)
+	}
+
+	// Next of n2 is nil (last session).
+	next, err = s.NextSessionAfter(n2.ID)
+	if err != nil {
+		t.Fatalf("NextSessionAfter: %v", err)
+	}
+	if next != nil {
+		t.Errorf("next of last session should be nil, got %+v", next)
+	}
+}
+
+// TestLegacyMigration simulates upgrading a pre-day-mode DB: seed a legacy
+// schema with nights + events(night_id), then open via New() and verify the
+// migration produced the new schema with data intact.
+func TestLegacyMigration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	// Open a raw sqlite connection and seed the pre-day-mode schema.
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE nights (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			started_at TEXT NOT NULL,
+			ended_at TEXT,
+			created_at TEXT NOT NULL,
+			ferber_enabled INTEGER NOT NULL DEFAULT 0,
+			ferber_night_number INTEGER
+		)`); err != nil {
+		t.Fatalf("create nights: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			night_id INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
+			from_state TEXT NOT NULL,
+			action TEXT NOT NULL,
+			to_state TEXT NOT NULL,
+			timestamp TEXT NOT NULL,
+			metadata TEXT,
+			created_at TEXT NOT NULL,
+			seq INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatalf("create events: %v", err)
+	}
+	// Seed two historical nights, one with Ferber, both ending with end_night.
+	now := time.Now().Truncate(time.Second)
+	_, err = db.Exec(`INSERT INTO nights (id, started_at, ended_at, created_at, ferber_enabled, ferber_night_number) VALUES
+		(1, ?, ?, ?, 0, NULL),
+		(2, ?, ?, ?, 1, 3)`,
+		now.Add(-48*time.Hour).Format(time.RFC3339Nano), now.Add(-40*time.Hour).Format(time.RFC3339Nano), now.Add(-48*time.Hour).Format(time.RFC3339Nano),
+		now.Add(-24*time.Hour).Format(time.RFC3339Nano), now.Add(-16*time.Hour).Format(time.RFC3339Nano), now.Add(-24*time.Hour).Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		t.Fatalf("seed nights: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO events (night_id, from_state, action, to_state, timestamp, metadata, created_at, seq) VALUES
+		(1, 'night_off', 'start_night', 'awake', ?, NULL, ?, 1),
+		(1, 'awake', 'end_night', 'night_off', ?, NULL, ?, 2),
+		(2, 'night_off', 'start_night', 'awake', ?, NULL, ?, 1),
+		(2, 'awake', 'end_night', 'night_off', ?, NULL, ?, 2)`,
+		now.Add(-48*time.Hour).Format(time.RFC3339Nano), now.Add(-48*time.Hour).Format(time.RFC3339Nano),
+		now.Add(-40*time.Hour).Format(time.RFC3339Nano), now.Add(-40*time.Hour).Format(time.RFC3339Nano),
+		now.Add(-24*time.Hour).Format(time.RFC3339Nano), now.Add(-24*time.Hour).Format(time.RFC3339Nano),
+		now.Add(-16*time.Hour).Format(time.RFC3339Nano), now.Add(-16*time.Hour).Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	db.Close()
+
+	// Open via New() — triggers legacy migration.
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New on legacy DB: %v", err)
+	}
+	defer s.Close()
+
+	// Verify sessions table exists and has two night rows with preserved IDs.
+	sessions, err := s.ListSessions(now.Add(-72*time.Hour), now.Add(time.Hour), "")
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("got %d sessions, want 2", len(sessions))
+	}
+	if sessions[0].ID != 1 || sessions[1].ID != 2 {
+		t.Errorf("session IDs = %d, %d; want 1, 2 (preserved)", sessions[0].ID, sessions[1].ID)
+	}
+	if sessions[0].Kind != domain.SessionKindNight || sessions[1].Kind != domain.SessionKindNight {
+		t.Error("migrated sessions should be kind=night")
+	}
+	if !sessions[1].FerberEnabled || *sessions[1].FerberNightNumber != 3 {
+		t.Error("ferber fields lost in migration")
+	}
+
+	// Verify events were preserved and now reference session_id.
+	_, events, err := s.GetSession(1)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("GetSession(1) events = %d, want 2 (err=%v)", len(events), err)
+	}
+	if events[0].SessionID != 1 {
+		t.Errorf("event 0 SessionID = %d, want 1", events[0].SessionID)
+	}
+	if events[1].Action != "end_night" {
+		t.Errorf("historical end_night event preserved as string, got action=%s", events[1].Action)
+	}
+
+	// Verify the nights table was dropped.
+	exists, err := tableExists(s.db, "nights")
+	if err != nil {
+		t.Fatalf("tableExists: %v", err)
+	}
+	if exists {
+		t.Error("legacy nights table should be dropped after migration")
+	}
+
+	// Verify re-opening is idempotent.
+	s.Close()
+	s2, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("re-open after migration: %v", err)
+	}
+	s2.Close()
 }

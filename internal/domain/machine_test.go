@@ -17,7 +17,21 @@ func TestLearningAndCheckInStatesExist(t *testing.T) {
 	}
 }
 
-// TestAllValidTransitions verifies every row of the 32-transition table.
+func TestDayStatesExist(t *testing.T) {
+	wantPresent := []State{DayAwake, DayFeeding, DaySleeping, DayPoop}
+	present := make(map[State]bool, len(AllStates))
+	for _, s := range AllStates {
+		present[s] = true
+	}
+	for _, s := range wantPresent {
+		if !present[s] {
+			t.Errorf("state %q missing from AllStates", s)
+		}
+	}
+}
+
+// TestAllValidTransitions verifies every row of the full transition table
+// (night subgraph + cross-boundary + day subgraph).
 func TestAllValidTransitions(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -26,71 +40,58 @@ func TestAllValidTransitions(t *testing.T) {
 		to       State
 		metadata map[string]string
 	}{
-		// Row 1: NIGHT_OFF → AWAKE
+		// --- Night subgraph ---
 		{"start night", NightOff, StartNight, Awake, nil},
-		// Row 2: AWAKE → FEEDING
 		{"start feed left", Awake, StartFeed, Feeding, map[string]string{"breast": "L"}},
 		{"start feed right", Awake, StartFeed, Feeding, map[string]string{"breast": "R"}},
-		// Row 3: AWAKE → RESETTLING
 		{"start resettle", Awake, StartResettle, Resettling, nil},
-		// Row 4: AWAKE → STROLLING
 		{"start strolling", Awake, StartStrolling, Strolling, nil},
-		// Row 5: AWAKE → POOP
 		{"poop from awake", Awake, PoopStart, Poop, nil},
-		// Row 6: AWAKE → SELF_SOOTHING
 		{"put down awake", Awake, PutDownAwake, SelfSoothing, nil},
-		// Row 7: AWAKE → NIGHT_OFF
-		{"end night", Awake, EndNight, NightOff, nil},
-		// Row 8: FEEDING → AWAKE
 		{"dislatch awake", Feeding, DislatchAwake, Awake, nil},
-		// Row 9: FEEDING → SLEEPING_ON_ME
 		{"dislatch asleep", Feeding, DislatchAsleep, SleepingOnMe, nil},
-		// Row 10: FEEDING → FEEDING (switch breast)
 		{"switch breast", Feeding, SwitchBreast, Feeding, map[string]string{"breast": "R"}},
-		// Row 11: SLEEPING_ON_ME → TRANSFERRING
 		{"transfer from sleeping on me", SleepingOnMe, StartTransfer, Transferring, nil},
-		// Row 12: SLEEPING_ON_ME → FEEDING
 		{"re-feed from sleeping on me", SleepingOnMe, StartFeed, Feeding, map[string]string{"breast": "L"}},
-		// Row 13: SLEEPING_ON_ME → AWAKE
 		{"baby woke from on me", SleepingOnMe, BabyWoke, Awake, nil},
-		// Row 14: SLEEPING_ON_ME → POOP
 		{"poop from sleeping on me", SleepingOnMe, PoopStart, Poop, nil},
-		// Row 15: TRANSFERRING → SLEEPING_CRIB
 		{"transfer success", Transferring, TransferSuccess, SleepingCrib, nil},
-		// Row 16: TRANSFERRING → RESETTLING
 		{"transfer needs resettle", Transferring, TransferNeedResettle, Resettling, nil},
-		// Row 17: TRANSFERRING → AWAKE
 		{"transfer failed", Transferring, TransferFailed, Awake, nil},
-		// Row 18: RESETTLING → SLEEPING_CRIB
 		{"settled", Resettling, Settled, SleepingCrib, nil},
-		// Row 19: RESETTLING → AWAKE
 		{"resettle failed", Resettling, ResettleFailed, Awake, nil},
-		// Row 20: RESETTLING → POOP
 		{"poop from resettling", Resettling, PoopStart, Poop, nil},
-		// Row 21: SLEEPING_CRIB → AWAKE
 		{"baby woke from crib", SleepingCrib, BabyWoke, Awake, nil},
-		// Row 22: SLEEPING_CRIB → POOP
 		{"poop from crib", SleepingCrib, PoopStart, Poop, nil},
-		// Row 23: SLEEPING_CRIB → SELF_SOOTHING
 		{"baby stirred in crib", SleepingCrib, BabyStirred, SelfSoothing, nil},
-		// Row 24: SELF_SOOTHING → SLEEPING_CRIB
 		{"self soothe settled", SelfSoothing, Settled, SleepingCrib, nil},
-		// Row 25: SELF_SOOTHING → AWAKE
 		{"self soothe failed", SelfSoothing, BabyWoke, Awake, nil},
-		// Row 26: SELF_SOOTHING → POOP
 		{"poop from self soothing", SelfSoothing, PoopStart, Poop, nil},
-		// Row 27: STROLLING → SLEEPING_STROLLER
 		{"fell asleep in stroller", Strolling, FellAsleep, SleepingStroller, nil},
-		// Row 28: STROLLING → AWAKE
 		{"give up strolling", Strolling, GiveUp, Awake, nil},
-		// Row 29: STROLLING → POOP
 		{"poop from strolling", Strolling, PoopStart, Poop, nil},
-		// Row 30: SLEEPING_STROLLER → AWAKE
 		{"baby woke from stroller", SleepingStroller, BabyWoke, Awake, nil},
-		// Row 31: SLEEPING_STROLLER → POOP
 		{"poop from stroller sleep", SleepingStroller, PoopStart, Poop, nil},
-		// Row 32: POOP → AWAKE
 		{"poop done", Poop, PoopDone, Awake, nil},
+
+		// --- Cross-boundary chain advances ---
+		{"start day from awake (morning)", Awake, StartDay, DayAwake, nil},
+		{"start night from day awake (bedtime)", DayAwake, StartNight, Awake, nil},
+		{"start day from night_off (first-start in day mode)", NightOff, StartDay, DayAwake, nil},
+
+		// --- Day subgraph ---
+		{"day: start feed left", DayAwake, StartFeed, DayFeeding, map[string]string{"breast": "L"}},
+		{"day: start feed right", DayAwake, StartFeed, DayFeeding, map[string]string{"breast": "R"}},
+		{"day: start sleep in crib", DayAwake, StartSleep, DaySleeping, map[string]string{"location": "crib"}},
+		{"day: start sleep on me", DayAwake, StartSleep, DaySleeping, map[string]string{"location": "on_me"}},
+		{"day: poop from awake", DayAwake, PoopStart, DayPoop, nil},
+		{"day: dislatch awake", DayFeeding, DislatchAwake, DayAwake, nil},
+		{"day: dislatch asleep (implicit on_me)", DayFeeding, DislatchAsleep, DaySleeping, nil},
+		{"day: switch breast", DayFeeding, SwitchBreast, DayFeeding, map[string]string{"breast": "R"}},
+		{"day: poop from feeding", DayFeeding, PoopStart, DayPoop, nil},
+		{"day: baby woke from nap", DaySleeping, BabyWoke, DayAwake, nil},
+		{"day: poop from nap", DaySleeping, PoopStart, DayPoop, nil},
+		{"day: poop done", DayPoop, PoopDone, DayAwake, nil},
 	}
 
 	for _, tt := range tests {
@@ -114,22 +115,30 @@ func TestInvalidTransitions(t *testing.T) {
 		action Action
 	}{
 		{"feed from night off", NightOff, StartFeed},
-		{"end night from night off", NightOff, EndNight},
 		{"dislatch from awake", Awake, DislatchAwake},
 		{"settle from awake", Awake, Settled},
 		{"transfer success from awake", Awake, TransferSuccess},
 		{"transfer from awake", Awake, StartTransfer},
-		{"start night while awake", Awake, StartNight},
+		{"start night while awake (night)", Awake, StartNight},
 		{"start night while feeding", Feeding, StartNight},
-		{"end night from feeding", Feeding, EndNight},
-		{"end night from sleeping crib", SleepingCrib, EndNight},
-		{"end night from sleeping stroller", SleepingStroller, EndNight},
 		{"fell asleep from awake", Awake, FellAsleep},
 		{"poop from feeding", Feeding, PoopStart},
 		{"poop from transferring", Transferring, PoopStart},
 		{"poop from night off", NightOff, PoopStart},
 		{"switch breast from awake", Awake, SwitchBreast},
 		{"give up from crib sleep", SleepingCrib, GiveUp},
+		// start_day is NOT valid from within a non-AWAKE night state
+		{"start day from feeding", Feeding, StartDay},
+		{"start day from sleeping crib", SleepingCrib, StartDay},
+		// start_night is NOT valid from within a non-DayAwake day state
+		{"start night from day feeding", DayFeeding, StartNight},
+		{"start night from day sleeping", DaySleeping, StartNight},
+		// start_sleep only valid from DayAwake
+		{"start sleep from awake (night)", Awake, StartSleep},
+		{"start sleep from day feeding", DayFeeding, StartSleep},
+		// end_night action is removed post-change; its string "end_night" is
+		// invalid in all states.
+		{"end_night string is rejected", Awake, Action("end_night")},
 	}
 
 	for _, tt := range tests {
@@ -148,8 +157,10 @@ func TestValidActions(t *testing.T) {
 		state   State
 		actions []Action
 	}{
-		{NightOff, []Action{StartNight}},
-		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, StartResettle, StartStrolling, PoopStart, EndNight}},
+		// Chain-advance actions sort last in actionOrder, so start_night/start_day
+		// appear at the end of validActions (bottom of grid).
+		{NightOff, []Action{StartNight, StartDay}},
+		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, StartResettle, StartStrolling, PoopStart, StartDay}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
 		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},
@@ -159,6 +170,11 @@ func TestValidActions(t *testing.T) {
 		{Strolling, []Action{FellAsleep, GiveUp, PoopStart}},
 		{SleepingStroller, []Action{BabyWoke, PoopStart}},
 		{Poop, []Action{PoopDone}},
+		// Day subgraph: start_night is last (chain-advance).
+		{DayAwake, []Action{StartFeed, StartSleep, PoopStart, StartNight}},
+		{DayFeeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast, PoopStart}},
+		{DaySleeping, []Action{BabyWoke, PoopStart}},
+		{DayPoop, []Action{PoopDone}},
 	}
 
 	for _, tt := range tests {
@@ -176,46 +192,82 @@ func TestValidActions(t *testing.T) {
 	}
 }
 
-// TestStartFeedRequiresBreast verifies that starting a feed without breast metadata fails.
+// TestAwakeNoLongerHasEndNight is a regression test: under contiguous chain,
+// end_night is removed entirely. Awake transitions out of the night only via
+// start_day (chain advance).
+func TestAwakeNoLongerHasEndNight(t *testing.T) {
+	for _, a := range ValidActions(Awake) {
+		if string(a) == "end_night" {
+			t.Errorf("Awake should no longer have end_night; got it in ValidActions")
+		}
+	}
+}
+
+// TestStartFeedRequiresBreast verifies that starting a feed without breast
+// metadata fails — applies to both night Feeding and day DayFeeding entries.
 func TestStartFeedRequiresBreast(t *testing.T) {
-	_, err := Transition(Awake, StartFeed, nil)
-	if err == nil {
-		t.Error("StartFeed with no metadata should require breast")
-	}
-
-	_, err = Transition(Awake, StartFeed, map[string]string{})
-	if err == nil {
-		t.Error("StartFeed with empty metadata should require breast")
-	}
-
-	_, err = Transition(Awake, StartFeed, map[string]string{"breast": "X"})
-	if err == nil {
-		t.Error("StartFeed with invalid breast should fail")
+	for _, from := range []State{Awake, DayAwake, SleepingOnMe} {
+		t.Run(string(from), func(t *testing.T) {
+			if _, err := Transition(from, StartFeed, nil); err == nil {
+				t.Errorf("StartFeed from %s with no metadata should require breast", from)
+			}
+			if _, err := Transition(from, StartFeed, map[string]string{}); err == nil {
+				t.Errorf("StartFeed from %s with empty metadata should require breast", from)
+			}
+			if _, err := Transition(from, StartFeed, map[string]string{"breast": "X"}); err == nil {
+				t.Errorf("StartFeed from %s with invalid breast should fail", from)
+			}
+		})
 	}
 }
 
-// TestSwitchBreastRequiresBreast verifies that switching breast requires the new side.
+// TestSwitchBreastRequiresBreast verifies switch_breast requires metadata in
+// both night and day feeding contexts.
 func TestSwitchBreastRequiresBreast(t *testing.T) {
-	_, err := Transition(Feeding, SwitchBreast, nil)
-	if err == nil {
-		t.Error("SwitchBreast with no metadata should require breast")
-	}
-
-	got, err := Transition(Feeding, SwitchBreast, map[string]string{"breast": "R"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != Feeding {
-		t.Errorf("SwitchBreast should stay in Feeding, got %s", got)
+	for _, from := range []State{Feeding, DayFeeding} {
+		t.Run(string(from), func(t *testing.T) {
+			if _, err := Transition(from, SwitchBreast, nil); err == nil {
+				t.Errorf("SwitchBreast from %s with no metadata should require breast", from)
+			}
+			got, err := Transition(from, SwitchBreast, map[string]string{"breast": "R"})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != from {
+				t.Errorf("SwitchBreast should stay in %s, got %s", from, got)
+			}
+		})
 	}
 }
 
-// TestReFeedFromSleepingOnMeRequiresBreast verifies breast metadata on re-feed.
-func TestReFeedFromSleepingOnMeRequiresBreast(t *testing.T) {
-	_, err := Transition(SleepingOnMe, StartFeed, nil)
-	if err == nil {
-		t.Error("StartFeed from SleepingOnMe with no metadata should require breast")
-	}
+// TestStartSleepRequiresLocation covers the new location validator.
+func TestStartSleepRequiresLocation(t *testing.T) {
+	t.Run("no metadata", func(t *testing.T) {
+		if _, err := Transition(DayAwake, StartSleep, nil); err == nil {
+			t.Error("StartSleep with no metadata should require location")
+		}
+	})
+	t.Run("missing location key", func(t *testing.T) {
+		if _, err := Transition(DayAwake, StartSleep, map[string]string{}); err == nil {
+			t.Error("StartSleep with empty metadata should require location")
+		}
+	})
+	t.Run("invalid location value", func(t *testing.T) {
+		if _, err := Transition(DayAwake, StartSleep, map[string]string{"location": "couch"}); err == nil {
+			t.Error("StartSleep with invalid location should fail")
+		}
+	})
+	t.Run("all four valid locations accepted", func(t *testing.T) {
+		for _, loc := range []string{"crib", "stroller", "on_me", "car"} {
+			got, err := Transition(DayAwake, StartSleep, map[string]string{"location": loc})
+			if err != nil {
+				t.Errorf("location %q rejected: %v", loc, err)
+			}
+			if got != DaySleeping {
+				t.Errorf("StartSleep should land in DaySleeping, got %s", got)
+			}
+		}
+	})
 }
 
 // TestDeriveState verifies that state is correctly derived from an event log.
@@ -227,7 +279,7 @@ func TestDeriveState(t *testing.T) {
 		}
 	})
 
-	t.Run("returns last event to-state", func(t *testing.T) {
+	t.Run("returns last event to-state (night)", func(t *testing.T) {
 		events := []Event{
 			{ToState: Awake, Seq: 1},
 			{ToState: Feeding, Seq: 2},
@@ -238,12 +290,47 @@ func TestDeriveState(t *testing.T) {
 			t.Errorf("DeriveState = %s, want %s", got, SleepingOnMe)
 		}
 	})
+
+	t.Run("returns last event to-state (day)", func(t *testing.T) {
+		events := []Event{
+			{ToState: DayAwake, Seq: 1},
+			{ToState: DayFeeding, Seq: 2},
+			{ToState: DaySleeping, Seq: 3},
+		}
+		got := DeriveState(events)
+		if got != DaySleeping {
+			t.Errorf("DeriveState = %s, want %s", got, DaySleeping)
+		}
+	})
 }
 
-// TestPoopReachableFromExactlySevenStates confirms the "shit happens" design.
-func TestPoopReachableFromExactlySevenStates(t *testing.T) {
+// TestPoopReachableFromNightStates retains the original "shit happens" design
+// for the night subgraph.
+func TestPoopReachableFromNightStates(t *testing.T) {
 	poopStates := []State{Awake, SleepingOnMe, Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing}
 	noPoopStates := []State{NightOff, Feeding, Transferring, Poop}
+
+	for _, s := range poopStates {
+		_, err := Transition(s, PoopStart, nil)
+		if err != nil {
+			t.Errorf("PoopStart should be valid from %s, got error: %v", s, err)
+		}
+	}
+
+	for _, s := range noPoopStates {
+		_, err := Transition(s, PoopStart, nil)
+		if err == nil {
+			t.Errorf("PoopStart should NOT be valid from %s", s)
+		}
+	}
+}
+
+// TestPoopReachableFromDayStates covers the day subgraph. Unlike night, day
+// FEEDING IS a valid poop source (babies poop during daytime feeds; parent
+// can pause and change).
+func TestPoopReachableFromDayStates(t *testing.T) {
+	poopStates := []State{DayAwake, DayFeeding, DaySleeping}
+	noPoopStates := []State{DayPoop}
 
 	for _, s := range poopStates {
 		_, err := Transition(s, PoopStart, nil)
@@ -274,15 +361,17 @@ func TestActionOrderCoversAllActions(t *testing.T) {
 	}
 }
 
-// TestEveryStateCanReachNightOff verifies no dead ends in the state machine.
-// Every state should reach AWAKE within 2 hops (then AWAKE → NIGHT_OFF).
-func TestEveryStateCanReachNightOff(t *testing.T) {
+// TestEveryStateCanReachHub verifies no dead ends. Every non-chain-off state
+// must reach either Awake or DayAwake (the hubs) within a few hops; chain
+// advance from there closes the session.
+func TestEveryStateCanReachHub(t *testing.T) {
+	hubs := map[State]bool{Awake: true, DayAwake: true}
+
 	for _, state := range AllStates {
-		if state == NightOff {
+		if state == NightOff || hubs[state] {
 			continue
 		}
 
-		// BFS to find path to NightOff within reasonable depth
 		visited := map[State]bool{state: true}
 		queue := []State{state}
 		found := false
@@ -291,16 +380,21 @@ func TestEveryStateCanReachNightOff(t *testing.T) {
 			var next []State
 			for _, s := range queue {
 				for _, a := range ValidActions(s) {
-					// Use dummy metadata for actions that need it
 					meta := map[string]string{}
 					if a == StartFeed || a == SwitchBreast {
 						meta["breast"] = "L"
+					}
+					if a == StartSleep {
+						meta["location"] = "crib"
+					}
+					if a == PutDownAwakeFerber || a == BabyStirredFerber || a == MoodChange || a == EndCheckIn {
+						meta["mood"] = "quiet"
 					}
 					ns, err := Transition(s, a, meta)
 					if err != nil {
 						continue
 					}
-					if ns == NightOff {
+					if hubs[ns] {
 						found = true
 						break
 					}
@@ -317,7 +411,57 @@ func TestEveryStateCanReachNightOff(t *testing.T) {
 		}
 
 		if !found {
-			t.Errorf("state %s cannot reach NightOff within 5 hops", state)
+			t.Errorf("state %s cannot reach a hub (Awake or DayAwake) within 5 hops", state)
+		}
+	}
+}
+
+// TestDayStatesCanReachAwakeViaChainAdvance verifies that the day subgraph is
+// connected to the night subgraph through DayAwake → Awake (chain advance),
+// so end-of-cycle reporting works across the boundary.
+func TestDayStatesCanReachAwakeViaChainAdvance(t *testing.T) {
+	// From DayAwake: one hop.
+	got, err := Transition(DayAwake, StartNight, nil)
+	if err != nil || got != Awake {
+		t.Fatalf("DayAwake → Awake via start_night failed: got=%s err=%v", got, err)
+	}
+
+	// Every other day state reaches DayAwake within a few hops, then Awake.
+	for _, s := range []State{DayFeeding, DaySleeping, DayPoop} {
+		visited := map[State]bool{s: true}
+		queue := []State{s}
+		reachedDayAwake := false
+
+		for depth := 0; depth < 3 && len(queue) > 0 && !reachedDayAwake; depth++ {
+			var next []State
+			for _, st := range queue {
+				for _, a := range ValidActions(st) {
+					meta := map[string]string{}
+					if a == StartFeed || a == SwitchBreast {
+						meta["breast"] = "L"
+					}
+					ns, err := Transition(st, a, meta)
+					if err != nil {
+						continue
+					}
+					if ns == DayAwake {
+						reachedDayAwake = true
+						break
+					}
+					if !visited[ns] {
+						visited[ns] = true
+						next = append(next, ns)
+					}
+				}
+				if reachedDayAwake {
+					break
+				}
+			}
+			queue = next
+		}
+
+		if !reachedDayAwake {
+			t.Errorf("day state %s cannot reach DayAwake within 3 hops", s)
 		}
 	}
 }
@@ -365,7 +509,6 @@ func TestFerberTransitions(t *testing.T) {
 }
 
 func TestFerberForbiddenTransitions(t *testing.T) {
-	// Explicitly-excluded transitions (spec §3.5).
 	cases := []struct {
 		name   string
 		from   State
