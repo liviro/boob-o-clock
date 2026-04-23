@@ -117,20 +117,25 @@ func (s *Store) createFreshSchema() error {
 // migrateLegacy migrates a pre-day-mode DB (nights + events with night_id)
 // to the new schema (sessions + events with session_id).
 //
+// All phases run inside a single transaction, so any crash — process kill,
+// OS panic, power loss — rolls the DB back to its exact pre-migration state.
+// There is no "half-migrated" outcome: either the migration commits in full
+// and the old schema is gone, or the original data is untouched.
+//
 // One-time anomaly: there is a timestamp gap between the last pre-migration
 // end_night event and the first post-migration start_day/start_night event.
 // See design doc §7.4 — not worth bespoke code; user can manually close via
 // long-press timestamp picker if visual continuity is desired.
 func (s *Store) migrateLegacy() error {
-	// Phase A: sessions table + backfill in one transaction.
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("migrateLegacy begin: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Each DDL in its own Exec — database/sql's Exec does not reliably run
-	// multi-statement strings with modernc.org/sqlite.
+	// Phase A: sessions table + indexes. Each DDL in its own Exec —
+	// database/sql's Exec does not reliably run multi-statement strings
+	// with modernc.org/sqlite.
 	if _, err := tx.Exec(sessionsTableDDL); err != nil {
 		return fmt.Errorf("sessions ddl: %w", err)
 	}
@@ -138,9 +143,10 @@ func (s *Store) migrateLegacy() error {
 		return fmt.Errorf("sessions unique index: %w", err)
 	}
 
-	// Backfill sessions from nights (kind='night', preserve IDs).
-	// ON CONFLICT DO NOTHING handles the case where a prior partial crash
-	// left some rows already inserted.
+	// Phase B: copy night rows into sessions, preserving every column
+	// (id, started_at, ended_at, created_at, ferber_*). ON CONFLICT is a
+	// belt-and-suspenders no-op in the single-tx flow; kept for safety
+	// if someone ever re-introduces partial retries.
 	if _, err := tx.Exec(`
 		INSERT INTO sessions (id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number)
 		SELECT id, 'night', started_at, ended_at, created_at, ferber_enabled, ferber_night_number FROM nights
@@ -150,40 +156,9 @@ func (s *Store) migrateLegacy() error {
 		return fmt.Errorf("backfill sessions: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("migrateLegacy commit A: %w", err)
-	}
-
-	// Phase B: recreate events table with proper session_id NOT NULL + FK.
-	// Runs in its own transaction so phase A's durability is guaranteed before
-	// the schema rewrite begins.
-	if err := s.recreateEventsTable(); err != nil {
-		return fmt.Errorf("recreateEventsTable: %w", err)
-	}
-
-	// Phase C: drop the legacy nights table (events no longer references it).
-	if _, err := s.db.Exec(`DROP TABLE nights`); err != nil {
-		return fmt.Errorf("drop nights: %w", err)
-	}
-
-	if _, err := s.db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		return fmt.Errorf("pragma foreign_keys: %w", err)
-	}
-
-	return nil
-}
-
-// recreateEventsTable rebuilds the events table with the new schema
-// (session_id NOT NULL, REFERENCES sessions ON DELETE CASCADE), copying legacy
-// rows and mapping night_id → session_id (values are identical since sessions
-// preserved IDs from nights).
-func (s *Store) recreateEventsTable() error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("recreate begin: %w", err)
-	}
-	defer tx.Rollback()
-
+	// Phase C: recreate the events table with session_id NOT NULL REFERENCES
+	// sessions. Since the sessions table above preserves night IDs as session
+	// IDs 1:1, the copy just aliases night_id → session_id.
 	if _, err := tx.Exec(`
 		CREATE TABLE events_new (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,31 +170,40 @@ func (s *Store) recreateEventsTable() error {
 			metadata TEXT,
 			created_at TEXT NOT NULL,
 			seq INTEGER NOT NULL
-		)
-	`); err != nil {
+		)`); err != nil {
 		return fmt.Errorf("create events_new: %w", err)
 	}
-
 	if _, err := tx.Exec(`
 		INSERT INTO events_new (id, session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
 		SELECT id, night_id, from_state, action, to_state, timestamp, metadata, created_at, seq FROM events
 	`); err != nil {
 		return fmt.Errorf("copy events: %w", err)
 	}
-
 	if _, err := tx.Exec(`DROP TABLE events`); err != nil {
 		return fmt.Errorf("drop old events: %w", err)
 	}
-
 	if _, err := tx.Exec(`ALTER TABLE events_new RENAME TO events`); err != nil {
 		return fmt.Errorf("rename events_new: %w", err)
 	}
-
 	if _, err := tx.Exec(eventsSeqIndexDDL); err != nil {
 		return fmt.Errorf("events seq index: %w", err)
 	}
 
-	return tx.Commit()
+	// Phase D: drop the legacy nights table (events no longer references it).
+	if _, err := tx.Exec(`DROP TABLE nights`); err != nil {
+		return fmt.Errorf("drop nights: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrateLegacy commit: %w", err)
+	}
+
+	// PRAGMA foreign_keys must be set outside a transaction to take effect.
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("pragma foreign_keys: %w", err)
+	}
+
+	return nil
 }
 
 // tableExists reports whether a table by the given name exists in the DB.
