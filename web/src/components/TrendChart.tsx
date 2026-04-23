@@ -1,20 +1,21 @@
-import { TrendPoint } from '../api';
 import { fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
 
-interface Series {
-  getValue: (p: TrendPoint) => number;
-  getAvg: (p: TrendPoint) => number | null;
+interface Series<T> {
+  getValue: (p: T) => number;
+  getAvg: (p: T) => number | null;
   color: string;
   label?: string;
 }
 
-interface Props {
-  trends: TrendPoint[];
-  series: Series[];
+interface Props<T> {
+  points: T[];
+  getDate: (p: T) => string;
+  series: Series<T>[];
   formatValue: (v: number) => string;
   title: string;
   highlightFerber?: boolean;
+  isFerber?: (p: T) => boolean;
 }
 
 const W = 320;
@@ -23,22 +24,22 @@ const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
-export function TrendChart({ trends, series, formatValue, title, highlightFerber }: Props) {
-  if (trends.length === 0) return null;
+export function TrendChart<T>({ points, getDate, series, formatValue, title, highlightFerber, isFerber }: Props<T>) {
+  if (points.length === 0) return null;
 
-  // Compute global min/max across all series
+  // Compute global min/max across all series.
   let maxVal = 1;
   let minVal = 0;
   for (const s of series) {
-    const vals = trends.map(s.getValue);
+    const vals = points.map(s.getValue);
     maxVal = Math.max(maxVal, ...vals);
     minVal = Math.min(minVal, ...vals);
   }
   const range = maxVal - minVal || 1;
 
   function x(i: number): number {
-    if (trends.length === 1) return PAD.left + CHART_W / 2;
-    return PAD.left + (i / (trends.length - 1)) * CHART_W;
+    if (points.length === 1) return PAD.left + CHART_W / 2;
+    return PAD.left + (i / (points.length - 1)) * CHART_W;
   }
 
   function y(v: number): number {
@@ -51,27 +52,28 @@ export function TrendChart({ trends, series, formatValue, title, highlightFerber
       .join(' ');
   }
 
-  function buildAvgPath(s: Series): string {
-    return trends
+  function buildAvgPath(s: Series<T>): string {
+    return points
       .map((p, i) => ({ i, v: s.getAvg(p) }))
       .filter((d): d is { i: number; v: number } => d.v !== null)
       .map((d, j) => `${j === 0 ? 'M' : 'L'}${x(d.i).toFixed(1)},${y(d.v).toFixed(1)}`)
       .join(' ');
   }
 
-  // Date labels
+  // Date labels.
   const dateLabels: { x: number; label: string }[] = [];
-  if (trends.length <= 7) {
-    trends.forEach((p, i) => {
-      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(p.date)) });
+  if (points.length <= 7) {
+    points.forEach((p, i) => {
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(getDate(p))) });
     });
   } else {
-    for (const i of [0, Math.floor(trends.length / 2), trends.length - 1]) {
-      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(trends[i].date)) });
+    for (const i of [0, Math.floor(points.length / 2), points.length - 1]) {
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(getDate(points[i]))) });
     }
   }
 
   const hasLegend = series.length > 1 && series.some(s => s.label);
+  const ferberCheck = isFerber ?? ((_p: T) => false);
 
   return (
     <div class="trend-chart">
@@ -85,8 +87,8 @@ export function TrendChart({ trends, series, formatValue, title, highlightFerber
         </text>
         {highlightFerber && (
           <FerberHighlight
-            count={trends.length}
-            isFerber={i => trends[i].ferberCryTime != null}
+            count={points.length}
+            isFerber={i => ferberCheck(points[i])}
             x={x}
             left={PAD.left}
             top={PAD.top}
@@ -98,7 +100,7 @@ export function TrendChart({ trends, series, formatValue, title, highlightFerber
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
         {series.map((s, si) => {
-          const values = trends.map(s.getValue);
+          const values = points.map(s.getValue);
           const avgPath = buildAvgPath(s);
           return (
             <g key={si}>

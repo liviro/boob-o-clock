@@ -1,15 +1,26 @@
-import { NightSummary } from '../api';
-import { fmtHour, fmtDayMonth } from '../constants';
+import { NIGHT_EPOCH_H, CYCLE_EPOCH_H, fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
 
-interface Props {
-  nights: NightSummary[];
-  // Maps a night to zero or more night-hours (hours since NIGHT_EPOCH_H).
-  // Callers pre-compute via toNightHour() on the raw timestamp.
-  getHours: (n: NightSummary) => number[];
+export type HourDot = {
+  hour: number;  // hours since the chart's epoch (NIGHT_EPOCH_H or CYCLE_EPOCH_H)
+  color?: string; // per-dot color override (used by cycle feed-times to split day/night)
+};
+
+interface Props<T> {
+  points: T[];
+  getDate: (p: T) => string;
+  // Returns dots for a given point. Each dot has an hour-offset (from epoch).
+  getDots: (p: T) => HourDot[];
+  // Optional: moving-average line overlay (dashed). Return null for points
+  // without sufficient history. Same hour-offset space as getDots.
+  getAvgHour?: (p: T) => number | null;
   color: string;
   title: string;
   highlightFerber?: boolean;
+  isFerber?: (p: T) => boolean;
+  // Epoch determines Y-axis labels. Defaults to the night epoch (6 PM) to
+  // preserve existing behavior. Pass CYCLE_EPOCH_H for cycle-wide scatters.
+  epoch?: number;
 }
 
 const W = 320;
@@ -19,17 +30,27 @@ const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2;
 
-export function NightHourChart({ nights, getHours, color, title, highlightFerber }: Props) {
-  const allNights = [...nights].reverse();
-  const points: { ni: number; nh: number }[] = [];
-  for (let i = 0; i < allNights.length; i++) {
-    for (const nh of getHours(allNights[i])) {
-      points.push({ ni: i, nh });
+export function NightHourChart<T>({
+  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber, epoch,
+}: Props<T>) {
+  const chartEpoch = epoch ?? NIGHT_EPOCH_H;
+  // Use points in the order they arrive — callers pass chronological
+  // (oldest-first) so i=0 plots at the left edge (matches TrendChart).
+  const dots: { ni: number; hour: number; color?: string }[] = [];
+  for (let i = 0; i < points.length; i++) {
+    for (const d of getDots(points[i])) {
+      dots.push({ ni: i, hour: d.hour, color: d.color });
     }
   }
-  if (points.length === 0) return null;
+  if (dots.length === 0) return null;
 
-  const allHours = points.map(p => p.nh);
+  const avgHours: (number | null)[] = getAvgHour
+    ? points.map(p => getAvgHour(p))
+    : [];
+
+  const allHours = dots.map(d => d.hour).concat(
+    avgHours.filter((v): v is number => v != null),
+  );
   let minH = Math.floor(Math.min(...allHours));
   let maxH = Math.ceil(Math.max(...allHours));
   if (maxH - minH < MIN_RANGE_H) {
@@ -41,26 +62,56 @@ export function NightHourChart({ nights, getHours, color, title, highlightFerber
   maxH = maxH + 0.5;
   const rangeH = maxH - minH;
 
-  const n = allNights.length;
+  const n = points.length;
   const x = (ni: number) => n === 1 ? PAD.left + CHART_W / 2 : PAD.left + (ni / (n - 1)) * CHART_W;
-  const y = (nh: number) => PAD.top + ((nh - minH) / rangeH) * CHART_H;
+  const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
+
+  // Build the moving-average polyline path. Gaps (null avg values) produce
+  // separate sub-paths via SVG's "M" command.
+  let avgPath = '';
+  if (avgHours.length > 0) {
+    const segments: string[] = [];
+    let inPath = false;
+    for (let i = 0; i < avgHours.length; i++) {
+      const v = avgHours[i];
+      if (v == null) {
+        inPath = false;
+        continue;
+      }
+      segments.push(`${inPath ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+      inPath = true;
+    }
+    avgPath = segments.join(' ');
+  }
 
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
-    allNights.forEach((night, i) => {
-      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(night.startedAt)) });
+    points.forEach((p, i) => {
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(getDate(p))) });
     });
   } else {
     for (const i of [0, Math.floor(n / 2), n - 1]) {
-      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(allNights[i].startedAt)) });
+      dateLabels.push({ x: x(i), label: fmtDayMonth(new Date(getDate(points[i]))) });
     }
   }
 
-  const yStepH = rangeH <= 4 ? 1 : 2;
+  // 24h (military) time, zero-padded. Cleaner for 24h-range charts; still
+  // unambiguous for narrower ranges.
+  function fmtEpochHour(h: number): string {
+    let clock = Math.round(h + chartEpoch);
+    if (clock >= 24) clock -= 24;
+    if (clock < 0) clock += 24;
+    return String(clock).padStart(2, '0');
+  }
+
+  // Step adapts to range to keep the axis around 6 labels.
+  const yStepH = rangeH <= 2 ? 1 : rangeH <= 6 ? 1 : rangeH <= 12 ? 2 : 4;
   const yLabels: { y: number; label: string }[] = [];
   for (let h = Math.ceil(minH); h <= Math.floor(maxH); h += yStepH) {
-    yLabels.push({ y: y(h), label: fmtHour(h) });
+    yLabels.push({ y: y(h), label: fmtEpochHour(h) });
   }
+
+  const ferberCheck = isFerber ?? ((_p: T) => false);
 
   return (
     <div class="trend-chart">
@@ -79,7 +130,7 @@ export function NightHourChart({ nights, getHours, color, title, highlightFerber
         {highlightFerber && (
           <FerberHighlight
             count={n}
-            isFerber={i => !!allNights[i].ferberEnabled}
+            isFerber={i => ferberCheck(points[i])}
             x={x}
             left={PAD.left}
             top={PAD.top}
@@ -90,8 +141,12 @@ export function NightHourChart({ nights, getHours, color, title, highlightFerber
 
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
-        {points.map((p, i) => (
-          <circle key={i} cx={x(p.ni)} cy={y(p.nh)} r="4" fill={color} opacity="0.85" />
+        {avgPath && (
+          <path d={avgPath} fill="none" stroke={color} stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5" />
+        )}
+
+        {dots.map((d, i) => (
+          <circle key={i} cx={x(d.ni)} cy={y(d.hour)} r="4" fill={d.color ?? color} opacity="0.85" />
         ))}
 
         {dateLabels.map((dl, i) => (
@@ -103,3 +158,6 @@ export function NightHourChart({ nights, getHours, color, title, highlightFerber
     </div>
   );
 }
+
+// Export CYCLE_EPOCH_H for callers that need the cycle-specific epoch.
+export { CYCLE_EPOCH_H };

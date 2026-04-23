@@ -1,226 +1,410 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getNights, getNightDetail, getTrends, NightSummary, NightDetail, TrendPoint } from '../api';
-import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
+import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
+import { fmtDur, toNightHour, toCycleHour, ACTION_INFO, actionLabel, CYCLE_EPOCH_H } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
+import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 
-type View = 'nights' | 'trends';
+type View = 'cycles' | 'trends';
 
 const DISPLAY_LIMIT = 30;
 
 const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
 
+// computeMovingAvg returns the trailing `window`-wide mean at each index.
+// Requires ALL values within the window to be non-null (no partial averaging)
+// so the resulting line only appears where backing data is complete.
+function computeMovingAvg(values: (number | null)[], window: number): (number | null)[] {
+  return values.map((_, i) => {
+    if (i + 1 < window) return null;
+    const slice = values.slice(i + 1 - window, i + 1);
+    if (slice.some(v => v === null)) return null;
+    const sum = (slice as number[]).reduce((a, b) => a + b, 0);
+    return sum / window;
+  });
+}
+
 export function History() {
-  const [nights, setNights] = useState<NightSummary[]>([]);
-  const [trends, setTrends] = useState<TrendPoint[] | null>(null);
-  const [detail, setDetail] = useState<NightDetail | null>(null);
-  const [view, setView] = useState<View>('nights');
+  const [cycles, setCycles] = useState<CycleSummary[]>([]);
+  const [detail, setDetail] = useState<CycleDetail | null>(null);
+  const [view, setView] = useState<View>('cycles');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const clearError = useCallback(() => setError(null), []);
   const isLandscape = useIsLandscape();
 
-  useEffect(() => { loadNights(); }, []);
+  useEffect(() => { loadCycles(); }, []);
 
-  async function loadNights() {
+  async function loadCycles() {
     setLoading(true);
     setDetail(null);
     try {
-      const data = await getNights();
-      setNights((data.nights || []).reverse());
+      const data = await getCycles();
+      // API returns cycles in chronological order (oldest first). Reverse so
+      // the newest is rendered at the top.
+      setCycles((data.cycles || []).slice().reverse());
     } catch {
-      setError('Failed to load nights');
+      setError('Failed to load cycles');
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadTrends() {
+  async function showDetail(sessionId: number) {
     try {
-      const data = await getTrends();
-      setTrends(data.trends || []);
-    } catch {
-      setError('Failed to load trends');
-    }
-  }
-
-  function switchView(v: View) {
-    setView(v);
-    if (v === 'trends') loadTrends();
-  }
-
-  async function showDetail(id: number) {
-    try {
-      const data = await getNightDetail(id);
+      const data = await getCycleDetail(sessionId);
       setDetail(data);
     } catch {
-      setError('Failed to load night details');
+      setError('Failed to load cycle details');
     }
   }
 
   if (loading) return <div class="no-data">Loading...</div>;
 
   if (detail) {
-    return <NightDetailView detail={detail} onBack={() => setDetail(null)} />;
+    return <CycleDetailView detail={detail} onBack={() => setDetail(null)} />;
   }
 
-  if (nights.length === 0) {
-    return <div class="no-data">No nights recorded yet</div>;
+  if (cycles.length === 0) {
+    return <div class="no-data">No cycles recorded yet</div>;
   }
 
-  const nightsForList = nights.slice(0, DISPLAY_LIMIT);
-  const nightsForCharts = isLandscape ? nights : nights.slice(0, DISPLAY_LIMIT);
-  const trendsForCharts: TrendPoint[] | null = trends
-    ? (isLandscape ? trends : trends.slice(-DISPLAY_LIMIT))
-    : null;
+  const cyclesForList = cycles.slice(0, DISPLAY_LIMIT);
+  const cyclesForCharts = isLandscape ? cycles : cycles.slice(0, DISPLAY_LIMIT);
 
   return (
     <div class="history-content">
       <div class="view-toggle">
-        <button class={`view-btn ${view === 'nights' ? 'active' : ''}`} onClick={() => switchView('nights')}>
-          Nights
+        <button class={`view-btn ${view === 'cycles' ? 'active' : ''}`} onClick={() => setView('cycles')}>
+          Cycles
         </button>
-        <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => switchView('trends')}>
-          {nights.length > DISPLAY_LIMIT ? `Trends (${isLandscape ? '90d' : '30d'})` : 'Trends'}
+        <button class={`view-btn ${view === 'trends' ? 'active' : ''}`} onClick={() => setView('trends')}>
+          {cycles.length > DISPLAY_LIMIT ? `Trends (${isLandscape ? '90d' : '30d'})` : 'Trends'}
         </button>
       </div>
 
-      {view === 'nights' && (
+      {view === 'cycles' && (
         <>
-          {nightsForList.map(n => {
-            const date = new Date(n.startedAt);
-            const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-            const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-            const s = n.stats;
-
-            return (
-              <div key={n.id} class="night-card clickable" onClick={() => showDetail(n.id)}>
-                <h3>
-                  <span>{dateStr}{n.ferberEnabled && <span class="ferber-badge" title={`Night ${n.ferberNightNumber ?? ''}`}>🌱</span>}</span>
-                  <span>{timeStr}</span>
-                </h3>
-                <div class="night-stats">
-                  <Stat value={fmtDur(s.longestSleepBlock)} label="Longest Sleep" />
-                  <Stat value={String(s.wakeCount)} label="Wakes" />
-                  <Stat value={String(s.feedCount)} label="Feeds" />
-                  <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
-                </div>
-                <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
-                <FeedTimesPills times={s.feedTimes} />
-              </div>
-            );
-          })}
-          {nights.length > DISPLAY_LIMIT && (
-            <div class="nights-caption">Showing {DISPLAY_LIMIT} most recent nights</div>
+          {cyclesForList.map((c, idx) => (
+            <CycleCard key={cardKey(c, idx)} cycle={c} onClick={() => {
+              const id = c.day?.id ?? c.night?.id;
+              if (id != null) showDetail(id);
+            }} />
+          ))}
+          {cycles.length > DISPLAY_LIMIT && (
+            <div class="nights-caption">Showing {DISPLAY_LIMIT} most recent cycles</div>
           )}
         </>
       )}
 
-      {view === 'trends' && trends === null && (
-        <div class="no-data">Loading trends...</div>
-      )}
-
-      {view === 'trends' && trendsForCharts !== null && (
-        <div class="trends-grid">
-          <TrendChart
-            trends={trendsForCharts}
-            series={[{ getValue: p => p.longestSleep, getAvg: p => p.avgLongestSleep, color: '#4a8aff' }]}
-            formatValue={fmtDur}
-            title="Longest Sleep Block"
-            highlightFerber
-          />
-          <TrendChart
-            trends={trendsForCharts}
-            series={[{ getValue: p => p.totalSleep, getAvg: p => p.avgTotalSleep, color: '#6a5aff' }]}
-            formatValue={fmtDur}
-            title="Total Sleep"
-            highlightFerber
-          />
-          <TrendChart
-            trends={trendsForCharts}
-            series={[{ getValue: p => p.wakeCount, getAvg: p => p.avgWakeCount, color: '#ff5a5a' }]}
-            formatValue={v => String(Math.round(v))}
-            title="Wake Count"
-            highlightFerber
-          />
-          <TrendChart
-            trends={trendsForCharts}
-            series={[{ getValue: p => p.feedCount, getAvg: p => p.avgFeedCount, color: '#ffaa5a' }]}
-            formatValue={v => String(Math.round(v))}
-            title="Feed Count"
-            highlightFerber
-          />
-          <TrendChart
-            trends={trendsForCharts}
-            series={[{ getValue: p => p.totalFeed, getAvg: p => p.avgTotalFeed, color: '#ffaa5a' }]}
-            formatValue={fmtDur}
-            title="Total Feed Time"
-            highlightFerber
-          />
-          <TrendChart
-            trends={trendsForCharts}
-            series={[
-              { getValue: p => p.feedTimeLeft, getAvg: p => p.avgFeedTimeLeft, color: '#5a9aff', label: 'Left' },
-              { getValue: p => p.feedTimeRight, getAvg: p => p.avgFeedTimeRight, color: '#ff7a5a', label: 'Right' },
-            ]}
-            formatValue={fmtDur}
-            title="Feed Time by Side"
-            highlightFerber
-          />
-          <NightHourChart
-            nights={nightsForCharts}
-            getHours={n => (n.stats.feedTimes ?? []).map(toNightHour)}
-            color="#c0b040"
-            title="Feed Times"
-            highlightFerber
-          />
-          <NightHourChart
-            nights={nightsForCharts}
-            getHours={n => n.stats.realBedtime ? [toNightHour(n.stats.realBedtime)] : []}
-            color="#6a9aff"
-            title="Real Bedtime"
-            highlightFerber
-          />
-          {trendsForCharts.some(t => t.ferberCryTime != null) && (
-            <TrendChart
-              trends={trendsForCharts.filter(t => t.ferberCryTime != null)}
-              series={[{ getValue: p => nsToMinutes(p.ferberCryTime!), getAvg: () => null, color: '#ff5a8a' }]}
-              formatValue={v => `${Math.round(v)}m`}
-              title="🌱 Cry time per night"
-            />
-          )}
-          {trendsForCharts.some(t => t.ferberCheckIns != null) && (
-            <TrendChart
-              trends={trendsForCharts.filter(t => t.ferberCheckIns != null)}
-              series={[{ getValue: p => p.ferberCheckIns!, getAvg: () => null, color: '#a05aff' }]}
-              formatValue={v => String(Math.round(v))}
-              title="🌱 Check-ins per night"
-            />
-          )}
-          {trendsForCharts.some(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0) && (
-            <TrendChart
-              trends={trendsForCharts.filter(t => t.ferberTimeToSettle != null && t.ferberTimeToSettle > 0)}
-              series={[{ getValue: p => nsToMinutes(p.ferberTimeToSettle!), getAvg: () => null, color: '#5affaa' }]}
-              formatValue={v => `${Math.round(v)}m`}
-              title="🌱 Avg time to settle"
-            />
-          )}
-        </div>
-      )}
+      {view === 'trends' && <TrendsView cycles={cyclesForCharts} />}
 
       <ErrorToast message={error} onDismiss={clearError} />
     </div>
   );
 }
 
-function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () => void }) {
-  const n = detail.night;
-  const s = detail.stats;
-  const date = new Date(n.startedAt);
+function cardKey(c: CycleSummary, idx: number): string {
+  return `${c.day?.id ?? 'nil'}-${c.night?.id ?? 'nil'}-${idx}`;
+}
+
+function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => void }) {
+  const anchor = cycle.day?.startedAt ?? cycle.night?.startedAt;
+  if (!anchor) return null;
+  const date = new Date(anchor);
   const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeStr = cycle.night
+    ? new Date(cycle.night.startedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const day = cycle.stats.day;
+  const night = cycle.stats.night;
+  const isFerber = !!cycle.night?.ferberEnabled;
+
+  return (
+    <div class="night-card clickable" onClick={onClick}>
+      <h3>
+        <span>{dateStr}{isFerber && <span class="ferber-badge" title={`Night ${cycle.night?.ferberNightNumber ?? ''}`}>🌱</span>}</span>
+        <span>{timeStr}</span>
+      </h3>
+      {day && (
+        <div class="cycle-section cycle-section-day">
+          <div class="cycle-section-header">☀️ Day</div>
+          <div class="night-stats">
+            <Stat value={fmtDur(day.longestNap)} label="Longest Nap" />
+            <Stat value={String(day.napCount)} label="Naps" />
+            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
+            <Stat value={day.lastWakeWindow != null ? fmtDur(day.lastWakeWindow) : '—'} label="Last Wake" />
+          </div>
+          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
+        </div>
+      )}
+      {night && (
+        <div class="cycle-section cycle-section-night">
+          <div class="cycle-section-header">🌙 Night</div>
+          <div class="night-stats">
+            <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
+            <Stat value={String(night.wakeCount)} label="Wakes" />
+            <Stat value={String(night.feedCount)} label="Feeds" />
+            <Stat value={fmtDur(night.totalSleepTime)} label="Total Sleep" />
+          </div>
+          <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
+          <FeedTimesPills times={night.feedTimes} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Trends view ---
+
+function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
+  // Trends are indexed oldest → newest for line charts; the cycles list is
+  // newest-first, so reverse.
+  const chronological = [...cycles].reverse();
+
+  // Client-side moving average for Real Bedtime. Server-side averaging of
+  // timestamps is awkward (they're `*time.Time`, not durations); since bedtime
+  // is only meaningful as a clock-hour value, compute the 3-cycle rolling
+  // mean of hours-since-epoch here.
+  const bedtimeHours = chronological.map(c =>
+    c.stats.night?.realBedtime ? toNightHour(c.stats.night.realBedtime) : null,
+  );
+  const bedtimeAvgs = computeMovingAvg(bedtimeHours, 3);
+  const bedtimeAvgByCycle = new Map<CycleSummary, number | null>();
+  chronological.forEach((c, i) => bedtimeAvgByCycle.set(c, bedtimeAvgs[i]));
+
+  return (
+    <div class="trends-grid">
+      <StackedCycleTimelines cycles={cycles} />
+
+      <NightHourChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        getDots={c => cycleFeedDots(c)}
+        color="#c0b040"
+        title="Feed Times (24h)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+        epoch={CYCLE_EPOCH_H}
+      />
+
+      <NightHourChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        getDots={c => c.stats.night?.realBedtime ? [{ hour: toNightHour(c.stats.night.realBedtime) }] : []}
+        getAvgHour={c => bedtimeAvgByCycle.get(c) ?? null}
+        color="#6a9aff"
+        title="Real Bedtime"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.day?.totalNapTime ?? 0,
+          getAvg: c => c.avg?.day?.totalNapTime ?? null,
+          color: '#5affaa',
+        }]}
+        formatValue={fmtDur}
+        title="Total Nap Duration"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.longestSleepBlock ?? 0,
+          getAvg: () => null,
+          color: '#4a8aff',
+        }]}
+        formatValue={fmtDur}
+        title="Longest Sleep Block (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.totalSleepTime ?? 0,
+          getAvg: c => c.avg?.night?.totalSleepTime ?? null,
+          color: '#6a5aff',
+        }]}
+        formatValue={fmtDur}
+        title="Total Sleep (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.wakeCount ?? 0,
+          getAvg: c => c.avg?.night?.wakeCount ?? null,
+          color: '#ff5a5a',
+        }]}
+        formatValue={v => String(Math.round(v))}
+        title="Wake Count (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.feedCount ?? 0,
+          getAvg: c => c.avg?.night?.feedCount ?? null,
+          color: '#ffaa5a',
+        }]}
+        formatValue={v => String(Math.round(v))}
+        title="Feed Count (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.totalFeedTime ?? 0,
+          getAvg: c => c.avg?.night?.totalFeedTime ?? null,
+          color: '#ffaa5a',
+        }]}
+        formatValue={fmtDur}
+        title="Total Feed Time (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[
+          { getValue: c => c.stats.night?.feedTimeLeft ?? 0, getAvg: c => c.avg?.night?.feedTimeLeft ?? null, color: '#5a9aff', label: 'Left' },
+          { getValue: c => c.stats.night?.feedTimeRight ?? 0, getAvg: c => c.avg?.night?.feedTimeRight ?? null, color: '#ff7a5a', label: 'Right' },
+        ]}
+        formatValue={fmtDur}
+        title="Feed Time by Side (night)"
+        highlightFerber
+        isFerber={c => !!c.night?.ferberEnabled}
+      />
+
+      {chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
+        <TrendChart
+          points={chronological.filter(c => c.stats.night?.ferber?.cryTime != null)}
+          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+          series={[{
+            getValue: c => nsToMinutes(c.stats.night!.ferber!.cryTime),
+            getAvg: () => null,
+            color: '#ff5a8a',
+          }]}
+          formatValue={v => `${Math.round(v)}m`}
+          title="🌱 Cry time per night"
+        />
+      )}
+      {chronological.some(c => c.stats.night?.ferber?.checkIns != null) && (
+        <TrendChart
+          points={chronological.filter(c => c.stats.night?.ferber?.checkIns != null)}
+          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+          series={[{
+            getValue: c => c.stats.night!.ferber!.checkIns,
+            getAvg: () => null,
+            color: '#a05aff',
+          }]}
+          formatValue={v => String(Math.round(v))}
+          title="🌱 Check-ins per night"
+        />
+      )}
+      {chronological.some(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0) && (
+        <TrendChart
+          points={chronological.filter(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0)}
+          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+          series={[{
+            getValue: c => nsToMinutes(c.stats.night!.ferber!.avgTimeToSettle),
+            getAvg: () => null,
+            color: '#5affaa',
+          }]}
+          formatValue={v => `${Math.round(v)}m`}
+          title="🌱 Avg time to settle"
+        />
+      )}
+    </div>
+  );
+}
+
+// StackedCycleTimelines renders one CycleTimelineBar per cycle, newest at top.
+// Uses the events inline on each CycleSummary — no additional fetches. Each
+// cycle is handed the *previous* cycle's events too (the older cycle, which
+// is at index+1 since the list is newest-first), so the bar can render state
+// inherited across the 7am boundary (e.g., sleep trailing from last night).
+function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
+  return (
+    <div class="trend-chart">
+      <div class="trend-title">24h Cycle Timelines</div>
+      <div class="stacked-cycle-list">
+        {cycles.map((c, i) => {
+          const anchor = c.day?.startedAt ?? c.night?.startedAt;
+          if (!anchor) return null;
+          const label = new Date(anchor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          // Older cycle = next one in the newest-first array.
+          const prevCycle = cycles[i + 1];
+          return (
+            <CycleTimelineBar
+              key={cardKey(c, i)}
+              day={c.day}
+              night={c.night}
+              events={c.events}
+              prevEvents={prevCycle?.events}
+              label={label}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// cycleFeedDots returns a dot for each feed-start timestamp in the cycle,
+// colored by day vs night. Hue-contrast pair (warm amber for day, clear blue
+// for night) so dots are distinguishable on a dark background.
+const DAY_FEED_COLOR = '#ff9a5a';
+const NIGHT_FEED_COLOR = '#5a8aff';
+function cycleFeedDots(c: CycleSummary): { hour: number; color: string }[] {
+  const dots: { hour: number; color: string }[] = [];
+  if (c.stats.day?.dayFeedTimes) {
+    for (const t of c.stats.day.dayFeedTimes) {
+      dots.push({ hour: toCycleHour(t), color: DAY_FEED_COLOR });
+    }
+  }
+  if (c.stats.night?.feedTimes) {
+    for (const t of c.stats.night.feedTimes) {
+      dots.push({ hour: toCycleHour(t), color: NIGHT_FEED_COLOR });
+    }
+  }
+  return dots;
+}
+
+// --- Cycle detail view ---
+
+function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
+  const { day, night } = detail.cycle;
+  const anchor = day?.startedAt ?? night?.startedAt;
+  const date = anchor ? new Date(anchor) : new Date();
+  const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const s = detail.stats;
+  const dayStats = s.day;
+  const nightStats = s.night;
 
   return (
     <div class="history-content">
@@ -229,36 +413,63 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
       <div class="night-card">
         <h3>
           <span>{dateStr}</span>
-          <span>{fmtDur(s.nightDuration)}</span>
+          <span>{nightStats ? fmtDur(nightStats.nightDuration) : ''}</span>
         </h3>
-        <div class="night-stats">
-          <Stat value={fmtDur(s.longestSleepBlock)} label="Longest Sleep" />
-          <Stat value={String(s.wakeCount)} label="Wakes" />
-          <Stat value={fmtDur(s.totalFeedTime)} label="Feed Time" />
-          <Stat value={fmtDur(s.totalSleepTime)} label="Total Sleep" />
-        </div>
-        {s.ferber && n.ferberEnabled && (
-          <div class="ferber-stats">
-            <div class="ferber-stats-header">🌱 Night {n.ferberNightNumber}</div>
+
+        {dayStats && (
+          <div class="cycle-section cycle-section-day">
+            <div class="cycle-section-header">☀️ Day</div>
             <div class="night-stats">
-              <Stat value={String(s.ferber.sessions)} label="Sessions" />
-              <Stat value={fmtDur(s.ferber.avgTimeToSettle)} label="Session average" />
-              <Stat value={fmtDur(s.ferber.cryTime)} label="Cry time" />
-              <Stat value={fmtDur(s.ferber.fussTime)} label="Fuss time" />
+              <Stat value={fmtDur(dayStats.longestNap)} label="Longest Nap" />
+              <Stat value={String(dayStats.napCount)} label="Naps" />
+              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
             </div>
-            <details class="ferber-details">
-              <summary>More</summary>
-              <div class="night-stats">
-                <Stat value={String(s.ferber.checkIns)} label="Check-ins" />
-                <Stat value={String(s.ferber.sessionsAbandoned)} label="Abandoned" />
-                <Stat value={fmtDur(s.ferber.quietTime)} label="Quiet time" />
-              </div>
-            </details>
+            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
+            {detail.dayTimeline.length > 0 && day && (
+              <TimelineBar
+                timeline={detail.dayTimeline}
+                totalDurationNs={dayDurationNs(day)}
+              />
+            )}
           </div>
         )}
-        <SleepBlocksPills blocks={s.sleepBlocks} longest={s.longestSleepBlock} active={!n.endedAt} />
-        <FeedTimesPills times={s.feedTimes} />
-        <TimelineBar timeline={detail.timeline} totalDurationNs={s.nightDuration} />
+
+        {nightStats && (
+          <div class="cycle-section cycle-section-night">
+            <div class="cycle-section-header">🌙 Night</div>
+            <div class="night-stats">
+              <Stat value={fmtDur(nightStats.longestSleepBlock)} label="Longest Sleep" />
+              <Stat value={String(nightStats.wakeCount)} label="Wakes" />
+              <Stat value={fmtDur(nightStats.totalFeedTime)} label="Feed Time" />
+              <Stat value={fmtDur(nightStats.totalSleepTime)} label="Total Sleep" />
+            </div>
+            {nightStats.ferber && night?.ferberEnabled && (
+              <div class="ferber-stats">
+                <div class="ferber-stats-header">🌱 Night {night.ferberNightNumber}</div>
+                <div class="night-stats">
+                  <Stat value={String(nightStats.ferber.sessions)} label="Sessions" />
+                  <Stat value={fmtDur(nightStats.ferber.avgTimeToSettle)} label="Session average" />
+                  <Stat value={fmtDur(nightStats.ferber.cryTime)} label="Cry time" />
+                  <Stat value={fmtDur(nightStats.ferber.fussTime)} label="Fuss time" />
+                </div>
+                <details class="ferber-details">
+                  <summary>More</summary>
+                  <div class="night-stats">
+                    <Stat value={String(nightStats.ferber.checkIns)} label="Check-ins" />
+                    <Stat value={String(nightStats.ferber.sessionsAbandoned)} label="Abandoned" />
+                    <Stat value={fmtDur(nightStats.ferber.quietTime)} label="Quiet time" />
+                  </div>
+                </details>
+              </div>
+            )}
+            <SleepBlocksPills blocks={nightStats.sleepBlocks} longest={nightStats.longestSleepBlock} active={!night?.endedAt} />
+            <FeedTimesPills times={nightStats.feedTimes} />
+            {detail.timeline.length > 0 && (
+              <TimelineBar timeline={detail.timeline} totalDurationNs={nightStats.nightDuration} />
+            )}
+          </div>
+        )}
       </div>
 
       <div class="night-card">
@@ -272,6 +483,39 @@ function NightDetailView({ detail, onBack }: { detail: NightDetail; onBack: () =
             return <div key={i} class="event-row">{t} — {label}{meta}</div>;
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// dayDurationNs returns the day session's total duration in nanoseconds,
+// falling back to "now" for in-progress (unended) sessions — same convention
+// as the server's ComputeStats for open sessions.
+function dayDurationNs(day: SessionMeta): number {
+  const startMs = new Date(day.startedAt).getTime();
+  const endMs = day.endedAt ? new Date(day.endedAt).getTime() : Date.now();
+  return (endMs - startMs) * 1e6;
+}
+
+// DayRhythmPills renders the alternating awake/nap segment durations. The
+// last pill blinks when `live` is true — indicating the current in-progress
+// segment (parallel to how the night's last sleep block blinks on the
+// active night session).
+function DayRhythmPills({ segments, live }: { segments: DaySegment[]; live?: boolean }) {
+  if (!segments || segments.length === 0) return null;
+  return (
+    <div class="pill-group">
+      <div class="pill-group-label">Day rhythm</div>
+      <div class="pill-group-pills">
+        {segments.map((s, i) => {
+          const isLast = i === segments.length - 1;
+          const cls = [
+            'pill',
+            s.kind === 'nap' ? 'pill-nap' : 'pill-awake',
+            live && isLast ? 'pill-day-live' : '',
+          ].filter(Boolean).join(' ');
+          return <span key={i} class={cls}>{fmtDur(s.duration)}</span>;
+        })}
       </div>
     </div>
   );

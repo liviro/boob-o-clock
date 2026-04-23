@@ -1,5 +1,6 @@
 export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   night_off:         { icon: '🌙', label: 'Night Off' },
+  // Night subgraph
   awake:             { icon: '👀', label: 'Awake' },
   feeding:           { icon: '🍼', label: 'Feeding' },
   sleeping_on_me:    { icon: '🤱', label: 'Sleeping on Me' },
@@ -12,6 +13,11 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   poop:              { icon: '💩', label: 'Diaper Change' },
   learning:          { icon: '🌱', label: 'Learning' },
   check_in:          { icon: '👣', label: 'Checking In' },
+  // Day subgraph
+  day_awake:         { icon: '👀', label: 'Awake' },
+  day_feeding:       { icon: '🍼', label: 'Feeding' },
+  day_sleeping:      { icon: '💤', label: 'Napping' },
+  day_poop:          { icon: '💩', label: 'Diaper Change' },
 };
 
 export interface ActionDef {
@@ -20,15 +26,20 @@ export interface ActionDef {
   cls: string;
   needsBreast?: boolean;
   needsMood?: boolean;
+  needsLocation?: boolean;
   confirm?: boolean;
 }
 
 export const ACTION_INFO: Record<string, ActionDef> = {
+  // Session-creation actions (routed to POST /api/session/start, not /event).
   start_night:            { icon: '🌙', label: 'Start night',         cls: 'primary full-width' },
+  start_day:              { icon: '☀️', label: 'Start day',           cls: 'primary full-width' },
+  // Feeding cluster (shared between night and day).
   start_feed:             { icon: '🍼', label: 'Feed',                cls: 'feed full-width', needsBreast: true },
   dislatch_awake:         { icon: '👀', label: 'Dislatch (awake)',    cls: '' },
   dislatch_asleep:        { icon: '😴', label: 'Dislatch (asleep)',   cls: 'sleep' },
   switch_breast:          { icon: '🔄', label: 'Switch side',         cls: 'feed' },
+  // Night transitions.
   start_transfer:         { icon: '🤞', label: 'Transfer to crib',    cls: '' },
   transfer_success:       { icon: '😴', label: 'Asleep in crib!',     cls: 'sleep' },
   transfer_need_resettle: { icon: '🤚', label: 'Needs resettle',      cls: '' },
@@ -42,15 +53,18 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   give_up:                { icon: '🏳️', label: 'Give up',            cls: 'danger' },
   put_down_awake:         { icon: '🙌', label: 'Put down awake',      cls: 'full-width' },
   baby_stirred:           { icon: '🤫', label: 'Baby stirred',        cls: '' },
+  // Day-specific.
+  start_sleep:            { icon: '😴', label: 'Nap',                 cls: 'sleep full-width', needsLocation: true },
+  // Shared poop.
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
   poop_done:              { icon: '✅', label: 'Diaper change done',  cls: 'primary full-width' },
-  end_night:              { icon: '☀️', label: 'End night',           cls: 'danger full-width', confirm: true },
-  put_down_awake_ferber:  { icon: '🌱', label: 'Put down awake',    cls: 'full-width', needsMood: true },
-  baby_stirred_ferber:    { icon: '🌱', label: 'Baby stirred',      cls: '',           needsMood: true },
-  mood_change:            { icon: '😐', label: 'Mood',              cls: '' },
-  check_in:               { icon: '👣', label: 'Check in',          cls: 'primary' },
-  end_check_in:           { icon: '🌱', label: 'Resume learning',   cls: '' },
-  exit_ferber:            { icon: '🏳️', label: 'Give up',         cls: 'danger' },
+  // Ferber.
+  put_down_awake_ferber:  { icon: '🌱', label: 'Put down awake',      cls: 'full-width', needsMood: true },
+  baby_stirred_ferber:    { icon: '🌱', label: 'Baby stirred',        cls: '',           needsMood: true },
+  mood_change:            { icon: '😐', label: 'Mood',                cls: '' },
+  check_in:               { icon: '👣', label: 'Check in',            cls: 'primary' },
+  end_check_in:           { icon: '🌱', label: 'Resume learning',     cls: '' },
+  exit_ferber:            { icon: '🏳️', label: 'Give up',            cls: 'danger' },
 };
 
 /** Get single-line label for an action */
@@ -94,6 +108,16 @@ function pad(n: number): string {
 /** Clock hour treated as the night's start. Times before this wrap to the next day. */
 export const NIGHT_EPOCH_H = 18; // 6 PM
 
+/**
+ * Clock hour treated as a cycle's start. 0 = midnight: each 24h bar shows
+ * one calendar day (midnight → midnight). Easier to read than a 7am boundary
+ * because night sleep that extends past morning doesn't feel "split"
+ * relative to a familiar calendar day — and the previous cycle's sleep tail
+ * naturally prepends to the next bar, forming a continuous midnight-to-wake
+ * sleep block on the left.
+ */
+export const CYCLE_EPOCH_H = 0;
+
 /** Convert a timestamp to "hours since NIGHT_EPOCH_H". E.g. 9 PM = 3, 1 AM = 7. */
 export function toNightHour(ts: string): number {
   const d = new Date(ts);
@@ -102,13 +126,12 @@ export function toNightHour(ts: string): number {
   return h - NIGHT_EPOCH_H;
 }
 
-/** Format a night-hour back to a clock time string (e.g. "9 PM"). */
-export function fmtHour(nightHour: number): string {
-  let h = Math.round(nightHour + NIGHT_EPOCH_H);
-  if (h >= 24) h -= 24;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${display} ${ampm}`;
+/** Convert a timestamp to "hours since CYCLE_EPOCH_H". E.g. 10 AM = 3, midnight = 17. */
+export function toCycleHour(ts: string): number {
+  const d = new Date(ts);
+  let h = d.getHours() + d.getMinutes() / 60;
+  if (h < CYCLE_EPOCH_H) h += 24;
+  return h - CYCLE_EPOCH_H;
 }
 
 /** Format a Date as "M/D" for chart axis labels. */
@@ -130,4 +153,19 @@ export const STATE_COLORS: Record<string, string> = {
   poop: '#8a6030',
   learning: '#5a8060',
   check_in: '#888888',
+  // Day subgraph. Awake/feeding/poop reuse night colors so a 24h timeline
+  // bar shows visually continuous AWAKE / feeding spans across chain
+  // boundaries. DaySleeping gets a distinct teal to separate naps from
+  // the night's blue sleep family.
+  day_awake: '#7a3030',
+  day_feeding: '#a09020',
+  day_sleeping: '#408080',
+  day_poop: '#8a6030',
+};
+
+export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = {
+  crib:     { icon: '🛏️', label: 'Crib' },
+  stroller: { icon: '🚼', label: 'Stroller' },
+  on_me:    { icon: '🤱', label: 'On me' },
+  car:      { icon: '🚗', label: 'Car' },
 };

@@ -310,6 +310,9 @@ body {
   border-radius: 12px;
   padding: 14px;
   margin-bottom: 12px;
+  /* Clip full-bleed children (.cycle-section uses negative horizontal margin
+   * to extend past the card padding) to the card's rounded corners. */
+  overflow: hidden;
 }
 
 .night-card.clickable { cursor: pointer; }
@@ -375,6 +378,21 @@ body {
   background: #2a2510;
   border-color: #4a4020;
   color: #c0b040;
+}
+/* Day-rhythm pills: teal for naps (matches day_sleeping timeline color),
+ * muted-red for awake spans (matches day_awake / awake family). */
+.pill-nap {
+  background: #1a2a2a;
+  border-color: #2a4a4a;
+  color: #88cccc;
+}
+.pill-awake {
+  background: #2a1a1a;
+  border-color: #4a2a2a;
+  color: #cc8888;
+}
+.pill-day-live {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; }
@@ -693,4 +711,132 @@ body {
 .ferber-badge {
   margin-left: 6px;
   font-size: 0.9em;
+}
+
+/* Location picker (day naps) */
+.location-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.location-btn {
+  background: #1a2a3a;
+  color: #fff;
+  border: 2px solid #2a3a5a;
+  border-radius: 16px;
+  font-size: 15px;
+  min-height: 90px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.location-btn:active { background: #2a3a5a; }
+.location-icon { font-size: 28px; }
+
+/* Cycle card sections (day/night grouping inside a card).
+ *
+ * Modeled on .ferber-stats but without vertical margins: the day and night
+ * sections sit flush against each other and extend to the card's edges.
+ * Color difference (warm day tint vs cool night tint) provides the
+ * separation; no gaps inside the card.
+ *
+ * The last section in a card also consumes the card's bottom padding (via
+ * negative margin + matching padding) so the section's background reaches
+ * the card's bottom edge, avoiding the bare strip that would otherwise
+ * appear between the night section and the rounded bottom corners. */
+.cycle-section {
+  margin: 0 -14px;
+  padding: 12px 14px;
+}
+
+.night-card > .cycle-section:last-child {
+  margin-bottom: -14px;
+  padding-bottom: 14px;
+}
+
+.cycle-section-day {
+  background: #2a2118;
+}
+
+.cycle-section-night {
+  background: #181e2a;
+}
+
+.cycle-section-header {
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cycle-section-day .cycle-section-header {
+  color: #d4a878;
+}
+
+.cycle-section-night .cycle-section-header {
+  color: #7a9ad4;
+}
+
+/* Cycle timeline bar: 7am → 7am, used in detail view (one row) and stacked trends (N rows) */
+.cycle-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cycle-timeline-label {
+  font-size: 10px;
+  color: #999;
+  text-align: right;
+}
+
+.cycle-timeline-bar {
+  flex: 1 1 auto;
+  position: relative;
+  height: 20px;
+  background: #111;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cycle-timeline-bar .tl-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 2px;
+}
+
+.stacked-cycle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* StartNightPicker — container for the Ferber-optional Start Night modal */
+.start-night-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.start-night-picker .ferber-toggle {
+  justify-content: center;
+}
+
+.start-night-picker .ferber-night-stepper {
+  justify-content: center;
+  align-self: center;
 }

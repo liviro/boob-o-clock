@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { SessionResponse, StartNightConfig } from '../api';
+import { SessionResponse, StartSessionConfig, Location } from '../api';
 import { ACTION_INFO, actionLabel } from '../constants';
 import { Mood, moodWord } from '../ferber';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
 import { BreastPicker } from '../components/BreastPicker';
 import { MoodPicker } from '../components/MoodPicker';
+import { LocationPicker } from '../components/LocationPicker';
+import { StartNightPicker } from '../components/StartNightPicker';
 import { TimestampPicker } from '../components/TimestampPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UndoButton } from '../components/UndoButton';
@@ -15,52 +17,62 @@ import { CheckInScreen } from '../components/CheckInScreen';
 interface Props {
   session: SessionResponse;
   onDispatch: (action: string, metadata?: Record<string, string>, timestamp?: Date) => void;
-  onStartNight: (config: StartNightConfig) => void;
+  onStartSession: (config: StartSessionConfig) => void;
   onUndo: () => void;
 }
+
+type FerberConfig = { nightNumber: number } | null;
 
 type ModalState =
   | { type: 'none' }
   | { type: 'breast'; action: string; wantsTimePicker: boolean }
   | { type: 'mood'; action: string; wantsTimePicker: boolean }
-  | { type: 'timestamp'; action: string; metadata?: Record<string, string>; title: string }
+  | { type: 'location'; action: string; wantsTimePicker: boolean }
+  | { type: 'startNight'; wantsTimePicker: boolean }
+  // The timestamp picker can carry a ferber config when the source was a
+  // long-press on Start Night (StartNightPicker → TimestampPicker → fire).
+  | { type: 'timestamp'; action: string; metadata?: Record<string, string>; ferberConfig?: FerberConfig; title: string }
   | { type: 'confirm'; action: string; wantsTimePicker: boolean };
 
-export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
+// Chain-advance actions create a new session via POST /api/session/start rather
+// than appending an event. Tracker intercepts these and routes to onStartSession.
+const CHAIN_ACTIONS = new Set(['start_day', 'start_night']);
+
+export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) {
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
-
-  const [ferberOn, setFerberOn] = useState(false);
-  const [ferberNight, setFerberNight] = useState(1);
-
-  useEffect(() => {
-    const suggested = session.suggestFerberNight;
-    if (suggested != null) {
-      setFerberOn(true);
-      setFerberNight(suggested);
-    } else {
-      setFerberOn(false);
-      setFerberNight(1);
-    }
-  }, [session.suggestFerberNight]);
 
   useEffect(() => {
     return () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   }, []);
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
+    if (CHAIN_ACTIONS.has(action)) {
+      // Reaches here only for start_day (direct fire) — start_night always
+      // routes through the Ferber modal in resolveAction.
+      fireChainAdvance(action, timestamp);
+      return;
+    }
     onDispatch(action, metadata, timestamp ?? new Date());
   }
 
-  function handleStartNight() {
-    onStartNight(ferberOn ? { ferber: { nightNumber: ferberNight } } : {});
+  function fireChainAdvance(action: string, timestamp?: Date, ferber?: FerberConfig) {
+    const kind = action === 'start_night' ? 'night' : 'day';
+    const config: StartSessionConfig = { kind };
+    if (kind === 'night' && ferber) {
+      config.ferber = ferber;
+    }
+    if (timestamp) {
+      config.timestamp = timestamp;
+    }
+    onStartSession(config);
   }
 
-  function openTimePicker(action: string, metadata?: Record<string, string>) {
+  function openTimePicker(action: string, metadata?: Record<string, string>, ferberConfig?: FerberConfig) {
     const label = actionLabel(action);
     const breastSuffix = metadata?.breast ? ` (${metadata.breast})` : '';
-    setModal({ type: 'timestamp', action, metadata, title: `${label}${breastSuffix} — When?` });
+    setModal({ type: 'timestamp', action, metadata, ferberConfig, title: `${label}${breastSuffix} — When?` });
   }
 
   function switchBreastMeta(): Record<string, string> | undefined {
@@ -72,6 +84,15 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
 
     if (ai?.confirm) {
       setModal({ type: 'confirm', action, wantsTimePicker });
+      return;
+    }
+
+    // Starting a night always goes through the Ferber-config modal first,
+    // regardless of tap-vs-long-press (long-press just chains into the
+    // timestamp picker afterward). start_day has no config, so it fires
+    // directly (or through the timestamp picker on long-press).
+    if (action === 'start_night') {
+      setModal({ type: 'startNight', wantsTimePicker });
       return;
     }
 
@@ -90,6 +111,11 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
 
     if (ai?.needsMood) {
       setModal({ type: 'mood', action, wantsTimePicker });
+      return;
+    }
+
+    if (ai?.needsLocation) {
+      setModal({ type: 'location', action, wantsTimePicker });
       return;
     }
 
@@ -125,24 +151,41 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
     }
   }
 
-  function handleBreastPick(side: 'L' | 'R') {
-    if (modal.type !== 'breast') return;
-    const meta = { breast: side };
+  // finishPick closes a metadata-picker modal and either fires the action
+  // directly or chains into the timestamp picker (for long-press flows).
+  // Shared across breast/mood/location handlers.
+  function finishPick(expectedType: 'breast' | 'mood' | 'location', meta: Record<string, string>) {
+    if (modal.type !== expectedType) return;
+    const wantsTimePicker = modal.wantsTimePicker;
+    const action = modal.action;
     setModal({ type: 'none' });
-    modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
+    if (wantsTimePicker) openTimePicker(action, meta);
+    else fireAction(action, meta);
   }
 
-  function handleMoodPick(mood: Mood) {
-    if (modal.type !== 'mood') return;
-    const meta = { mood };
+  const handleBreastPick = (side: 'L' | 'R') => finishPick('breast', { breast: side });
+  const handleMoodPick = (mood: Mood) => finishPick('mood', { mood });
+  const handleLocationPick = (location: Location) => finishPick('location', { location });
+
+  function handleStartNightConfirm(ferberConfig: FerberConfig) {
+    if (modal.type !== 'startNight') return;
+    const wantsTimePicker = modal.wantsTimePicker;
     setModal({ type: 'none' });
-    modal.wantsTimePicker ? openTimePicker(modal.action, meta) : fireAction(modal.action, meta);
+    if (wantsTimePicker) {
+      openTimePicker('start_night', undefined, ferberConfig);
+    } else {
+      fireChainAdvance('start_night', undefined, ferberConfig);
+    }
   }
 
   function handleTimestampPick(minutesAgo: number) {
     if (modal.type !== 'timestamp') return;
     const ts = new Date(Date.now() + minutesAgo * 60000);
-    onDispatch(modal.action, modal.metadata, ts);
+    if (CHAIN_ACTIONS.has(modal.action)) {
+      fireChainAdvance(modal.action, ts, modal.ferberConfig);
+    } else {
+      onDispatch(modal.action, modal.metadata, ts);
+    }
     setModal({ type: 'none' });
   }
 
@@ -167,38 +210,7 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
         moodLabel={session.state === 'learning' ? moodWord(session.ferber?.current?.mood) : undefined}
       />
 
-      {session.state === 'night_off'
-        ? (
-          <>
-            <div class="action-grid">
-              <button class="action-btn primary full-width" onClick={handleStartNight}>
-                <span class="action-icon">🌙</span>
-                <span>Start night</span>
-              </button>
-            </div>
-            <div class="ferber-start-row">
-              <label class="ferber-toggle">
-                <input
-                  type="checkbox"
-                  checked={ferberOn}
-                  onChange={e => setFerberOn((e.target as HTMLInputElement).checked)}
-                />
-                <span class="ferber-toggle-switch" aria-hidden="true"></span>
-                <span class="ferber-toggle-label">Ferber mode</span>
-              </label>
-              <div class={`ferber-night-stepper ${ferberOn ? '' : 'is-hidden'}`} aria-hidden={!ferberOn}>
-                Night
-                <button type="button" aria-label="decrease"
-                        class={ferberNight === 1 ? 'is-hidden' : ''}
-                        onClick={() => setFerberNight(n => Math.max(1, n - 1))}>−</button>
-                <span>{ferberNight}</span>
-                <button type="button" aria-label="increase"
-                        onClick={() => setFerberNight(n => n + 1)}>+</button>
-              </div>
-            </div>
-          </>
-        )
-        : session.state === 'learning' && session.ferber
+      {session.state === 'learning' && session.ferber
         ? (
           <LearningScreen
             session={session}
@@ -240,6 +252,19 @@ export function Tracker({ session, onDispatch, onStartNight, onUndo }: Props) {
       <MoodPicker
         open={modal.type === 'mood'}
         onPick={handleMoodPick}
+        onClose={closeModal}
+      />
+
+      <LocationPicker
+        open={modal.type === 'location'}
+        onPick={handleLocationPick}
+        onClose={closeModal}
+      />
+
+      <StartNightPicker
+        open={modal.type === 'startNight'}
+        suggestNightNumber={session.suggestFerberNight}
+        onConfirm={handleStartNightConfirm}
         onClose={closeModal}
       />
 

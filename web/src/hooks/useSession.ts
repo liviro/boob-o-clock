@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { getCurrentSession, postEvent, postStartNight, postUndo, SessionResponse, StartNightConfig } from '../api';
+import { getCurrentSession, postEvent, postStartSession, postUndo, SessionResponse, StartSessionConfig } from '../api';
 
 const STALE_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -27,7 +27,7 @@ export function useSession() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh: on visibility change or every 15 min while visible
+  // Auto-refresh: on visibility change or every 15 min while visible.
   useEffect(() => {
     function refreshIfStale() {
       if (!document.hidden && Date.now() - lastFetchRef.current >= STALE_MS) {
@@ -55,12 +55,12 @@ export function useSession() {
     }
   }, []);
 
-  const startNight = useCallback(async (config: StartNightConfig) => {
+  const startSession = useCallback(async (config: StartSessionConfig) => {
     try {
-      applySession(await postStartNight(config));
+      applySession(await postStartSession(config));
       if (navigator.vibrate) navigator.vibrate(10);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Start night failed');
+      setError(e instanceof Error ? e.message : 'Start session failed');
     }
   }, []);
 
@@ -75,5 +75,5 @@ export function useSession() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { session, loading, error, dispatch, startNight, undo, clearError };
+  return { session, loading, error, dispatch, startSession, undo, clearError };
 }
