@@ -35,6 +35,7 @@ export interface SessionResponse {
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
+  lastSleepStartedAt?: string;
   lastEvent: {
     action: string;
     fromState: string;

@@ -75,6 +75,10 @@ body {
   text-align: center;
 }
 
+.state-timer-emoji {
+  margin-right: 0.4em;
+}
+
 /* Page layout */
 .page-tracker {
   display: flex;

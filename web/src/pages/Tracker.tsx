@@ -206,6 +206,7 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
         lastEventTimestamp={session.lastEvent?.timestamp}
         currentBreast={session.currentBreast}
         lastFeedStartedAt={session.lastFeedStartedAt}
+        lastSleepStartedAt={session.lastSleepStartedAt}
         sessionStartIso={session.state === 'learning' ? session.ferber?.current?.startedAt : undefined}
         moodLabel={session.state === 'learning' ? moodWord(session.ferber?.current?.mood) : undefined}
       />

@@ -56,6 +56,7 @@ type sessionResponse struct {
 	SuggestBreast      string              `json:"suggestBreast,omitempty"`
 	CurrentBreast      string              `json:"currentBreast,omitempty"`
 	LastFeedStartedAt  *time.Time          `json:"lastFeedStartedAt,omitempty"`
+	LastSleepStartedAt *time.Time          `json:"lastSleepStartedAt,omitempty"`
 	Ferber             *ferberNight        `json:"ferber,omitempty"`
 	SuggestFerberNight *int                `json:"suggestFerberNight,omitempty"`
 }
@@ -95,10 +96,21 @@ func toEventResponse(e domain.Event) *eventResponse {
 func (h *Handler) buildSessionResponse(state domain.State, session *domain.Session, events []domain.Event) sessionResponse {
 	lastBreast := reports.LastBreastUsed(events)
 	resp := sessionResponse{
-		State:             state,
-		SuggestBreast:     reports.SuggestedBreast(lastBreast),
-		CurrentBreast:     lastBreast,
-		LastFeedStartedAt: reports.LastFeedStart(events),
+		State:         state,
+		SuggestBreast: reports.SuggestedBreast(lastBreast),
+		CurrentBreast: lastBreast,
+	}
+
+	// Cross-session lookups so "X ago" labels bridge day/night transitions.
+	if t, err := h.store.LastFeedStart(); err != nil {
+		log.Printf("buildSessionResponse: LastFeedStart lookup failed: %v", err)
+	} else {
+		resp.LastFeedStartedAt = t
+	}
+	if t, err := h.store.LastSleepStart(); err != nil {
+		log.Printf("buildSessionResponse: LastSleepStart lookup failed: %v", err)
+	} else {
+		resp.LastSleepStartedAt = t
 	}
 
 	ferberEnabled := session != nil && session.IsNight() && session.FerberEnabled
