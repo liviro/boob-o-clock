@@ -866,3 +866,39 @@ func TestRealBedtimeViaTransferNeedResettle(t *testing.T) {
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(15*time.Minute), "dislatch_asleep (block that reaches crib via resettle)")
 }
+
+func TestRealBedtimeViaTransferSuccessOnly(t *testing.T) {
+	// Block reaches SleepingCrib via TransferSuccess with no preceding asleep
+	// signal (dislatch_asleep / settled / fell_asleep) inside the block —
+	// transfer_success itself marks the moment baby is asleep in the crib.
+	// Without this, the algorithm would silently drop this block and pick the
+	// next block's bedtime, causing wildly-wrong "real bedtime" values.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// First feed cycle, dislatch awake — baby never falls asleep at breast.
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(1*time.Minute), breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(3*time.Minute), nil),
+		// Failed transfer attempt: enter Transferring then fail back to Awake.
+		// (The state machine requires SleepingOnMe to enter Transferring; this
+		// shape stands in for whatever sequence puts the user in a block that
+		// reaches the crib with no earlier asleep signal — what matters here
+		// is the algorithm's behavior when TransferSuccess is the first
+		// asleep-marking action it sees in the block.)
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(26*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(28*time.Minute), nil),
+		// Second attempt: succeeds. transfer_success at 32m is the bedtime.
+		mkEvent(6, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(32*time.Minute), nil),
+		mkEvent(7, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(33*time.Minute), nil),
+		// Long sleep, then wake and feed at 3h26m, dislatch asleep at 3h33m.
+		mkEvent(8, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour+26*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(3*time.Hour+26*time.Minute), breast("L")),
+		mkEvent(10, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(3*time.Hour+33*time.Minute), nil),
+		mkEvent(11, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(3*time.Hour+46*time.Minute), nil),
+		mkEvent(12, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(3*time.Hour+52*time.Minute), nil),
+		mkEvent(13, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(8*time.Hour), nil),
+		mkEvent(14, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(8*time.Hour), nil),
+	}
+	stats, _ := computeBaseStats(events, start, start.Add(8*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(33*time.Minute), "transfer_success as fallback bedtime when block lacks an earlier asleep signal")
+}
