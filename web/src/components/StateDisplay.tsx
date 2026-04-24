@@ -22,7 +22,7 @@ export function StateDisplay({ state, lastEventTimestamp, currentBreast, lastFee
   const showFeedAgo = !!lastFeedStartedAt && state !== 'feeding' && state !== 'day_feeding' && state !== 'night_off';
   const showSleepAgo = state === 'day_awake' && !!lastSleepStartedAt;
 
-  const isFeeding = state === 'feeding' && currentBreast;
+  const isFeeding = (state === 'feeding' || state === 'day_feeding') && currentBreast;
   const flipIcon = isFeeding && currentBreast === 'R';
   const subLabel = isFeeding
     ? (currentBreast === 'L' ? 'Left' : 'Right')
