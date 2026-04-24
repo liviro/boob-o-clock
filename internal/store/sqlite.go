@@ -615,15 +615,19 @@ func (s *Store) LastFeedStart() (*time.Time, error) {
 }
 
 // LastSleepStart returns the timestamp of the most recent event that
-// transitioned into a sleep state (night crib/on-me/stroller or day nap),
-// or nil if none exist.
+// transitioned into a sleep state, or nil if none exist. The sleep-state
+// list lives in domain.SleepingStates — kept there so adding a new sleep
+// state automatically flows into this query.
 func (s *Store) LastSleepStart() (*time.Time, error) {
+	args := make([]any, len(domain.SleepingStates))
+	placeholders := make([]string, len(domain.SleepingStates))
+	for i, st := range domain.SleepingStates {
+		args[i] = string(st)
+		placeholders[i] = "?"
+	}
 	return s.queryLastEventTimestamp(
-		"to_state IN (?, ?, ?, ?)",
-		string(domain.SleepingCrib),
-		string(domain.SleepingOnMe),
-		string(domain.SleepingStroller),
-		string(domain.DaySleeping),
+		"to_state IN ("+strings.Join(placeholders, ",")+")",
+		args...,
 	)
 }
 

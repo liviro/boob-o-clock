@@ -41,6 +41,12 @@ var AllStates = []State{
 	DayAwake, DayFeeding, DaySleeping, DayPoop,
 }
 
+// SleepingStates lists every state that counts as the baby being asleep
+// (night subgraph + day nap). Kept here as the single source of truth so
+// cross-layer consumers (e.g. store.LastSleepStart) don't drift from the
+// state machine.
+var SleepingStates = []State{SleepingCrib, SleepingOnMe, SleepingStroller, DaySleeping}
+
 // Action represents a user action that triggers a state transition.
 type Action string
 
