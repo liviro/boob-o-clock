@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Modal } from './Modal';
 import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
+import { fmtLocalYMDHM } from '../constants';
 
 interface Props {
   open: boolean;
@@ -9,19 +10,12 @@ interface Props {
   onClose: () => void;
 }
 
-// <input type="datetime-local"> wants "YYYY-MM-DDTHH:MM" in the user's local
-// time. Native Date.toISOString is UTC and not what the input expects.
-function localDateTimeInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export function TimestampPicker({ open, title, onPick, onClose }: Props) {
   const guard = useGhostClickGuard(open);
   const [customValue, setCustomValue] = useState('');
 
   useEffect(() => {
-    if (open) setCustomValue(localDateTimeInput(new Date()));
+    if (open) setCustomValue(fmtLocalYMDHM(new Date()));
   }, [open]);
 
   const minutesAgo = (n: number) => new Date(Date.now() + n * 60000);
@@ -49,7 +43,7 @@ export function TimestampPicker({ open, title, onPick, onClose }: Props) {
           class="ts-input"
           type="datetime-local"
           value={customValue}
-          max={localDateTimeInput(new Date())}
+          max={fmtLocalYMDHM(new Date())}
           onChange={(e) => setCustomValue((e.currentTarget as HTMLInputElement).value)}
         />
         <button class="ts-btn" onClick={guard(submitCustom)}>Set time</button>

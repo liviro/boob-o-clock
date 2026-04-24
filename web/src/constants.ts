@@ -131,6 +131,13 @@ export function fmtDayMonth(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+/** Format a Date as "YYYY-MM-DDTHH:MM" in local time. Shared between the
+ *  datetime-local picker input and the RFC3339 builder. */
+export function fmtLocalYMDHM(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** State colors for timeline segments */
 export const STATE_COLORS: Record<string, string> = {
   awake: '#7a3030',
