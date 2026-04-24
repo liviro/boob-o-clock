@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
-import { fmtDur, toNightHour, toCycleHour, ACTION_INFO, actionLabel, CYCLE_EPOCH_H } from '../constants';
+import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
@@ -183,12 +183,11 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
       <NightHourChart
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        getDots={c => cycleFeedDots(c)}
+        getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
-        title="Feed Times (24h)"
+        title="Feed Times"
         highlightFerber
         isFerber={c => !!c.night?.ferberEnabled}
-        epoch={CYCLE_EPOCH_H}
       />
 
       <NightHourChart
@@ -372,26 +371,6 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
       </div>
     </div>
   );
-}
-
-// cycleFeedDots returns a dot for each feed-start timestamp in the cycle,
-// colored by day vs night. Hue-contrast pair (warm amber for day, clear blue
-// for night) so dots are distinguishable on a dark background.
-const DAY_FEED_COLOR = '#ff9a5a';
-const NIGHT_FEED_COLOR = '#5a8aff';
-function cycleFeedDots(c: CycleSummary): { hour: number; color: string }[] {
-  const dots: { hour: number; color: string }[] = [];
-  if (c.stats.day?.dayFeedTimes) {
-    for (const t of c.stats.day.dayFeedTimes) {
-      dots.push({ hour: toCycleHour(t), color: DAY_FEED_COLOR });
-    }
-  }
-  if (c.stats.night?.feedTimes) {
-    for (const t of c.stats.night.feedTimes) {
-      dots.push({ hour: toCycleHour(t), color: NIGHT_FEED_COLOR });
-    }
-  }
-  return dots;
 }
 
 // --- Cycle detail view ---
