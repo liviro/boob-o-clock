@@ -6,9 +6,11 @@ Dark mode only. Single tap to record events. Long-press for time adjustments.
 
 ## Why I built this
 
-I'm a new parent in the thick of newborn nights. At 3am, mid-feed, I genuinely could not remember which side and when I'd last fed on — and every baby tracker I found wanted an account, cloud sync, and a bright white screen in my face. So I vibecoded this for myself in a few evenings, and it's already been useful enough that I wanted to share it.
+It started in the thick of newborn nights. At 3am, mid-feed, I genuinely could not remember which side and when I'd last fed on — and every baby tracker I found wanted an account, cloud sync, and a bright white screen in my face. So I vibecoded this for myself in a few evenings, and it's already been useful enough that I wanted to share it.
 
-Just your data, on your network, in the dark. If Boob O'Clock helped you survive the infant nights, you can [buy me a coffee](https://ko-fi.com/polinaturcu) — it means a lot.
+As the baby got older, more questions came up alongside the old ones. At 3am: "which side last?" During the day: "how long has the baby been awake?" and "was that nap 20 minutes or 45?" So the app grew a day mode — same state-machine approach, now covering the full 24-hour rhythm.
+
+Just your data, on your network, no account and no ads. If Boob O'Clock helped you survive the infant days and nights, you can [buy me a coffee](https://ko-fi.com/polinaturcu) — it means a lot.
 
 ## What it tracks
 
