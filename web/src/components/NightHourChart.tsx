@@ -110,7 +110,7 @@ export function NightHourChart<T>({
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
         {yLabels.map((yl, i) => (
           <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
             {yl.label}

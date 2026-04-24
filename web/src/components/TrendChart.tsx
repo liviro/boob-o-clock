@@ -81,7 +81,7 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
         <text x={PAD.left - 4} y={PAD.top + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(maxVal)}
         </text>

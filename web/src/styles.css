@@ -507,6 +507,18 @@ body {
   padding: 12px;
 }
 
+.trend-chart svg {
+  display: block;
+  max-width: 320px;
+}
+
+/* In landscape, let charts fill the column — cycle timeline bars already do. */
+@media (orientation: landscape) {
+  .trend-chart svg {
+    max-width: none;
+  }
+}
+
 .chart-legend {
   display: flex;
   gap: 12px;
