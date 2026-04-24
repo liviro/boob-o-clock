@@ -133,10 +133,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
         <div class="cycle-section cycle-section-day">
           <div class="cycle-section-header">☀️ Day</div>
           <div class="night-stats">
-            <Stat value={fmtDur(day.longestNap)} label="Longest Nap" />
+            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
             <Stat value={String(day.napCount)} label="Naps" />
+            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
             <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
-            <Stat value={day.lastWakeWindow != null ? fmtDur(day.lastWakeWindow) : '—'} label="Last Wake" />
           </div>
           <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
         </div>
@@ -147,7 +147,7 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           <div class="night-stats">
             <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
             <Stat value={String(night.wakeCount)} label="Wakes" />
-            <Stat value={String(night.feedCount)} label="Feeds" />
+            <Stat value={fmtDur(night.totalFeedTime)} label="Feed Time" />
             <Stat value={fmtDur(night.totalSleepTime)} label="Total Sleep" />
           </div>
           <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
@@ -397,9 +397,9 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           <div class="cycle-section cycle-section-day">
             <div class="cycle-section-header">☀️ Day</div>
             <div class="night-stats">
-              <Stat value={fmtDur(dayStats.longestNap)} label="Longest Nap" />
-              <Stat value={String(dayStats.napCount)} label="Naps" />
               <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+              <Stat value={String(dayStats.napCount)} label="Naps" />
+              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
               <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
             </div>
             <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />

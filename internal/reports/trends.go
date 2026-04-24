@@ -27,7 +27,6 @@ type DaySegment struct {
 type DayStats struct {
 	NapCount         int             `json:"napCount"`
 	TotalNapTime     time.Duration   `json:"totalNapTime"`
-	LongestNap       time.Duration   `json:"longestNap"`
 	DayFeedCount     int             `json:"dayFeedCount"`
 	DayTotalFeedTime time.Duration   `json:"dayTotalFeedTime"`
 	WakeWindows      []time.Duration `json:"wakeWindows"`
@@ -123,9 +122,6 @@ func ComputeDayStats(day *domain.Session, dayEvents []domain.Event, night *domai
 		case "nap":
 			stats.NapCount++
 			stats.TotalNapTime += seg.Duration
-			if seg.Duration > stats.LongestNap {
-				stats.LongestNap = seg.Duration
-			}
 		case "awake":
 			stats.WakeWindows = append(stats.WakeWindows, seg.Duration)
 		}
@@ -226,7 +222,6 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 			dayCount++
 			dayAcc.NapCount += c.Stats.Day.NapCount
 			dayAcc.TotalNapTime += c.Stats.Day.TotalNapTime
-			dayAcc.LongestNap += c.Stats.Day.LongestNap
 			dayAcc.DayFeedCount += c.Stats.Day.DayFeedCount
 			dayAcc.DayTotalFeedTime += c.Stats.Day.DayTotalFeedTime
 		}
@@ -247,7 +242,6 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 		d := dayAcc
 		d.NapCount = dayAcc.NapCount / dayCount
 		d.TotalNapTime = dayAcc.TotalNapTime / time.Duration(dayCount)
-		d.LongestNap = dayAcc.LongestNap / time.Duration(dayCount)
 		d.DayFeedCount = dayAcc.DayFeedCount / dayCount
 		d.DayTotalFeedTime = dayAcc.DayTotalFeedTime / time.Duration(dayCount)
 		d.WakeWindows = nil // not meaningful as a per-window average

@@ -256,9 +256,6 @@ func TestComputeDayStats_NapDurations(t *testing.T) {
 	if stats.TotalNapTime != 45*time.Minute+90*time.Minute {
 		t.Errorf("TotalNapTime = %v, want 2h15m", stats.TotalNapTime)
 	}
-	if stats.LongestNap != 90*time.Minute {
-		t.Errorf("LongestNap = %v, want 90m", stats.LongestNap)
-	}
 }
 
 // TestComputeDayStats_DayFeedCountIgnoresSwitchBreast verifies that only

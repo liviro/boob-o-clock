@@ -79,7 +79,6 @@ export interface DaySegment {
 export interface DayStats {
   napCount: number;
   totalNapTime: number;          // ns
-  longestNap: number;             // ns
   dayFeedCount: number;
   dayTotalFeedTime: number;       // ns
   wakeWindows: number[];          // ns — awake-kind subset of daySegments
