@@ -234,9 +234,10 @@ func ComputeStats(events []domain.Event, night *domain.Session) (NightStats, []T
 // asleepSignalActions are the actions that mean "baby just fell asleep".
 // The first such action inside a block-leading-to-independent-sleep is the bedtime.
 var asleepSignalActions = map[domain.Action]bool{
-	domain.DislatchAsleep: true, // Feeding → SleepingOnMe
-	domain.FellAsleep:     true, // Strolling → SleepingStroller
-	domain.Settled:        true, // Resettling/SelfSoothing → SleepingCrib
+	domain.DislatchAsleep:  true, // Feeding → SleepingOnMe
+	domain.FellAsleep:      true, // Strolling → SleepingStroller
+	domain.Settled:         true, // Resettling/SelfSoothing/Learning/CheckIn → SleepingCrib
+	domain.TransferSuccess: true, // Transferring → SleepingCrib (fallback when no earlier signal in block)
 }
 
 // computeRealBedtime finds the timestamp when the baby first fell asleep in

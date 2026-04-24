@@ -866,3 +866,20 @@ func TestRealBedtimeViaTransferNeedResettle(t *testing.T) {
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(15*time.Minute), "dislatch_asleep (block that reaches crib via resettle)")
 }
+
+func TestRealBedtimeViaTransferSuccessOnly(t *testing.T) {
+	// Block reaches SleepingCrib via TransferSuccess with no earlier asleep
+	// signal (dislatch_asleep / settled / fell_asleep) in the block.
+	// transfer_success is the fallback bedtime; without it, the block is
+	// dropped and a later block's bedtime gets reported.
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(15*time.Minute), nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(16*time.Minute), nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour), nil),
+	}
+	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
+	mustTime(t, stats.RealBedtime, start.Add(16*time.Minute), "transfer_success as bedtime when block has no earlier asleep signal")
+}
