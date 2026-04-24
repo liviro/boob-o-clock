@@ -178,9 +178,8 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
     }
   }
 
-  function handleTimestampPick(minutesAgo: number) {
+  function handleTimestampPick(ts: Date) {
     if (modal.type !== 'timestamp') return;
-    const ts = new Date(Date.now() + minutesAgo * 60000);
     if (CHAIN_ACTIONS.has(modal.action)) {
       fireChainAdvance(modal.action, ts, modal.ferberConfig);
     } else {
