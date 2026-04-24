@@ -93,7 +93,6 @@ export function NightHourChart<T>({
     }
   }
 
-  // 24h (military) time, zero-padded.
   function fmtEpochHour(h: number): string {
     let clock = Math.round(h + NIGHT_EPOCH_H);
     if (clock >= 24) clock -= 24;

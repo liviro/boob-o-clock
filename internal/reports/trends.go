@@ -25,18 +25,14 @@ type DaySegment struct {
 }
 
 type DayStats struct {
-	NapCount         int           `json:"napCount"`
-	TotalNapTime     time.Duration `json:"totalNapTime"`
-	LongestNap       time.Duration `json:"longestNap"`
-	DayFeedCount     int           `json:"dayFeedCount"`
-	DayTotalFeedTime time.Duration `json:"dayTotalFeedTime"`
-	// Unfiltered, unlike NightStats.FeedTimes (which is scoped to feeds
-	// preceding independent sleep) — all day feeds are meaningful for the
-	// 24h feed-rhythm scatter.
-	DayFeedTimes   []time.Time     `json:"dayFeedTimes"`
-	WakeWindows    []time.Duration `json:"wakeWindows"`
-	LastWakeWindow *time.Duration  `json:"lastWakeWindow"`
-	DaySegments    []DaySegment    `json:"daySegments"`
+	NapCount         int             `json:"napCount"`
+	TotalNapTime     time.Duration   `json:"totalNapTime"`
+	LongestNap       time.Duration   `json:"longestNap"`
+	DayFeedCount     int             `json:"dayFeedCount"`
+	DayTotalFeedTime time.Duration   `json:"dayTotalFeedTime"`
+	WakeWindows      []time.Duration `json:"wakeWindows"`
+	LastWakeWindow   *time.Duration  `json:"lastWakeWindow"`
+	DaySegments      []DaySegment    `json:"daySegments"`
 }
 
 // Either half may be nil: day=nil for orphan historical cycles, night=nil
@@ -98,13 +94,12 @@ var nightSleepStates = map[domain.State]bool{
 func ComputeDayStats(day *domain.Session, dayEvents []domain.Event, night *domain.Session, nightEvents []domain.Event) DayStats {
 	var stats DayStats
 
-	// Feed stats: count start_feed events, record their timestamps, and sum
-	// time spent inside DayFeeding (start_feed → dislatch_*).
+	// Feed stats: count start_feed events and sum time spent inside
+	// DayFeeding (start_feed → dislatch_*).
 	var feedStart *time.Time
 	for _, e := range dayEvents {
 		if e.Action == domain.StartFeed {
 			stats.DayFeedCount++
-			stats.DayFeedTimes = append(stats.DayFeedTimes, e.Timestamp)
 			if e.ToState == domain.DayFeeding {
 				t := e.Timestamp
 				feedStart = &t

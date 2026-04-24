@@ -82,9 +82,6 @@ export interface DayStats {
   longestNap: number;             // ns
   dayFeedCount: number;
   dayTotalFeedTime: number;       // ns
-  // Start timestamp of every start_feed during the day. Unfiltered, unlike
-  // NightStats.feedTimes which is scoped to feeds preceding independent sleep.
-  dayFeedTimes: string[];
   wakeWindows: number[];          // ns — awake-kind subset of daySegments
   lastWakeWindow: number | null;  // ns
   // Alternating awake/nap rhythm in order. Drives the "Day rhythm" pills.
