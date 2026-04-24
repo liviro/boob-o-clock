@@ -157,7 +157,7 @@ export const STATE_COLORS: Record<string, string> = {
 
 export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = {
   crib:     { icon: '🛏️', label: 'Crib' },
-  stroller: { icon: '🚼', label: 'Stroller' },
+  stroller: { icon: '🍃', label: 'Stroller' },
   on_me:    { icon: '🤱', label: 'On me' },
   car:      { icon: '🚗', label: 'Car' },
 };
