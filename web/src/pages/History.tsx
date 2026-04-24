@@ -248,7 +248,6 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
           getValue: c => c.stats.night?.wakeCount ?? 0,
-          getAvg: c => c.avg?.night?.wakeCount ?? null,
           color: '#ff5a5a',
         }]}
         formatValue={v => String(Math.round(v))}
@@ -262,7 +261,6 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
           getValue: c => c.stats.night?.feedCount ?? 0,
-          getAvg: c => c.avg?.night?.feedCount ?? null,
           color: '#ffaa5a',
         }]}
         formatValue={v => String(Math.round(v))}

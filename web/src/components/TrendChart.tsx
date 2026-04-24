@@ -3,7 +3,8 @@ import { FerberHighlight } from './FerberHighlight';
 
 interface Series<T> {
   getValue: (p: T) => number;
-  getAvg: (p: T) => number | null;
+  // Omit to render the series without a moving-average overlay.
+  getAvg?: (p: T) => number | null;
   color: string;
   label?: string;
 }
@@ -53,8 +54,10 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
   }
 
   function buildAvgPath(s: Series<T>): string {
+    if (!s.getAvg) return '';
+    const getAvg = s.getAvg;
     return points
-      .map((p, i) => ({ i, v: s.getAvg(p) }))
+      .map((p, i) => ({ i, v: getAvg(p) }))
       .filter((d): d is { i: number; v: number } => d.v !== null)
       .map((d, j) => `${j === 0 ? 'M' : 'L'}${x(d.i).toFixed(1)},${y(d.v).toFixed(1)}`)
       .join(' ');
