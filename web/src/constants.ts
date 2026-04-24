@@ -126,17 +126,16 @@ export function toNightHour(ts: string): number {
   return h - NIGHT_EPOCH_H;
 }
 
-/** Convert a timestamp to "hours since CYCLE_EPOCH_H". E.g. 10 AM = 3, midnight = 17. */
-export function toCycleHour(ts: string): number {
-  const d = new Date(ts);
-  let h = d.getHours() + d.getMinutes() / 60;
-  if (h < CYCLE_EPOCH_H) h += 24;
-  return h - CYCLE_EPOCH_H;
-}
-
 /** Format a Date as "M/D" for chart axis labels. */
 export function fmtDayMonth(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** Format a Date as "YYYY-MM-DDTHH:MM" in local time. Shared between the
+ *  datetime-local picker input and the RFC3339 builder. */
+export function fmtLocalYMDHM(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** State colors for timeline segments */
@@ -165,7 +164,7 @@ export const STATE_COLORS: Record<string, string> = {
 
 export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = {
   crib:     { icon: '🛏️', label: 'Crib' },
-  stroller: { icon: '🚼', label: 'Stroller' },
+  stroller: { icon: '🍃', label: 'Stroller' },
   on_me:    { icon: '🤱', label: 'On me' },
   car:      { icon: '🚗', label: 'Car' },
 };

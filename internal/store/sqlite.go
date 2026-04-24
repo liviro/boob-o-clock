@@ -608,6 +608,49 @@ func (s *Store) NextSessionAfter(id int64) (*domain.Session, error) {
 
 const eventColumns = `id, session_id, from_state, action, to_state, timestamp, metadata, created_at, seq`
 
+// LastFeedStart returns the timestamp of the most recent start_feed event
+// across all sessions (day or night), or nil if no feeds have been recorded.
+func (s *Store) LastFeedStart() (*time.Time, error) {
+	return s.queryLastEventTimestamp("action = ?", string(domain.StartFeed))
+}
+
+// LastSleepStart returns the timestamp of the most recent event that
+// transitioned into a sleep state, or nil if none exist.
+func (s *Store) LastSleepStart() (*time.Time, error) {
+	args := make([]any, len(domain.SleepingStates))
+	placeholders := make([]string, len(domain.SleepingStates))
+	for i, st := range domain.SleepingStates {
+		args[i] = string(st)
+		placeholders[i] = "?"
+	}
+	return s.queryLastEventTimestamp(
+		"to_state IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
+}
+
+// queryLastEventTimestamp returns the timestamp of the most recent event
+// matching the given WHERE clause, or nil if none match. where is a raw
+// SQL fragment — callers must only pass hardcoded strings, not user input.
+func (s *Store) queryLastEventTimestamp(where string, args ...any) (*time.Time, error) {
+	var ts string
+	err := s.db.QueryRow(
+		`SELECT timestamp FROM events WHERE `+where+` ORDER BY timestamp DESC LIMIT 1`,
+		args...,
+	).Scan(&ts)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("last event timestamp: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		return nil, fmt.Errorf("parse last event timestamp: %w", err)
+	}
+	return &t, nil
+}
+
 // GetAllEvents returns all events across all sessions, ordered by session and sequence.
 func (s *Store) GetAllEvents() ([]domain.Event, error) {
 	rows, err := s.db.Query(

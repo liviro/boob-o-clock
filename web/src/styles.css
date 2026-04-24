@@ -75,6 +75,10 @@ body {
   text-align: center;
 }
 
+.state-timer-emoji {
+  margin-right: 0.4em;
+}
+
 /* Page layout */
 .page-tracker {
   display: flex;
@@ -218,6 +222,29 @@ body {
 }
 
 .ts-btn:active { background: #333; }
+
+.ts-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.ts-input {
+  background: #1a1a1a;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 16px;
+  font-family: inherit;
+  min-height: 56px;
+  width: 100%;
+  box-sizing: border-box;
+  /* iOS Safari respects color-scheme to theme the native picker popup. */
+  color-scheme: dark;
+}
 
 /* Breast picker */
 .breast-grid {
@@ -505,6 +532,21 @@ body {
   border: 1px solid #222;
   border-radius: 12px;
   padding: 12px;
+}
+
+.trend-chart svg {
+  display: block;
+  max-width: 320px;
+}
+
+/* In landscape, let charts fill the column — cycle timeline bars already do.
+   Text/dot sizing stays consistent because each chart component measures its
+   rendered width and sets viewBox to match, keeping user units at 1:1 with
+   CSS pixels. */
+@media (orientation: landscape) {
+  .trend-chart svg {
+    max-width: none;
+  }
 }
 
 .chart-legend {

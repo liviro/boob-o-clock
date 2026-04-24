@@ -256,14 +256,12 @@ func TestComputeDayStats_NapDurations(t *testing.T) {
 	if stats.TotalNapTime != 45*time.Minute+90*time.Minute {
 		t.Errorf("TotalNapTime = %v, want 2h15m", stats.TotalNapTime)
 	}
-	if stats.LongestNap != 90*time.Minute {
-		t.Errorf("LongestNap = %v, want 90m", stats.LongestNap)
-	}
 }
 
-// TestComputeDayStats_DayFeedTimes verifies that every start_feed's timestamp
-// is recorded in DayFeedTimes (no filter, unlike NightStats.FeedTimes).
-func TestComputeDayStats_DayFeedTimes(t *testing.T) {
+// TestComputeDayStats_DayFeedCountIgnoresSwitchBreast verifies that only
+// start_feed events bump DayFeedCount — switch_breast (which also produces
+// a feed event) must not be counted.
+func TestComputeDayStats_DayFeedCountIgnoresSwitchBreast(t *testing.T) {
 	start := dayStart()
 	feed1 := start.Add(1 * time.Hour)
 	feed2 := start.Add(5 * time.Hour)
@@ -284,16 +282,8 @@ func TestComputeDayStats_DayFeedTimes(t *testing.T) {
 
 	stats := ComputeDayStats(day, dayEvents, nil, nil)
 
-	if len(stats.DayFeedTimes) != 3 {
-		t.Fatalf("DayFeedTimes len = %d, want 3 (one per start_feed; switch_breast does NOT count)", len(stats.DayFeedTimes))
-	}
-	for i, want := range []time.Time{feed1, feed2, feed3} {
-		if !stats.DayFeedTimes[i].Equal(want) {
-			t.Errorf("DayFeedTimes[%d] = %v, want %v", i, stats.DayFeedTimes[i], want)
-		}
-	}
 	if stats.DayFeedCount != 3 {
-		t.Errorf("DayFeedCount = %d, want 3", stats.DayFeedCount)
+		t.Errorf("DayFeedCount = %d, want 3 (three start_feed events; switch_breast does NOT count)", stats.DayFeedCount)
 	}
 }
 

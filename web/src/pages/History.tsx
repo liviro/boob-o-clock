@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
-import { fmtDur, toNightHour, toCycleHour, ACTION_INFO, actionLabel, CYCLE_EPOCH_H } from '../constants';
+import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
@@ -133,10 +133,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
         <div class="cycle-section cycle-section-day">
           <div class="cycle-section-header">☀️ Day</div>
           <div class="night-stats">
-            <Stat value={fmtDur(day.longestNap)} label="Longest Nap" />
+            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
             <Stat value={String(day.napCount)} label="Naps" />
+            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
             <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
-            <Stat value={day.lastWakeWindow != null ? fmtDur(day.lastWakeWindow) : '—'} label="Last Wake" />
           </div>
           <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
         </div>
@@ -147,7 +147,7 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           <div class="night-stats">
             <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
             <Stat value={String(night.wakeCount)} label="Wakes" />
-            <Stat value={String(night.feedCount)} label="Feeds" />
+            <Stat value={fmtDur(night.totalFeedTime)} label="Feed Time" />
             <Stat value={fmtDur(night.totalSleepTime)} label="Total Sleep" />
           </div>
           <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
@@ -183,12 +183,11 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
       <NightHourChart
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        getDots={c => cycleFeedDots(c)}
+        getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
-        title="Feed Times (24h)"
+        title="Feed Times"
         highlightFerber
         isFerber={c => !!c.night?.ferberEnabled}
-        epoch={CYCLE_EPOCH_H}
       />
 
       <NightHourChart
@@ -249,7 +248,6 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
           getValue: c => c.stats.night?.wakeCount ?? 0,
-          getAvg: c => c.avg?.night?.wakeCount ?? null,
           color: '#ff5a5a',
         }]}
         formatValue={v => String(Math.round(v))}
@@ -263,7 +261,6 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
           getValue: c => c.stats.night?.feedCount ?? 0,
-          getAvg: c => c.avg?.night?.feedCount ?? null,
           color: '#ffaa5a',
         }]}
         formatValue={v => String(Math.round(v))}
@@ -374,26 +371,6 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   );
 }
 
-// cycleFeedDots returns a dot for each feed-start timestamp in the cycle,
-// colored by day vs night. Hue-contrast pair (warm amber for day, clear blue
-// for night) so dots are distinguishable on a dark background.
-const DAY_FEED_COLOR = '#ff9a5a';
-const NIGHT_FEED_COLOR = '#5a8aff';
-function cycleFeedDots(c: CycleSummary): { hour: number; color: string }[] {
-  const dots: { hour: number; color: string }[] = [];
-  if (c.stats.day?.dayFeedTimes) {
-    for (const t of c.stats.day.dayFeedTimes) {
-      dots.push({ hour: toCycleHour(t), color: DAY_FEED_COLOR });
-    }
-  }
-  if (c.stats.night?.feedTimes) {
-    for (const t of c.stats.night.feedTimes) {
-      dots.push({ hour: toCycleHour(t), color: NIGHT_FEED_COLOR });
-    }
-  }
-  return dots;
-}
-
 // --- Cycle detail view ---
 
 function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
@@ -420,9 +397,9 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           <div class="cycle-section cycle-section-day">
             <div class="cycle-section-header">☀️ Day</div>
             <div class="night-stats">
-              <Stat value={fmtDur(dayStats.longestNap)} label="Longest Nap" />
-              <Stat value={String(dayStats.napCount)} label="Naps" />
               <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+              <Stat value={String(dayStats.napCount)} label="Naps" />
+              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
               <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
             </div>
             <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />

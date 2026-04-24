@@ -1,3 +1,5 @@
+import { fmtLocalYMDHM } from './constants';
+
 const API = '/api';
 
 // Mirrors internal/domain.State. Keep in sync with internal/domain/states.go.
@@ -35,6 +37,7 @@ export interface SessionResponse {
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
+  lastSleepStartedAt?: string;
   lastEvent: {
     action: string;
     fromState: string;
@@ -78,12 +81,8 @@ export interface DaySegment {
 export interface DayStats {
   napCount: number;
   totalNapTime: number;          // ns
-  longestNap: number;             // ns
   dayFeedCount: number;
   dayTotalFeedTime: number;       // ns
-  // Start timestamp of every start_feed during the day. Unfiltered, unlike
-  // NightStats.feedTimes which is scoped to feeds preceding independent sleep.
-  dayFeedTimes: string[];
   wakeWindows: number[];          // ns — awake-kind subset of daySegments
   lastWakeWindow: number | null;  // ns
   // Alternating awake/nap rhythm in order. Drives the "Day rhythm" pills.
@@ -168,12 +167,10 @@ export interface CycleDetail {
 function toLocalISO(d: Date): string {
   const off = -d.getTimezoneOffset();
   const sign = off >= 0 ? '+' : '-';
-  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
-  const mm = String(Math.abs(off) % 60).padStart(2, '0');
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
-    `${sign}${hh}:${mm}`;
+  const hh = pad(Math.floor(Math.abs(off) / 60));
+  const mm = pad(Math.abs(off) % 60);
+  return `${fmtLocalYMDHM(d)}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
 }
 
 async function checkResponse(resp: Response): Promise<Response> {

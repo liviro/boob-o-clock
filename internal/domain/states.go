@@ -41,6 +41,10 @@ var AllStates = []State{
 	DayAwake, DayFeeding, DaySleeping, DayPoop,
 }
 
+// SleepingStates: states where the baby is asleep (night subgraph + day nap).
+// Source of truth for cross-layer sleep checks.
+var SleepingStates = []State{SleepingCrib, SleepingOnMe, SleepingStroller, DaySleeping}
+
 // Action represents a user action that triggers a state transition.
 type Action string
 

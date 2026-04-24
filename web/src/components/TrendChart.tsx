@@ -1,9 +1,11 @@
 import { fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
+import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 interface Series<T> {
   getValue: (p: T) => number;
-  getAvg: (p: T) => number | null;
+  // Omit to render the series without a moving-average overlay.
+  getAvg?: (p: T) => number | null;
   color: string;
   label?: string;
 }
@@ -18,13 +20,17 @@ interface Props<T> {
   isFerber?: (p: T) => boolean;
 }
 
-const W = 320;
 const H = 140;
 const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
-const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
 export function TrendChart<T>({ points, getDate, series, formatValue, title, highlightFerber, isFerber }: Props<T>) {
+  // W tracks the rendered SVG width so the viewBox matches actual CSS pixels.
+  // Without this, text and circle-radius in user units get scaled by the
+  // viewBox transform when the SVG stretches (e.g. landscape).
+  const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
+  const CHART_W = W - PAD.left - PAD.right;
+
   if (points.length === 0) return null;
 
   // Compute global min/max across all series.
@@ -53,8 +59,10 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
   }
 
   function buildAvgPath(s: Series<T>): string {
+    if (!s.getAvg) return '';
+    const getAvg = s.getAvg;
     return points
-      .map((p, i) => ({ i, v: s.getAvg(p) }))
+      .map((p, i) => ({ i, v: getAvg(p) }))
       .filter((d): d is { i: number; v: number } => d.v !== null)
       .map((d, j) => `${j === 0 ? 'M' : 'L'}${x(d.i).toFixed(1)},${y(d.v).toFixed(1)}`)
       .join(' ');
@@ -78,7 +86,7 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%">
         <text x={PAD.left - 4} y={PAD.top + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(maxVal)}
         </text>

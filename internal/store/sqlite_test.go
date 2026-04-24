@@ -168,6 +168,97 @@ func TestOneOpenSessionInvariant(t *testing.T) {
 	}
 }
 
+func TestLastFeedStart(t *testing.T) {
+	s := newTestStore(t)
+
+	// No events → nil.
+	if got, err := s.LastFeedStart(); err != nil || got != nil {
+		t.Fatalf("empty: got=%v err=%v, want nil/nil", got, err)
+	}
+
+	now := time.Now().Truncate(time.Millisecond)
+	// Two sessions: a historical night with feeds, a current day with a later feed.
+	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-10*time.Hour), false, 0)
+	s.EndSession(night.ID, now.Add(-4*time.Hour))
+	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-4*time.Hour), false, 0)
+
+	nightFeed := now.Add(-8 * time.Hour)
+	if err := s.AddEvent(&domain.Event{
+		SessionID: night.ID, FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding,
+		Timestamp: nightFeed, Metadata: map[string]string{"breast": "L"},
+	}); err != nil {
+		t.Fatalf("night feed: %v", err)
+	}
+	dayFeed := now.Add(-2 * time.Hour)
+	if err := s.AddEvent(&domain.Event{
+		SessionID: day.ID, FromState: domain.DayAwake, Action: domain.StartFeed, ToState: domain.DayFeeding,
+		Timestamp: dayFeed, Metadata: map[string]string{"breast": "R"},
+	}); err != nil {
+		t.Fatalf("day feed: %v", err)
+	}
+	// A non-feed event later — must not be picked up.
+	if err := s.AddEvent(&domain.Event{
+		SessionID: day.ID, FromState: domain.DayFeeding, Action: domain.DislatchAwake, ToState: domain.DayAwake,
+		Timestamp: now.Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatalf("dislatch: %v", err)
+	}
+
+	got, err := s.LastFeedStart()
+	if err != nil {
+		t.Fatalf("LastFeedStart: %v", err)
+	}
+	if got == nil || !got.Equal(dayFeed) {
+		t.Errorf("LastFeedStart = %v, want %v (most recent across sessions)", got, dayFeed)
+	}
+}
+
+func TestLastSleepStart(t *testing.T) {
+	s := newTestStore(t)
+
+	// No events → nil.
+	if got, err := s.LastSleepStart(); err != nil || got != nil {
+		t.Fatalf("empty: got=%v err=%v, want nil/nil", got, err)
+	}
+
+	now := time.Now().Truncate(time.Millisecond)
+	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-12*time.Hour), false, 0)
+	s.EndSession(night.ID, now.Add(-6*time.Hour))
+	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-6*time.Hour), false, 0)
+
+	// Night sleep (transfer_success → sleeping_crib).
+	nightSleep := now.Add(-10 * time.Hour)
+	if err := s.AddEvent(&domain.Event{
+		SessionID: night.ID, FromState: domain.Transferring, Action: domain.TransferSuccess, ToState: domain.SleepingCrib,
+		Timestamp: nightSleep,
+	}); err != nil {
+		t.Fatalf("night sleep: %v", err)
+	}
+	// Day nap (start_sleep → day_sleeping), more recent.
+	dayNap := now.Add(-3 * time.Hour)
+	if err := s.AddEvent(&domain.Event{
+		SessionID: day.ID, FromState: domain.DayAwake, Action: domain.StartSleep, ToState: domain.DaySleeping,
+		Timestamp: dayNap, Metadata: map[string]string{"location": "crib"},
+	}); err != nil {
+		t.Fatalf("day nap: %v", err)
+	}
+	// Nap end — baby_woke → day_awake. Not a sleep-start; must be ignored.
+	if err := s.AddEvent(&domain.Event{
+		SessionID: day.ID, FromState: domain.DaySleeping, Action: domain.BabyWoke, ToState: domain.DayAwake,
+		Timestamp: now.Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatalf("wake: %v", err)
+	}
+
+	got, err := s.LastSleepStart()
+	if err != nil {
+		t.Fatalf("LastSleepStart: %v", err)
+	}
+	if got == nil || !got.Equal(dayNap) {
+		t.Errorf("LastSleepStart = %v, want %v (most recent sleep transition)", got, dayNap)
+	}
+}
+
 func TestAddEventAndGetSession(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)

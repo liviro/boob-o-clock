@@ -1,15 +1,15 @@
-import { NIGHT_EPOCH_H, CYCLE_EPOCH_H, fmtDayMonth } from '../constants';
+import { NIGHT_EPOCH_H, fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
+import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 export type HourDot = {
-  hour: number;  // hours since the chart's epoch (NIGHT_EPOCH_H or CYCLE_EPOCH_H)
-  color?: string; // per-dot color override (used by cycle feed-times to split day/night)
+  hour: number;  // hours since NIGHT_EPOCH_H
 };
 
 interface Props<T> {
   points: T[];
   getDate: (p: T) => string;
-  // Returns dots for a given point. Each dot has an hour-offset (from epoch).
+  // Returns dots for a given point. Each dot has an hour-offset from NIGHT_EPOCH_H.
   getDots: (p: T) => HourDot[];
   // Optional: moving-average line overlay (dashed). Return null for points
   // without sufficient history. Same hour-offset space as getDots.
@@ -18,28 +18,26 @@ interface Props<T> {
   title: string;
   highlightFerber?: boolean;
   isFerber?: (p: T) => boolean;
-  // Epoch determines Y-axis labels. Defaults to the night epoch (6 PM) to
-  // preserve existing behavior. Pass CYCLE_EPOCH_H for cycle-wide scatters.
-  epoch?: number;
 }
 
-const W = 320;
 const H = 160;
 const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
-const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2;
 
 export function NightHourChart<T>({
-  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber, epoch,
+  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber,
 }: Props<T>) {
-  const chartEpoch = epoch ?? NIGHT_EPOCH_H;
+  // See TrendChart: dynamic W so viewBox user units stay at 1:1 with CSS pixels.
+  const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
+  const CHART_W = W - PAD.left - PAD.right;
+
   // Use points in the order they arrive — callers pass chronological
   // (oldest-first) so i=0 plots at the left edge (matches TrendChart).
-  const dots: { ni: number; hour: number; color?: string }[] = [];
+  const dots: { ni: number; hour: number }[] = [];
   for (let i = 0; i < points.length; i++) {
     for (const d of getDots(points[i])) {
-      dots.push({ ni: i, hour: d.hour, color: d.color });
+      dots.push({ ni: i, hour: d.hour });
     }
   }
   if (dots.length === 0) return null;
@@ -95,10 +93,8 @@ export function NightHourChart<T>({
     }
   }
 
-  // 24h (military) time, zero-padded. Cleaner for 24h-range charts; still
-  // unambiguous for narrower ranges.
   function fmtEpochHour(h: number): string {
-    let clock = Math.round(h + chartEpoch);
+    let clock = Math.round(h + NIGHT_EPOCH_H);
     if (clock >= 24) clock -= 24;
     if (clock < 0) clock += 24;
     return String(clock).padStart(2, '0');
@@ -116,7 +112,7 @@ export function NightHourChart<T>({
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: `${W}px` }}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%">
         {yLabels.map((yl, i) => (
           <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
             {yl.label}
@@ -146,7 +142,7 @@ export function NightHourChart<T>({
         )}
 
         {dots.map((d, i) => (
-          <circle key={i} cx={x(d.ni)} cy={y(d.hour)} r="4" fill={d.color ?? color} opacity="0.85" />
+          <circle key={i} cx={x(d.ni)} cy={y(d.hour)} r="4" fill={color} opacity="0.85" />
         ))}
 
         {dateLabels.map((dl, i) => (
@@ -158,6 +154,3 @@ export function NightHourChart<T>({
     </div>
   );
 }
-
-// Export CYCLE_EPOCH_H for callers that need the cycle-specific epoch.
-export { CYCLE_EPOCH_H };
