@@ -1,6 +1,6 @@
 # Boob O'Clock
 
-A nighttime baby sleep and feed tracker for breastfeeding parents. Built for one-handed use on a small phone screen.
+A 24-hour baby sleep and feed tracker for breastfeeding parents. Built for one-handed use on a small phone screen.
 
 Dark mode only. Single tap to record events. Long-press for time adjustments.
 
@@ -12,26 +12,34 @@ Just your data, on your network, in the dark. If Boob O'Clock helped you survive
 
 ## What it tracks
 
-The app models your night as a state machine. Depending on the current state, only the valid next actions are shown:
+The app models your day and night as a single state machine. Depending on the current state, only the valid next actions are shown:
 
+### Night
 - **Feeds** — start, switch breast (auto-flips), dislatch (awake or asleep). Tracks left/right duration separately.
 - **Sleep** — on me, in crib, in stroller. Tracks where the baby is sleeping.
 - **Transfers** — crib transfer attempts with deferred outcome (tap result when hands are free).
 - **Self-soothing** — baby put down awake or stirring in crib, settling without intervention.
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
-- **Diaper changes** — because shit happens, at any time.
 - **Ferber mode** — opt-in per night. Graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. No-op when off; the rest of the app works exactly the same.
+
+### Day
+- **Day feeds** — same feed tracking as night, with switch-breast suggestion based on the last side.
+- **Naps** — tagged with location (crib / stroller / on me / car). Durations roll up to daily nap stats.
+- **Wake windows** — automatically derived from the awake/nap rhythm, including the last wake window before bedtime.
+
+**Diaper changes** are reachable anytime, day or night. The tracker moves between day and night with a single **Start day** / **Start night** tap — no separate "end" action.
 
 ## What it reports
 
+- **Cycle view**: one card per 24h midnight-to-midnight window, stacked chronologically. Each card shows a color-coded timeline bar of the full day and the following night, tinted day/night sections, and live sleep/wake duration pills (the in-progress segment blinks).
 - Per-night summary: night duration, total sleep, total feed time, wake count, feed count, longest sleep block, individual sleep block durations, feed times
+- Per-day summary: nap count, total nap time, longest nap, day feed count and duration, wake windows, last wake window before bedtime
 - Ferber nights also show sessions, average time to settle, cry time, fuss time, check-ins, abandoned sessions, and quiet time
-- Color-coded timeline bar showing the night at a glance
 - Full event log with timestamps
-- Feed times scatter plot showing when feeds happen across nights
+- Feed times scatter plot showing when feeds happen across 24 hours
 - Real bedtime chart showing when the baby actually goes down
-- Trend charts with 3-night moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R)
+- Trend charts with moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R), nap count, total nap time
 - Ferber trend charts (when any night had Ferber on): cry time per night, check-ins per night, avg time to settle
 - Ferber nights are highlighted as sage-green blocks on all non-Ferber trend charts, so you can correlate Ferber periods with broader sleep/feed changes
 - CSV export for backup or analysis
@@ -118,16 +126,16 @@ make dev
 ### Seed data
 
 ```bash
-go run ./cmd/seed -db ./dev.db          # 8 nights of plausible data
+go run ./cmd/seed -db ./dev.db          # a week of plausible cycles
 go run ./cmd/server -addr :8080 -db ./dev.db
 ```
 
-Generates completed and in-progress nights with varied scenarios: long stretches, multi-wake rough nights, stroller blocks, resettles, poop, breast alternation, and two Ferber nights (Night 1 with two settled sessions, Night 2 with a settled bedtime and an abandoned mid-night session falling back to feed-to-sleep).
+Generates one orphan historical night followed by full (day, night) cycles and an in-progress today, covering a realistic spread: long stretches, multi-wake rough nights, stroller blocks, resettles, varied nap locations and counts, poop, breast alternation, and Ferber sessions (including one abandoned mid-night falling back to feed-to-sleep).
 
 ### Test
 
 ```bash
-make test              # Go tests (115 tests across 4 packages)
+make test              # Go tests (150+ tests across 4 packages)
 cd web && npx tsc      # TypeScript type check
 cd web && npm run lint # ESLint (react-hooks rules)
 ```
@@ -137,9 +145,9 @@ cd web && npm run lint # ESLint (react-hooks rules)
 ```
 ├── cmd/server/          Entry point, wiring, embed
 ├── internal/
-│   ├── domain/          State machine (13 states, 41 transitions, zero deps)
+│   ├── domain/          Unified state machine (17 states, 53 transitions, zero deps)
 │   ├── store/           SQLite persistence (pure Go, no CGo)
-│   ├── reports/         Stats, timelines, trends, breast tracking, Ferber session derivation
+│   ├── reports/         Cycle/day/night stats, timelines, trends, breast tracking, Ferber session derivation
 │   ├── api/             REST handlers
 │   └── web/             Embedded frontend (go:embed)
 └── web/                 Preact + TypeScript + Vite source
@@ -150,12 +158,11 @@ cd web && npm run lint # ESLint (react-hooks rules)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/session/current` | Current state + valid actions |
-| POST | `/api/session/start` | Start a new night (optional Ferber config) |
+| POST | `/api/session/start` | Start a new day or night session (chain-advance; optional Ferber config on night) |
 | POST | `/api/session/event` | Record an event |
-| POST | `/api/session/undo` | Undo last event |
-| GET | `/api/nights` | Night list with stats |
-| GET | `/api/nights/:id` | Night detail with timeline |
-| GET | `/api/trends` | Trend data with moving averages |
+| POST | `/api/session/undo` | Undo last event (chain-aware — reopens the prior session if the last event was a chain-advance) |
+| GET | `/api/cycles` | Cycle list with per-cycle day+night stats and moving averages |
+| GET | `/api/cycles/{id}` | Full cycle detail (both sessions, combined timeline, stats) |
 | GET | `/api/export/csv` | Download all events as CSV |
 | GET | `/healthz` | Health check (DB ping) |
 
