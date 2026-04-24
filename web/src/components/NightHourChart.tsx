@@ -1,5 +1,6 @@
 import { NIGHT_EPOCH_H, fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
+import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 export type HourDot = {
   hour: number;  // hours since NIGHT_EPOCH_H
@@ -19,16 +20,18 @@ interface Props<T> {
   isFerber?: (p: T) => boolean;
 }
 
-const W = 320;
 const H = 160;
 const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
-const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2;
 
 export function NightHourChart<T>({
   points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber,
 }: Props<T>) {
+  // See TrendChart: dynamic W so viewBox user units stay at 1:1 with CSS pixels.
+  const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
+  const CHART_W = W - PAD.left - PAD.right;
+
   // Use points in the order they arrive — callers pass chronological
   // (oldest-first) so i=0 plots at the left edge (matches TrendChart).
   const dots: { ni: number; hour: number }[] = [];
@@ -110,7 +113,7 @@ export function NightHourChart<T>({
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%">
         {yLabels.map((yl, i) => (
           <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
             {yl.label}

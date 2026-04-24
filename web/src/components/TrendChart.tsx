@@ -1,5 +1,6 @@
 import { fmtDayMonth } from '../constants';
 import { FerberHighlight } from './FerberHighlight';
+import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 interface Series<T> {
   getValue: (p: T) => number;
@@ -19,13 +20,17 @@ interface Props<T> {
   isFerber?: (p: T) => boolean;
 }
 
-const W = 320;
 const H = 140;
 const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
-const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
 export function TrendChart<T>({ points, getDate, series, formatValue, title, highlightFerber, isFerber }: Props<T>) {
+  // W tracks the rendered SVG width so the viewBox matches actual CSS pixels.
+  // Without this, text and circle-radius in user units get scaled by the
+  // viewBox transform when the SVG stretches (e.g. landscape).
+  const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
+  const CHART_W = W - PAD.left - PAD.right;
+
   if (points.length === 0) return null;
 
   // Compute global min/max across all series.
@@ -81,7 +86,7 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
   return (
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%">
         <text x={PAD.left - 4} y={PAD.top + 4} fill="#999" font-size="10" text-anchor="end">
           {formatValue(maxVal)}
         </text>

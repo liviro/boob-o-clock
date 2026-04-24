@@ -512,7 +512,10 @@ body {
   max-width: 320px;
 }
 
-/* In landscape, let charts fill the column — cycle timeline bars already do. */
+/* In landscape, let charts fill the column — cycle timeline bars already do.
+   Text/dot sizing stays consistent because each chart component measures its
+   rendered width and sets viewBox to match, keeping user units at 1:1 with
+   CSS pixels. */
 @media (orientation: landscape) {
   .trend-chart svg {
     max-width: none;
