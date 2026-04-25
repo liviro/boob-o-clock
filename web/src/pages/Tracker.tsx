@@ -8,6 +8,7 @@ import { BreastPicker } from '../components/BreastPicker';
 import { MoodPicker } from '../components/MoodPicker';
 import { LocationPicker } from '../components/LocationPicker';
 import { StartNightPicker } from '../components/StartNightPicker';
+import { useConfig } from '../hooks/useConfig';
 import { TimestampPicker } from '../components/TimestampPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UndoButton } from '../components/UndoButton';
@@ -39,6 +40,7 @@ type ModalState =
 const CHAIN_ACTIONS = new Set(['start_day', 'start_night']);
 
 export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) {
+  const ferberVisible = useConfig().features.ferber;
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
@@ -49,8 +51,6 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
 
   function fireAction(action: string, metadata?: Record<string, string>, timestamp?: Date) {
     if (CHAIN_ACTIONS.has(action)) {
-      // Reaches here only for start_day (direct fire) — start_night always
-      // routes through the Ferber modal in resolveAction.
       fireChainAdvance(action, timestamp);
       return;
     }
@@ -87,11 +87,10 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
       return;
     }
 
-    // Starting a night always goes through the Ferber-config modal first,
-    // regardless of tap-vs-long-press (long-press just chains into the
-    // timestamp picker afterward). start_day has no config, so it fires
-    // directly (or through the timestamp picker on long-press).
-    if (action === 'start_night') {
+    // Start-night routes through the Ferber-config modal only when Ferber
+    // is enabled — otherwise the modal would ask no question, so we fall
+    // through to the default chain-advance path (same as start_day).
+    if (action === 'start_night' && ferberVisible) {
       setModal({ type: 'startNight', wantsTimePicker });
       return;
     }
