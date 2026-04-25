@@ -614,9 +614,10 @@ func (s *Store) LastFeedStart() (*time.Time, error) {
 	return s.queryLastEventTimestamp("action = ?", string(domain.StartFeed))
 }
 
-// LastSleepStart returns the timestamp of the most recent event that
-// transitioned into a sleep state, or nil if none exist.
-func (s *Store) LastSleepStart() (*time.Time, error) {
+// LastWakeFromSleep returns the timestamp of the most recent event that
+// transitioned out of a sleep state, or nil if none exist. Used to drive
+// the daytime "💤 X ago" wake-window timer.
+func (s *Store) LastWakeFromSleep() (*time.Time, error) {
 	args := make([]any, len(domain.SleepingStates))
 	placeholders := make([]string, len(domain.SleepingStates))
 	for i, st := range domain.SleepingStates {
@@ -624,7 +625,7 @@ func (s *Store) LastSleepStart() (*time.Time, error) {
 		placeholders[i] = "?"
 	}
 	return s.queryLastEventTimestamp(
-		"to_state IN ("+strings.Join(placeholders, ",")+")",
+		"from_state IN ("+strings.Join(placeholders, ",")+")",
 		args...,
 	)
 }
