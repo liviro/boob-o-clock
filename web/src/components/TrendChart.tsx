@@ -1,5 +1,5 @@
 import { fmtDayMonth } from '../constants';
-import { FerberHighlight } from './FerberHighlight';
+import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 interface Series<T> {
@@ -18,13 +18,15 @@ interface Props<T> {
   title: string;
   highlightFerber?: boolean;
   isFerber?: (p: T) => boolean;
+  highlightChair?: boolean;
+  isChair?: (p: T) => boolean;
 }
 
 const H = 140;
 const PAD = { top: 24, right: 8, bottom: 20, left: 40 };
 const CHART_H = H - PAD.top - PAD.bottom;
 
-export function TrendChart<T>({ points, getDate, series, formatValue, title, highlightFerber, isFerber }: Props<T>) {
+export function TrendChart<T>({ points, getDate, series, formatValue, title, highlightFerber, isFerber, highlightChair, isChair }: Props<T>) {
   // W tracks the rendered SVG width so the viewBox matches actual CSS pixels.
   // Without this, text and circle-radius in user units get scaled by the
   // viewBox transform when the SVG stretches (e.g. landscape).
@@ -82,6 +84,7 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
 
   const hasLegend = series.length > 1 && series.some(s => s.label);
   const ferberCheck = isFerber ?? ((_p: T) => false);
+  const chairCheck = isChair ?? ((_p: T) => false);
 
   return (
     <div class="trend-chart">
@@ -94,9 +97,22 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
           {formatValue(minVal)}
         </text>
         {highlightFerber && (
-          <FerberHighlight
+          <NightModeHighlight
             count={points.length}
-            isFerber={i => ferberCheck(points[i])}
+            isMode={i => ferberCheck(points[i])}
+            fill="#1a3a1a"
+            x={x}
+            left={PAD.left}
+            top={PAD.top}
+            width={CHART_W}
+            height={CHART_H}
+          />
+        )}
+        {highlightChair && (
+          <NightModeHighlight
+            count={points.length}
+            isMode={i => chairCheck(points[i])}
+            fill="#3a1a2a"
             x={x}
             left={PAD.left}
             top={PAD.top}

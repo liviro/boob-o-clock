@@ -24,6 +24,7 @@ const (
 	Poop             State = "poop"
 	Learning         State = "learning"
 	CheckIn          State = "check_in"
+	Chair            State = "chair"
 
 	// Day subgraph.
 	DayAwake    State = "day_awake"
@@ -38,6 +39,7 @@ var AllStates = []State{
 	Awake, Feeding, SleepingOnMe, Transferring,
 	Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing, Poop,
 	Learning, CheckIn,
+	Chair,
 	DayAwake, DayFeeding, DaySleeping, DayPoop,
 }
 
@@ -88,6 +90,12 @@ const (
 	CheckInStart       Action = "check_in" // identifier differs from value to avoid clash with State CheckIn
 	EndCheckIn         Action = "end_check_in"
 	ExitFerber         Action = "exit_ferber"
+
+	// Chair actions. SitChair replaces PutDownAwake on chair nights (drives
+	// Awake → Chair instead of Awake → SelfSoothing). The CHAIR → SLEEPING_CRIB
+	// transition reuses the generic Settled action.
+	SitChair  Action = "sit_chair"
+	ExitChair Action = "exit_chair"
 )
 
 // Breast side for feeding metadata.
@@ -139,6 +147,7 @@ type Session struct {
 	CreatedAt         time.Time
 	FerberEnabled     bool
 	FerberNightNumber *int // nil when Kind != Night or Ferber not enabled
+	ChairEnabled      bool
 }
 
 // IsNight reports whether this is a night session.

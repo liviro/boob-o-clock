@@ -31,11 +31,14 @@ func SuggestFerberNight(last *domain.Session) *int {
 	return &n
 }
 
-// SelectActionsForNight returns the actions appropriate for the night's Ferber
-// state: on Ferber nights, drop the plain variants and keep the _ferber
-// aliases; on normal nights, drop the _ferber aliases and keep the plain ones.
-// Clients render exactly what they receive without branching on ferber state.
-func SelectActionsForNight(actions []domain.Action, ferberEnabled bool) []domain.Action {
+// SelectActionsForNight returns the actions appropriate for the night's
+// sleep-training mode. The handler-level invariant is that ferberEnabled and
+// chairEnabled are mutually exclusive; this function tolerates both being
+// false (plain night) but does not depend on the mutex for correctness — it
+// expresses each mode's drop set independently and unions them.
+//
+// Clients render exactly what they receive without branching on mode state.
+func SelectActionsForNight(actions []domain.Action, ferberEnabled, chairEnabled bool) []domain.Action {
 	drop := map[domain.Action]bool{}
 	if ferberEnabled {
 		drop[domain.PutDownAwake] = true
@@ -43,6 +46,12 @@ func SelectActionsForNight(actions []domain.Action, ferberEnabled bool) []domain
 	} else {
 		drop[domain.PutDownAwakeFerber] = true
 		drop[domain.BabyStirredFerber] = true
+	}
+	if chairEnabled {
+		drop[domain.PutDownAwake] = true
+	} else {
+		drop[domain.SitChair] = true
+		drop[domain.ExitChair] = true
 	}
 	out := make([]domain.Action, 0, len(actions))
 	for _, a := range actions {

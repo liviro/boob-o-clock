@@ -24,6 +24,7 @@ The app models your day and night as a single state machine. Depending on the cu
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
 - **Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. I tried it — the feature worked fine; the method, not so much. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
+- **Chair mode** _(off by default)_ — gentle sleep-training where the parent sits in the room while baby falls asleep. On chair nights, "put down awake" is replaced with "sit in chair" — tap when you settle into the chair, then "Settled!" when baby's asleep or "Give up" to abandon. Time-in-state and time-since-feed render live so a partner can glance from across the room. Set `CHAIR_ENABLED=true` to opt in.
 
 ### Day
 - **Day feeds** — same feed tracking as night, with switch-breast suggestion based on the last side.
@@ -44,6 +45,7 @@ The app models your day and night as a single state machine. Depending on the cu
 - Trend charts with moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R), nap count, total nap time
 - Ferber trend charts (when any night had Ferber on): cry time per night, check-ins per night, avg time to settle
 - Ferber nights are highlighted as sage-green blocks on all non-Ferber trend charts, so you can correlate Ferber periods with broader sleep/feed changes
+- Chair nights are highlighted as mauve blocks on trend charts (parallel to Ferber's sage-green) and tagged with 🪑 in the cycles list
 - CSV export for backup or analysis
 
 ## Screenshots
@@ -113,6 +115,7 @@ make build
 |---|---|---|---|
 | `PORT` | `-addr :PORT` | `8080` | Listen port |
 | `FERBER_ENABLED` | `-ferber` | `false` | Enable Ferber sleep-training mode (see [What it tracks](#what-it-tracks)) |
+| `CHAIR_ENABLED` | `-chair` | `false` | Enable Chair sleep-training mode (see [What it tracks](#what-it-tracks)) |
 
 For Docker Compose, set these under `environment:` in `docker-compose.yml` and run `docker compose up -d` to apply.
 
@@ -156,7 +159,7 @@ cd web && npm run lint # ESLint (react-hooks rules)
 ```
 ├── cmd/server/          Entry point, wiring, embed
 ├── internal/
-│   ├── domain/          Unified state machine (17 states, 53 transitions, zero deps)
+│   ├── domain/          Unified state machine (18 states, 56 transitions, zero deps)
 │   ├── store/           SQLite persistence (pure Go, no CGo)
 │   ├── reports/         Cycle/day/night stats, timelines, trends, breast tracking, Ferber session derivation
 │   ├── api/             REST handlers

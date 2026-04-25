@@ -14,6 +14,7 @@ type SessionMeta struct {
 	EndedAt           *time.Time         `json:"endedAt,omitempty"`
 	FerberEnabled     bool               `json:"ferberEnabled,omitempty"`
 	FerberNightNumber *int               `json:"ferberNightNumber,omitempty"`
+	ChairEnabled      bool               `json:"chairEnabled,omitempty"`
 }
 
 // DaySegment is one contiguous span of the day, classified as awake or nap.

@@ -750,7 +750,8 @@ body {
   padding: 8px 0;
 }
 
-.ferber-badge {
+.ferber-badge,
+.chair-badge {
   margin-left: 6px;
   font-size: 0.9em;
 }

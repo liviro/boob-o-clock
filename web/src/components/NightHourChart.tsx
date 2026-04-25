@@ -1,5 +1,5 @@
 import { NIGHT_EPOCH_H, fmtDayMonth } from '../constants';
-import { FerberHighlight } from './FerberHighlight';
+import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
 export type HourDot = {
@@ -18,6 +18,8 @@ interface Props<T> {
   title: string;
   highlightFerber?: boolean;
   isFerber?: (p: T) => boolean;
+  highlightChair?: boolean;
+  isChair?: (p: T) => boolean;
 }
 
 const H = 160;
@@ -26,7 +28,7 @@ const CHART_H = H - PAD.top - PAD.bottom;
 const MIN_RANGE_H = 2;
 
 export function NightHourChart<T>({
-  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber,
+  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber, highlightChair, isChair,
 }: Props<T>) {
   // See TrendChart: dynamic W so viewBox user units stay at 1:1 with CSS pixels.
   const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
@@ -108,6 +110,7 @@ export function NightHourChart<T>({
   }
 
   const ferberCheck = isFerber ?? ((_p: T) => false);
+  const chairCheck = isChair ?? ((_p: T) => false);
 
   return (
     <div class="trend-chart">
@@ -124,9 +127,22 @@ export function NightHourChart<T>({
         ))}
 
         {highlightFerber && (
-          <FerberHighlight
+          <NightModeHighlight
             count={n}
-            isFerber={i => ferberCheck(points[i])}
+            isMode={i => ferberCheck(points[i])}
+            fill="#1a3a1a"
+            x={x}
+            left={PAD.left}
+            top={PAD.top}
+            width={CHART_W}
+            height={CHART_H}
+          />
+        )}
+        {highlightChair && (
+          <NightModeHighlight
+            count={n}
+            isMode={i => chairCheck(points[i])}
+            fill="#3a1a2a"
             x={x}
             left={PAD.left}
             top={PAD.top}

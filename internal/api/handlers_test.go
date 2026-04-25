@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.Store) {
 	t.Helper()
-	return newTestServerWithConfig(t, Config{FerberEnabled: true})
+	return newTestServerWithConfig(t, Config{FerberEnabled: true, ChairEnabled: true})
 }
 
 func newTestServerWithConfig(t *testing.T, cfg Config) (*httptest.Server, *store.Store) {
@@ -49,7 +50,7 @@ func newTestServerWithConfig(t *testing.T, cfg Config) (*httptest.Server, *store
 // Used to seed historical data without routing through the API.
 func makeNightAt(t *testing.T, s *store.Store, startedAt time.Time) int64 {
 	t.Helper()
-	n, err := s.CreateSession(domain.SessionKindNight, startedAt, false, 0)
+	n, err := s.CreateSession(domain.SessionKindNight, startedAt, false, 0, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -123,6 +124,8 @@ type SessionResponseJSON struct {
 		} `json:"current,omitempty"`
 	} `json:"ferber,omitempty"`
 	SuggestFerberNight *int `json:"suggestFerberNight,omitempty"`
+	ChairEnabled       bool `json:"chairEnabled,omitempty"`
+	SuggestChair       bool `json:"suggestChair,omitempty"`
 }
 
 // --- GET /api/session/current ---
@@ -589,9 +592,9 @@ func TestGetCyclesWithSessions(t *testing.T) {
 
 	now := time.Now()
 	// Seed a day+night pair (one complete cycle).
-	d, _ := s.CreateSession(domain.SessionKindDay, now.Add(-16*time.Hour), false, 0)
+	d, _ := s.CreateSession(domain.SessionKindDay, now.Add(-16*time.Hour), false, 0, false)
 	_ = s.EndSession(d.ID, now.Add(-8*time.Hour))
-	n, _ := s.CreateSession(domain.SessionKindNight, now.Add(-8*time.Hour), false, 0)
+	n, _ := s.CreateSession(domain.SessionKindNight, now.Add(-8*time.Hour), false, 0, false)
 	_ = s.EndSession(n.ID, now.Add(-time.Hour))
 
 	resp := doGet(t, ts, "/api/cycles")
@@ -655,7 +658,7 @@ func TestGetCyclesIncludesEventsInline(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 
 	// Create a night with two events.
-	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), false, 0)
+	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), false, 0, false)
 	_ = s.AddEvent(&domain.Event{
 		SessionID: n.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake,
@@ -708,7 +711,7 @@ func TestGetCyclesDayEventsPrecedeNight(t *testing.T) {
 
 	now := time.Now()
 	// Day session.
-	d, _ := s.CreateSession(domain.SessionKindDay, now.Add(-18*time.Hour), false, 0)
+	d, _ := s.CreateSession(domain.SessionKindDay, now.Add(-18*time.Hour), false, 0, false)
 	_ = s.AddEvent(&domain.Event{
 		SessionID: d.ID, FromState: domain.NightOff,
 		Action: domain.StartDay, ToState: domain.DayAwake,
@@ -716,7 +719,7 @@ func TestGetCyclesDayEventsPrecedeNight(t *testing.T) {
 	})
 	_ = s.EndSession(d.ID, now.Add(-10*time.Hour))
 	// Night session.
-	n, _ := s.CreateSession(domain.SessionKindNight, now.Add(-10*time.Hour), false, 0)
+	n, _ := s.CreateSession(domain.SessionKindNight, now.Add(-10*time.Hour), false, 0, false)
 	_ = s.AddEvent(&domain.Event{
 		SessionID: n.ID, FromState: domain.DayAwake,
 		Action: domain.StartNight, ToState: domain.Awake,
@@ -817,9 +820,9 @@ func TestGetCycleDetailByNightId(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 
 	// Day + night pair; request via night id.
-	d, _ := s.CreateSession(domain.SessionKindDay, time.Now().Add(-16*time.Hour), false, 0)
+	d, _ := s.CreateSession(domain.SessionKindDay, time.Now().Add(-16*time.Hour), false, 0, false)
 	_ = s.EndSession(d.ID, time.Now().Add(-8*time.Hour))
-	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-8*time.Hour), false, 0)
+	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-8*time.Hour), false, 0, false)
 	_ = s.EndSession(n.ID, time.Now().Add(-time.Hour))
 
 	resp := doGet(t, ts, fmt.Sprintf("/api/cycles/%d", n.ID))
@@ -846,9 +849,9 @@ func TestGetCycleDetailByNightId(t *testing.T) {
 func TestGetCycleDetailByDayId(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 
-	d, _ := s.CreateSession(domain.SessionKindDay, time.Now().Add(-16*time.Hour), false, 0)
+	d, _ := s.CreateSession(domain.SessionKindDay, time.Now().Add(-16*time.Hour), false, 0, false)
 	_ = s.EndSession(d.ID, time.Now().Add(-8*time.Hour))
-	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-8*time.Hour), false, 0)
+	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-8*time.Hour), false, 0, false)
 	_ = s.EndSession(n.ID, time.Now().Add(-time.Hour))
 
 	resp := doGet(t, ts, fmt.Sprintf("/api/cycles/%d", d.ID))
@@ -873,9 +876,9 @@ func TestGetCycleDetailOrphanHistoricalNight(t *testing.T) {
 
 	// Two consecutive nights (historical pre-feature stream). The second's
 	// "prev" is another night, not a day — day stays nil.
-	n1, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-48*time.Hour), false, 0)
+	n1, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-48*time.Hour), false, 0, false)
 	_ = s.EndSession(n1.ID, time.Now().Add(-40*time.Hour))
-	n2, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), false, 0)
+	n2, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), false, 0, false)
 	_ = s.EndSession(n2.ID, time.Now().Add(-16*time.Hour))
 
 	resp := doGet(t, ts, fmt.Sprintf("/api/cycles/%d", n2.ID))
@@ -1018,7 +1021,7 @@ func TestSuggestFerberNight_OnNightOff(t *testing.T) {
 	}
 
 	// Seed a previous Ferber night at number 4 → suggestion becomes 5.
-	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-12*time.Hour), true, 4)
+	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-12*time.Hour), true, 4, false)
 	_ = s.EndSession(n.ID, time.Now().Add(-2*time.Hour))
 
 	resp = doGet(t, ts, "/api/session/current")
@@ -1034,7 +1037,7 @@ func TestSuggestFerberNight_OnDayAwake(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 
 	// Seed a prior Ferber night.
-	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-36*time.Hour), true, 4)
+	n, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-36*time.Hour), true, 4, false)
 	_ = s.EndSession(n.ID, time.Now().Add(-28*time.Hour))
 
 	// Start a day session via the chain.
@@ -1275,5 +1278,178 @@ func TestExportCSVEmpty(t *testing.T) {
 	resp.Body.Close()
 	if !strings.Contains(string(body), "session_id") {
 		t.Error("empty export should still contain CSV header")
+	}
+}
+
+// --- Chair end-to-end ---
+
+func TestStartSessionNightWithChair(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	body := map[string]any{
+		"kind":      "night",
+		"chair":     true,
+		"timestamp": "2026-04-25T21:00:00Z",
+	}
+	resp := doPost(t, ts, "/api/session/start", body)
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, b)
+	}
+
+	sess, _, err := s.CurrentSession()
+	if err != nil {
+		t.Fatalf("CurrentSession: %v", err)
+	}
+	if sess == nil || !sess.ChairEnabled {
+		t.Errorf("session ChairEnabled = false, want true; got %+v", sess)
+	}
+	if sess != nil && sess.FerberEnabled {
+		t.Error("FerberEnabled should be false on a chair session")
+	}
+}
+
+func TestStartSession_Chair_FeatureFlagDisabled_400(t *testing.T) {
+	ts, _ := newTestServerWithConfig(t, Config{ChairEnabled: false})
+
+	resp := doPost(t, ts, "/api/session/start", map[string]any{
+		"kind":  "night",
+		"chair": true,
+	})
+	if resp.StatusCode != 400 {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestStartSession_Chair_KindDay_400(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := doPost(t, ts, "/api/session/start", map[string]any{
+		"kind":  "day",
+		"chair": true,
+	})
+	if resp.StatusCode != 400 {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestStartSession_FerberAndChair_MutuallyExclusive_400(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := doPost(t, ts, "/api/session/start", map[string]any{
+		"kind":   "night",
+		"ferber": map[string]any{"nightNumber": 1},
+		"chair":  true,
+	})
+	if resp.StatusCode != 400 {
+		t.Errorf("status = %d, want 400 (mutually exclusive)", resp.StatusCode)
+	}
+}
+
+func TestSessionResponse_ValidActions_ChairNight(t *testing.T) {
+	ts := newTestServer(t)
+
+	if r := doPost(t, ts, "/api/session/start", map[string]any{
+		"kind":  "night",
+		"chair": true,
+	}); r.StatusCode != 200 {
+		t.Fatalf("start_night chair: %d", r.StatusCode)
+	}
+
+	var sr SessionResponseJSON
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &sr)
+
+	if !slices.Contains(sr.ValidActions, "sit_chair") {
+		t.Errorf("chair-night Awake actions missing sit_chair: %v", sr.ValidActions)
+	}
+	if slices.Contains(sr.ValidActions, "put_down_awake") {
+		t.Errorf("chair-night Awake actions should not include put_down_awake (sit_chair takes its slot): %v", sr.ValidActions)
+	}
+	if !sr.ChairEnabled {
+		t.Error("chairEnabled = false on chair night, want true")
+	}
+}
+
+// TestSessionResponse_ChairFlagOff_StoredChairSessionStillRendersChairActions
+// is the in-progress-survives-flag-flip guarantee: a session created when the
+// flag was on must continue to render chair actions even after the operator
+// flips the flag off. Action selection reads from the session row, not config.
+func TestSessionResponse_ChairFlagOff_StoredChairSessionStillRendersChairActions(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	// Seed an in-progress chair session directly (bypasses API; mimics a
+	// session that was started when the flag was on).
+	startedAt := time.Now().Add(-time.Hour)
+	sess, err := s.CreateSession(domain.SessionKindNight, startedAt, false, 0, true)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	startEvt := &domain.Event{
+		SessionID: sess.ID,
+		FromState: domain.NightOff,
+		Action:    domain.StartNight,
+		ToState:   domain.Awake,
+		Timestamp: startedAt,
+		Seq:       1,
+	}
+	if err := s.AddEvent(startEvt); err != nil {
+		t.Fatalf("AddEvent: %v", err)
+	}
+
+	// Now wire a server with CHAIR flag OFF.
+	handler := NewHandler(s, Config{ChairEnabled: false})
+	ts := httptest.NewServer(NewRouter(handler))
+	t.Cleanup(ts.Close)
+
+	var sr SessionResponseJSON
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &sr)
+
+	if !slices.Contains(sr.ValidActions, "sit_chair") {
+		t.Errorf("stored chair session should still expose sit_chair when flag is off: %v", sr.ValidActions)
+	}
+}
+
+func TestSuggestChair_LastNightWasChair_FlagOn(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+
+	// Seed a closed chair night.
+	startedAt := time.Now().Add(-24 * time.Hour)
+	n, err := s.CreateSession(domain.SessionKindNight, startedAt, false, 0, true)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.EndSession(n.ID, startedAt.Add(8*time.Hour)); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	var sr SessionResponseJSON
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &sr)
+	if !sr.SuggestChair {
+		t.Error("suggestChair = false, want true after a chair night")
+	}
+}
+
+func TestSuggestChair_FlagOff_Suppressed(t *testing.T) {
+	ts, s := newTestServerWithConfig(t, Config{ChairEnabled: false})
+
+	// Seed a closed chair night even though the flag is currently off.
+	startedAt := time.Now().Add(-24 * time.Hour)
+	n, err := s.CreateSession(domain.SessionKindNight, startedAt, false, 0, true)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.EndSession(n.ID, startedAt.Add(8*time.Hour)); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	var sr SessionResponseJSON
+	decodeJSON(t, doGet(t, ts, "/api/session/current"), &sr)
+	if sr.SuggestChair {
+		t.Error("suggestChair = true with flag off, want false (suppressed)")
 	}
 }

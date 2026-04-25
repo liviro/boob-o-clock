@@ -1,73 +1,112 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Modal } from './Modal';
 import { useGhostClickGuard } from '../hooks/useGhostClickGuard';
+import { useConfig } from '../hooks/useConfig';
+import { NightModeChoice } from '../api';
 
 interface Props {
   open: boolean;
-  // When present, seed the modal's Ferber toggle ON with this night number.
-  // Absent → Ferber toggle starts OFF.
+  // When present, seed as Ferber with this night number.
   suggestNightNumber?: number | null;
-  // ferberConfig is null when the user confirms without Ferber.
-  onConfirm: (ferberConfig: { nightNumber: number } | null) => void;
+  // When true, seed as Chair.
+  suggestChair?: boolean;
+  onConfirm: (choice: NightModeChoice) => void;
   onClose: () => void;
 }
 
-// StartNightPicker asks the user to optionally configure Ferber mode before
-// creating the night session. Replaces the always-visible Ferber toggle that
-// sat next to the Start Night button — keeps the main grid cleaner during
-// the day, and lets the Ferber prompt be easily hidden later by wrapping the
-// entire toggle block in a runtime flag.
-export function StartNightPicker({ open, suggestNightNumber, onConfirm, onClose }: Props) {
-  const [ferberOn, setFerberOn] = useState(false);
-  const [ferberNight, setFerberNight] = useState(1);
+// Picker state combines mode + ferber's per-night number. Modeling mode as a
+// single field (not two booleans) makes "both modes set" unrepresentable.
+type PickerState =
+  | { mode: 'plain'; ferberNight: number }
+  | { mode: 'ferber'; ferberNight: number }
+  | { mode: 'chair'; ferberNight: number };
+
+function seedFromProps(
+  features: { ferber: boolean; chair: boolean },
+  suggestNightNumber: number | null | undefined,
+  suggestChair: boolean | undefined,
+): PickerState {
+  if (suggestNightNumber != null && features.ferber) {
+    return { mode: 'ferber', ferberNight: suggestNightNumber };
+  }
+  if (suggestChair && features.chair) {
+    return { mode: 'chair', ferberNight: 1 };
+  }
+  return { mode: 'plain', ferberNight: 1 };
+}
+
+export function StartNightPicker({ open, suggestNightNumber, suggestChair, onConfirm, onClose }: Props) {
+  const { features } = useConfig();
+  const [state, setState] = useState<PickerState>(() => seedFromProps(features, suggestNightNumber, suggestChair));
   const guard = useGhostClickGuard(open);
 
-  // Re-seed whenever the modal opens (or the server's suggestion changes).
   useEffect(() => {
     if (!open) return;
-    if (suggestNightNumber != null) {
-      setFerberOn(true);
-      setFerberNight(suggestNightNumber);
-    } else {
-      setFerberOn(false);
-      setFerberNight(1);
-    }
-  }, [open, suggestNightNumber]);
+    setState(seedFromProps(features, suggestNightNumber, suggestChair));
+  }, [open, suggestNightNumber, suggestChair, features]);
+
+  function setMode(mode: PickerState['mode']) {
+    setState(s => ({ ...s, mode }));
+  }
 
   function handleConfirm() {
-    onConfirm(ferberOn ? { nightNumber: ferberNight } : null);
+    if (state.mode === 'ferber') {
+      onConfirm({ mode: 'ferber', nightNumber: state.ferberNight });
+    } else {
+      onConfirm({ mode: state.mode });
+    }
   }
+
+  const buttonLabel =
+    state.mode === 'ferber' ? `Start Ferber night ${state.ferberNight}` :
+    state.mode === 'chair'  ? 'Start chair night' :
+    'Start night';
 
   return (
     <Modal open={open} onClose={onClose} title="Start night">
       <div class="start-night-picker">
-        <label class="ferber-toggle">
-          <input
-            type="checkbox"
-            checked={ferberOn}
-            onChange={e => setFerberOn((e.target as HTMLInputElement).checked)}
-          />
-          <span class="ferber-toggle-switch" aria-hidden="true"></span>
-          <span class="ferber-toggle-label">Ferber mode</span>
-        </label>
-        <div class={`ferber-night-stepper ${ferberOn ? '' : 'is-hidden'}`} aria-hidden={!ferberOn}>
-          Night
-          <button
-            type="button"
-            aria-label="decrease"
-            class={ferberNight === 1 ? 'is-hidden' : ''}
-            onClick={() => setFerberNight(n => Math.max(1, n - 1))}
-          >−</button>
-          <span>{ferberNight}</span>
-          <button
-            type="button"
-            aria-label="increase"
-            onClick={() => setFerberNight(n => n + 1)}
-          >+</button>
-        </div>
+        {features.ferber && (
+          <>
+            <label class="ferber-toggle">
+              <input
+                type="checkbox"
+                checked={state.mode === 'ferber'}
+                onChange={e => setMode((e.target as HTMLInputElement).checked ? 'ferber' : 'plain')}
+              />
+              <span class="ferber-toggle-switch" aria-hidden="true"></span>
+              <span class="ferber-toggle-label">Ferber mode</span>
+            </label>
+            <div class={`ferber-night-stepper ${state.mode === 'ferber' ? '' : 'is-hidden'}`} aria-hidden={state.mode !== 'ferber'}>
+              Night
+              <button
+                type="button"
+                aria-label="decrease"
+                class={state.ferberNight === 1 ? 'is-hidden' : ''}
+                onClick={() => setState(s => ({ ...s, ferberNight: Math.max(1, s.ferberNight - 1) }))}
+              >−</button>
+              <span>{state.ferberNight}</span>
+              <button
+                type="button"
+                aria-label="increase"
+                onClick={() => setState(s => ({ ...s, ferberNight: s.ferberNight + 1 }))}
+              >+</button>
+            </div>
+          </>
+        )}
+        {features.chair && (
+          <label class="ferber-toggle">
+            <input
+              type="checkbox"
+              checked={state.mode === 'chair'}
+              onChange={e => setMode((e.target as HTMLInputElement).checked ? 'chair' : 'plain')}
+            />
+            <span class="ferber-toggle-switch" aria-hidden="true"></span>
+            <span class="ferber-toggle-label">Chair mode</span>
+          </label>
+        )}
         <button class="action-btn primary full-width" onClick={guard(handleConfirm)}>
           <span class="action-icon">🌙</span>
-          <span>{ferberOn ? `Start Ferber night ${ferberNight}` : 'Start night'}</span>
+          <span>{buttonLabel}</span>
         </button>
       </div>
     </Modal>
