@@ -6,6 +6,9 @@ services:
       - "8080:8080"
     volumes:
       - boc-data:/data
+    environment:
+      # Sleep-training mode flag; see README "Configuration".
+      FERBER_ENABLED: "false"
 
 volumes:
   boc-data:

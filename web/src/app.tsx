@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useSession } from './hooks/useSession';
+import { ConfigProvider } from './hooks/useConfig';
 import { Tracker } from './pages/Tracker';
 import { History } from './pages/History';
 import { ErrorToast } from './components/ErrorToast';
@@ -7,6 +8,14 @@ import { ErrorToast } from './components/ErrorToast';
 type Page = 'tracker' | 'history';
 
 export function App() {
+  return (
+    <ConfigProvider>
+      <AppInner />
+    </ConfigProvider>
+  );
+}
+
+function AppInner() {
   const [page, setPage] = useState<Page>('tracker');
   const { session, loading, error, dispatch, startSession, undo, clearError } = useSession();
 
