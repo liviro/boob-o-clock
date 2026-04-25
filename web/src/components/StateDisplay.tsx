@@ -6,21 +6,22 @@ interface Props {
   lastEventTimestamp?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
-  lastSleepStartedAt?: string;
+  lastWokeUpAt?: string;
   sessionStartIso?: string;
   moodLabel?: string;
 }
 
-export function StateDisplay({ state, lastEventTimestamp, currentBreast, lastFeedStartedAt, lastSleepStartedAt, sessionStartIso, moodLabel }: Props) {
+export function StateDisplay({ state, lastEventTimestamp, currentBreast, lastFeedStartedAt, lastWokeUpAt, sessionStartIso, moodLabel }: Props) {
   const info = STATE_INFO[state] || { icon: '?', label: state };
   const now = useNow();
   const ageMs = (iso?: string) => iso ? Math.max(0, now - new Date(iso).getTime()) : 0;
 
   // During day_awake the "how long have I been awake" ticker tells us nothing
-  // we can't see already — replace it with "when did the baby last nap/sleep."
+  // we can't see already — replace it with the wake window since the baby
+  // last left a sleep state.
   const showStateElapsed = state !== 'night_off' && state !== 'learning' && state !== 'day_awake' && !!lastEventTimestamp;
   const showFeedAgo = !!lastFeedStartedAt && state !== 'feeding' && state !== 'day_feeding' && state !== 'night_off';
-  const showSleepAgo = state === 'day_awake' && !!lastSleepStartedAt;
+  const showWakeAgo = state === 'day_awake' && !!lastWokeUpAt;
 
   const isFeeding = (state === 'feeding' || state === 'day_feeding') && currentBreast;
   const flipIcon = isFeeding && currentBreast === 'R';
@@ -40,8 +41,8 @@ export function StateDisplay({ state, lastEventTimestamp, currentBreast, lastFee
       {sessionStartIso && (
         <div class="state-timer">{fmtTimer(Math.floor(ageMs(sessionStartIso) / 1000))} in this session</div>
       )}
-      {showSleepAgo && (
-        <div class="state-timer"><span class="state-timer-emoji">💤</span>{fmtAgo(ageMs(lastSleepStartedAt))}</div>
+      {showWakeAgo && (
+        <div class="state-timer"><span class="state-timer-emoji">💤</span>{fmtAgo(ageMs(lastWokeUpAt))}</div>
       )}
       {showFeedAgo && (
         <div class="state-timer"><span class="state-timer-emoji">🍼</span>{fmtAgo(ageMs(lastFeedStartedAt))}</div>

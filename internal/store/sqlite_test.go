@@ -213,11 +213,11 @@ func TestLastFeedStart(t *testing.T) {
 	}
 }
 
-func TestLastSleepStart(t *testing.T) {
+func TestLastWakeFromSleep(t *testing.T) {
 	s := newTestStore(t)
 
 	// No events → nil.
-	if got, err := s.LastSleepStart(); err != nil || got != nil {
+	if got, err := s.LastWakeFromSleep(); err != nil || got != nil {
 		t.Fatalf("empty: got=%v err=%v, want nil/nil", got, err)
 	}
 
@@ -226,36 +226,42 @@ func TestLastSleepStart(t *testing.T) {
 	s.EndSession(night.ID, now.Add(-6*time.Hour))
 	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-6*time.Hour), false, 0)
 
-	// Night sleep (transfer_success → sleeping_crib).
-	nightSleep := now.Add(-10 * time.Hour)
+	// Night sleep (transfer_success → sleeping_crib). Not a wake; must be ignored.
 	if err := s.AddEvent(&domain.Event{
 		SessionID: night.ID, FromState: domain.Transferring, Action: domain.TransferSuccess, ToState: domain.SleepingCrib,
-		Timestamp: nightSleep,
+		Timestamp: now.Add(-10 * time.Hour),
 	}); err != nil {
 		t.Fatalf("night sleep: %v", err)
 	}
-	// Day nap (start_sleep → day_sleeping), more recent.
-	dayNap := now.Add(-3 * time.Hour)
+	// Night wake (baby_woke → awake), the previous wake.
+	if err := s.AddEvent(&domain.Event{
+		SessionID: night.ID, FromState: domain.SleepingCrib, Action: domain.BabyWoke, ToState: domain.Awake,
+		Timestamp: now.Add(-7 * time.Hour),
+	}); err != nil {
+		t.Fatalf("night wake: %v", err)
+	}
+	// Day nap start (start_sleep → day_sleeping). Not a wake; must be ignored.
 	if err := s.AddEvent(&domain.Event{
 		SessionID: day.ID, FromState: domain.DayAwake, Action: domain.StartSleep, ToState: domain.DaySleeping,
-		Timestamp: dayNap, Metadata: map[string]string{"location": "crib"},
+		Timestamp: now.Add(-3 * time.Hour), Metadata: map[string]string{"location": "crib"},
 	}); err != nil {
 		t.Fatalf("day nap: %v", err)
 	}
-	// Nap end — baby_woke → day_awake. Not a sleep-start; must be ignored.
+	// Day nap end — baby_woke → day_awake. Most recent wake transition.
+	dayWake := now.Add(-1 * time.Hour)
 	if err := s.AddEvent(&domain.Event{
 		SessionID: day.ID, FromState: domain.DaySleeping, Action: domain.BabyWoke, ToState: domain.DayAwake,
-		Timestamp: now.Add(-1 * time.Hour),
+		Timestamp: dayWake,
 	}); err != nil {
 		t.Fatalf("wake: %v", err)
 	}
 
-	got, err := s.LastSleepStart()
+	got, err := s.LastWakeFromSleep()
 	if err != nil {
-		t.Fatalf("LastSleepStart: %v", err)
+		t.Fatalf("LastWakeFromSleep: %v", err)
 	}
-	if got == nil || !got.Equal(dayNap) {
-		t.Errorf("LastSleepStart = %v, want %v (most recent sleep transition)", got, dayNap)
+	if got == nil || !got.Equal(dayWake) {
+		t.Errorf("LastWakeFromSleep = %v, want %v (most recent transition out of sleep)", got, dayWake)
 	}
 }
 
