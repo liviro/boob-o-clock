@@ -26,6 +26,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.Store) {
 	t.Helper()
+	return newTestServerWithConfig(t, Config{FerberEnabled: true})
+}
+
+func newTestServerWithConfig(t *testing.T, cfg Config) (*httptest.Server, *store.Store) {
+	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s, err := store.New(dbPath)
 	if err != nil {
@@ -33,7 +38,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.Store) {
 	}
 	t.Cleanup(func() { s.Close() })
 
-	handler := NewHandler(s)
+	handler := NewHandler(s, cfg)
 	router := NewRouter(handler)
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)

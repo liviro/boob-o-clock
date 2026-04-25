@@ -18,10 +18,11 @@ import (
 
 type Handler struct {
 	store *store.Store
+	cfg   Config
 }
 
-func NewHandler(s *store.Store) *Handler {
-	return &Handler{store: s}
+func NewHandler(s *store.Store, cfg Config) *Handler {
+	return &Handler{store: s, cfg: cfg}
 }
 
 // --- request / response types ---
@@ -138,7 +139,7 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 
 	// Suggest Ferber night wherever start_night is a valid action: that's
 	// NightOff (first-start) AND DayAwake (chain advance at bedtime).
-	if state == domain.NightOff || state == domain.DayAwake {
+	if h.cfg.FerberEnabled && (state == domain.NightOff || state == domain.DayAwake) {
 		last, err := h.store.LastSession(domain.SessionKindNight)
 		if err != nil {
 			log.Printf("buildSessionResponse: LastSession(night) lookup failed: %v", err)
@@ -187,6 +188,10 @@ func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Ferber != nil {
+		if !h.cfg.FerberEnabled {
+			writeError(w, http.StatusBadRequest, "Ferber mode is disabled on this server")
+			return
+		}
 		if kind != domain.SessionKindNight {
 			writeError(w, http.StatusBadRequest, "ferber config only valid when kind=night")
 			return

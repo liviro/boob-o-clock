@@ -23,7 +23,7 @@ The app models your day and night as a single state machine. Depending on the cu
 - **Self-soothing** — baby put down awake or stirring in crib, settling without intervention.
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
-- **Ferber mode** — opt-in per night. Graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. No-op when off; the rest of the app works exactly the same.
+- **Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. I tried it — the feature worked fine; the method, not so much. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
 
 ### Day
 - **Day feeds** — same feed tracking as night, with switch-breast suggestion based on the last side.
@@ -37,7 +37,7 @@ The app models your day and night as a single state machine. Depending on the cu
 - **Cycle view**: one card per 24h midnight-to-midnight window, stacked chronologically. Each card shows a color-coded timeline bar of the full day and the following night, tinted day/night sections, and live sleep/wake duration pills (the in-progress segment blinks).
 - Per-night summary: night duration, total sleep, total feed time, wake count, feed count, longest sleep block, individual sleep block durations, feed times
 - Per-day summary: nap count, total nap time, longest nap, day feed count and duration, wake windows, last wake window before bedtime
-- Ferber nights also show sessions, average time to settle, cry time, fuss time, check-ins, abandoned sessions, and quiet time
+- Ferber nights (when enabled) also show sessions, average time to settle, cry time, fuss time, check-ins, abandoned sessions, and quiet time
 - Full event log with timestamps
 - Feed times scatter plot showing when feeds happen across 24 hours
 - Real bedtime chart showing when the baby actually goes down
@@ -107,6 +107,15 @@ make build
 ./boob-o-clock -addr :8080 -db ./boob-o-clock.db
 ```
 
+### Configuration
+
+| Env | Flag | Default | Description |
+|---|---|---|---|
+| `PORT` | `-addr :PORT` | `8080` | Listen port |
+| `FERBER_ENABLED` | `-ferber` | `false` | Enable Ferber sleep-training mode (see [What it tracks](#what-it-tracks)) |
+
+For Docker Compose, set these under `environment:` in `docker-compose.yml` and run `docker compose up -d` to apply.
+
 ### Access from your phone
 
 Open `http://<your-server-ip>:8080` in Safari and tap **Share → Add to Home Screen**. The app launches fullscreen like a native app.
@@ -159,6 +168,7 @@ cd web && npm run lint # ESLint (react-hooks rules)
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/config` | Server feature flags (consumed by the frontend on boot) |
 | GET | `/api/session/current` | Current state + valid actions |
 | POST | `/api/session/start` | Start a new day or night session (chain-advance; optional Ferber config on night) |
 | POST | `/api/session/event` | Record an event |

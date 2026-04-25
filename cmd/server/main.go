@@ -23,8 +23,10 @@ func main() {
 		addr = ":" + p
 	}
 	dbPath := "boob-o-clock.db"
+	cfg := api.Config{FerberEnabled: os.Getenv("FERBER_ENABLED") == "true"}
 	flag.StringVar(&addr, "addr", addr, "listen address")
 	flag.StringVar(&dbPath, "db", dbPath, "SQLite database path")
+	flag.BoolVar(&cfg.FerberEnabled, "ferber", cfg.FerberEnabled, "enable Ferber sleep-training mode")
 	flag.Parse()
 
 	s, err := store.New(dbPath)
@@ -33,7 +35,7 @@ func main() {
 	}
 	defer s.Close()
 
-	handler := api.NewHandler(s)
+	handler := api.NewHandler(s, cfg)
 	router := api.NewRouter(handler)
 
 	// Serve embedded web files at root

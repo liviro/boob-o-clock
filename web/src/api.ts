@@ -62,6 +62,12 @@ export interface SessionResponse {
   suggestFerberNight?: number;
 }
 
+export interface ServerConfig {
+  features: {
+    ferber: boolean;
+  };
+}
+
 // --- cycle types ---
 
 export interface SessionMeta {
@@ -182,6 +188,11 @@ async function checkResponse(resp: Response): Promise<Response> {
 }
 
 // --- fetch functions ---
+
+export async function getConfig(): Promise<ServerConfig> {
+  const resp = await checkResponse(await fetch(`${API}/config`));
+  return resp.json();
+}
 
 export async function getCurrentSession(): Promise<SessionResponse> {
   const resp = await checkResponse(await fetch(`${API}/session/current`));
