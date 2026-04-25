@@ -234,10 +234,9 @@ func TestLastWakeFromSleep(t *testing.T) {
 		t.Fatalf("night sleep: %v", err)
 	}
 	// Night wake (baby_woke → awake), the previous wake.
-	nightWake := now.Add(-7 * time.Hour)
 	if err := s.AddEvent(&domain.Event{
 		SessionID: night.ID, FromState: domain.SleepingCrib, Action: domain.BabyWoke, ToState: domain.Awake,
-		Timestamp: nightWake,
+		Timestamp: now.Add(-7 * time.Hour),
 	}); err != nil {
 		t.Fatalf("night wake: %v", err)
 	}
