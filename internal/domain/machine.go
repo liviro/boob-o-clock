@@ -108,6 +108,15 @@ var transitions = map[transitionKey]State{
 	// 40: CHECK_IN → AWAKE
 	{CheckIn, ExitFerber}: Awake,
 
+	// Chair sub-machine (still within night subgraph). Reachable only from
+	// AWAKE; baby is awake during chair, so feed/poop/etc. route via Awake.
+	// 54: AWAKE → CHAIR
+	{Awake, SitChair}: Chair,
+	// 55: CHAIR → SLEEPING_CRIB (reuses generic Settled action)
+	{Chair, Settled}: SleepingCrib,
+	// 56: CHAIR → AWAKE
+	{Chair, ExitChair}: Awake,
+
 	// === Cross-boundary chain advances (Awake ↔ DayAwake) ===
 
 	// 41: AWAKE → DAY_AWAKE (chain advance: morning)
@@ -203,7 +212,7 @@ var actionOrder = func() map[Action]int {
 		StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
 		// Transfer / resettle / crib cluster.
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
-		PutDownAwake, PutDownAwakeFerber,
+		PutDownAwake, PutDownAwakeFerber, SitChair,
 		StartResettle, Settled, ResettleFailed, BabyWoke,
 		// Stroller cluster.
 		StartStrolling, FellAsleep, GiveUp,
@@ -212,7 +221,7 @@ var actionOrder = func() map[Action]int {
 		// Crib-stirring cluster.
 		BabyStirred, BabyStirredFerber,
 		// Ferber cluster.
-		MoodChange, CheckInStart, EndCheckIn, ExitFerber,
+		MoodChange, CheckInStart, EndCheckIn, ExitFerber, ExitChair,
 		// Poop cluster.
 		PoopStart, PoopDone,
 		// Session-creation actions (chain-advance) sort LAST.

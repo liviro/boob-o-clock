@@ -74,6 +74,11 @@ func TestAllValidTransitions(t *testing.T) {
 		{"poop from stroller sleep", SleepingStroller, PoopStart, Poop, nil},
 		{"poop done", Poop, PoopDone, Awake, nil},
 
+		// --- Chair sub-machine ---
+		{"sit in chair", Awake, SitChair, Chair, nil},
+		{"chair settled", Chair, Settled, SleepingCrib, nil},
+		{"exit chair", Chair, ExitChair, Awake, nil},
+
 		// --- Cross-boundary chain advances ---
 		{"start day from awake (morning)", Awake, StartDay, DayAwake, nil},
 		{"start night from day awake (bedtime)", DayAwake, StartNight, Awake, nil},
@@ -127,6 +132,16 @@ func TestInvalidTransitions(t *testing.T) {
 		{"poop from night off", NightOff, PoopStart},
 		{"switch breast from awake", Awake, SwitchBreast},
 		{"give up from crib sleep", SleepingCrib, GiveUp},
+		// Chair is reachable only from Awake; baby is awake during chair, so
+		// no feed/poop/transfer/etc. directly out of Chair (those go via Awake).
+		{"sit_chair from feeding", Feeding, SitChair},
+		{"sit_chair from sleeping crib", SleepingCrib, SitChair},
+		{"sit_chair from self soothing", SelfSoothing, SitChair},
+		{"poop from chair", Chair, PoopStart},
+		{"feed from chair", Chair, StartFeed},
+		{"transfer from chair", Chair, StartTransfer},
+		{"baby woke from chair", Chair, BabyWoke},
+		{"exit_chair from awake", Awake, ExitChair},
 		// start_day is NOT valid from within a non-AWAKE night state
 		{"start day from feeding", Feeding, StartDay},
 		{"start day from sleeping crib", SleepingCrib, StartDay},
@@ -160,7 +175,7 @@ func TestValidActions(t *testing.T) {
 		// Chain-advance actions sort last in actionOrder, so start_night/start_day
 		// appear at the end of validActions (bottom of grid).
 		{NightOff, []Action{StartNight, StartDay}},
-		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, StartResettle, StartStrolling, PoopStart, StartDay}},
+		{Awake, []Action{StartFeed, PutDownAwake, PutDownAwakeFerber, SitChair, StartResettle, StartStrolling, PoopStart, StartDay}},
 		{Feeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast}},
 		{SleepingOnMe, []Action{StartFeed, StartTransfer, BabyWoke, PoopStart}},
 		{Transferring, []Action{TransferSuccess, TransferNeedResettle, TransferFailed}},
@@ -170,6 +185,7 @@ func TestValidActions(t *testing.T) {
 		{Strolling, []Action{FellAsleep, GiveUp, PoopStart}},
 		{SleepingStroller, []Action{BabyWoke, PoopStart}},
 		{Poop, []Action{PoopDone}},
+		{Chair, []Action{Settled, ExitChair}},
 		// Day subgraph: start_night is last (chain-advance).
 		{DayAwake, []Action{StartFeed, StartSleep, PoopStart, StartNight}},
 		{DayFeeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast, PoopStart}},

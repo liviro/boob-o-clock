@@ -60,6 +60,8 @@ type sessionResponse struct {
 	LastWokeUpAt       *time.Time          `json:"lastWokeUpAt,omitempty"`
 	Ferber             *ferberNight        `json:"ferber,omitempty"`
 	SuggestFerberNight *int                `json:"suggestFerberNight,omitempty"`
+	ChairEnabled       bool                `json:"chairEnabled,omitempty"`
+	SuggestChair       bool                `json:"suggestChair,omitempty"`
 }
 
 type ferberConfigRequest struct {
@@ -67,11 +69,13 @@ type ferberConfigRequest struct {
 }
 
 // startSessionRequest is the typed body for POST /api/session/start.
-// Kind is required; ferber is only valid when kind == "night".
+// Kind is required. ferber and chair are only valid when kind == "night",
+// and are mutually exclusive — at most one may be set on a single request.
 type startSessionRequest struct {
 	Kind      string               `json:"kind"`
 	Timestamp string               `json:"timestamp,omitempty"`
 	Ferber    *ferberConfigRequest `json:"ferber,omitempty"`
+	Chair     bool                 `json:"chair,omitempty"`
 }
 
 type eventResponse struct {
@@ -115,7 +119,8 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 	}
 
 	ferberEnabled := session != nil && session.IsNight() && session.FerberEnabled
-	resp.ValidActions = reports.SelectActionsForNight(domain.ValidActions(state), ferberEnabled)
+	chairEnabled := session != nil && session.IsNight() && session.ChairEnabled
+	resp.ValidActions = reports.SelectActionsForNight(domain.ValidActions(state), ferberEnabled, chairEnabled)
 
 	if session != nil {
 		resp.Kind = &session.Kind
@@ -131,20 +136,28 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 				}
 			}
 		}
+		if chairEnabled {
+			resp.ChairEnabled = true
+		}
 	}
 
 	if len(events) > 0 {
 		resp.LastEvent = toEventResponse(events[len(events)-1])
 	}
 
-	// Suggest Ferber night wherever start_night is a valid action: that's
+	// Suggest training-mode toggles wherever start_night is a valid action:
 	// NightOff (first-start) AND DayAwake (chain advance at bedtime).
-	if h.cfg.FerberEnabled && (state == domain.NightOff || state == domain.DayAwake) {
+	if (h.cfg.FerberEnabled || h.cfg.ChairEnabled) && (state == domain.NightOff || state == domain.DayAwake) {
 		last, err := h.store.LastSession(domain.SessionKindNight)
 		if err != nil {
 			log.Printf("buildSessionResponse: LastSession(night) lookup failed: %v", err)
 		} else {
-			resp.SuggestFerberNight = reports.SuggestFerberNight(last)
+			if h.cfg.FerberEnabled {
+				resp.SuggestFerberNight = reports.SuggestFerberNight(last)
+			}
+			if h.cfg.ChairEnabled {
+				resp.SuggestChair = reports.SuggestChair(last)
+			}
 		}
 	}
 	return resp
@@ -202,6 +215,23 @@ func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.Chair {
+		if !h.cfg.ChairEnabled {
+			writeError(w, http.StatusBadRequest, "Chair mode is disabled on this server")
+			return
+		}
+		if kind != domain.SessionKindNight {
+			writeError(w, http.StatusBadRequest, "chair config only valid when kind=night")
+			return
+		}
+	}
+
+	// Sleep-training modes are mutually exclusive at the night level.
+	if req.Ferber != nil && req.Chair {
+		writeError(w, http.StatusBadRequest, "ferber and chair modes are mutually exclusive for a single night")
+		return
+	}
+
 	ts := time.Now()
 	if req.Timestamp != "" {
 		parsed, err := time.Parse(time.RFC3339, req.Timestamp)
@@ -242,7 +272,7 @@ func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request) {
 		ToState:   nextState,
 		Timestamp: ts,
 	}
-	session, err := h.store.StartNewSession(kind, ferberEnabled, ferberNightNumber, startEvent)
+	session, err := h.store.StartNewSession(kind, ferberEnabled, ferberNightNumber, req.Chair, startEvent)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -503,6 +533,7 @@ func toCycleSessionMeta(s *domain.Session) *reports.SessionMeta {
 		EndedAt:           s.EndedAt,
 		FerberEnabled:     s.FerberEnabled,
 		FerberNightNumber: s.FerberNightNumber,
+		ChairEnabled:      s.ChairEnabled,
 	}
 }
 

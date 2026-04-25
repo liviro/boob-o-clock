@@ -297,7 +297,7 @@ func (ea *eventAppender) advanceTo(t time.Time) {
 }
 
 func seedNight(s *store.Store, start, end time.Time, blocks []nightBlock) error {
-	night, err := s.CreateSession(domain.SessionKindNight, start, false, 0)
+	night, err := s.CreateSession(domain.SessionKindNight, start, false, 0, false)
 	if err != nil {
 		return err
 	}
@@ -363,7 +363,7 @@ func seedNight(s *store.Store, start, end time.Time, blocks []nightBlock) error 
 }
 
 func seedDay(s *store.Store, start, end time.Time, activities []dayActivity) error {
-	day, err := s.CreateSession(domain.SessionKindDay, start, false, 0)
+	day, err := s.CreateSession(domain.SessionKindDay, start, false, 0, false)
 	if err != nil {
 		return err
 	}
@@ -400,7 +400,7 @@ func seedDay(s *store.Store, start, end time.Time, activities []dayActivity) err
 // seedInProgressDay is seedDay minus the EndSession call — the day remains
 // open so the Tracker renders a live in-progress state.
 func seedInProgressDay(s *store.Store, start time.Time, activities []dayActivity) error {
-	day, err := s.CreateSession(domain.SessionKindDay, start, false, 0)
+	day, err := s.CreateSession(domain.SessionKindDay, start, false, 0, false)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import "net/http"
 // the safe production default; opt-in happens via env vars in main.go.
 type Config struct {
 	FerberEnabled bool
+	ChairEnabled  bool
 }
 
 type configResponse struct {
@@ -14,10 +15,14 @@ type configResponse struct {
 
 type configFeatures struct {
 	Ferber bool `json:"ferber"`
+	Chair  bool `json:"chair"`
 }
 
 func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, configResponse{
-		Features: configFeatures{Ferber: h.cfg.FerberEnabled},
+		Features: configFeatures{
+			Ferber: h.cfg.FerberEnabled,
+			Chair:  h.cfg.ChairEnabled,
+		},
 	})
 }

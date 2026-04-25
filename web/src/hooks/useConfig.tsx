@@ -11,7 +11,7 @@ export function ConfigProvider({ children }: { children: ComponentChildren }) {
     getConfig().then(setConfig).catch(() => {
       // Fail-closed: if the config fetch errors, render with all flags off.
       // Better to hide an opt-in feature than to leak it on a degraded server.
-      setConfig({ features: { ferber: false } });
+      setConfig({ features: { ferber: false, chair: false } });
     });
   }, []);
 

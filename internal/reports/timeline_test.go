@@ -484,6 +484,8 @@ func TestEveryStateClassified(t *testing.T) {
 		domain.Poop:        true,
 		domain.Learning:    true, // Ferber: awake in crib, not sleep (spec §3.8)
 		domain.CheckIn:     true, // Ferber: parent in the room, not sleep (spec §3.8)
+		domain.Chair:       true, // Chair: awake in crib, parent sitting nearby
+
 		domain.DayAwake:    true, // day subgraph — never appears in night timelines
 		domain.DayFeeding:  true,
 		domain.DaySleeping: true,

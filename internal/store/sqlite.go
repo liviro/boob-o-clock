@@ -49,7 +49,8 @@ const sessionsTableDDL = `CREATE TABLE IF NOT EXISTS sessions (
 	ended_at TEXT,
 	created_at TEXT NOT NULL,
 	ferber_enabled INTEGER NOT NULL DEFAULT 0,
-	ferber_night_number INTEGER
+	ferber_night_number INTEGER,
+	chair_enabled INTEGER NOT NULL DEFAULT 0
 )`
 
 // Indexing a constant expression rather than ended_at is deliberate: SQLite
@@ -87,6 +88,10 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if sessionsExists {
+		// Idempotent column adds for installs that pre-date a column.
+		if err := addColumnIfMissing(s.db, "sessions", "chair_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
 		_, err := s.db.Exec(`PRAGMA foreign_keys = ON`)
 		return err
 	}
@@ -190,6 +195,35 @@ func (s *Store) migrateLegacy() error {
 	return nil
 }
 
+// addColumnIfMissing adds a column to a table only if it does not already
+// exist. Idempotent across restarts. Used to evolve the sessions schema
+// additively without forcing a full migration dance.
+func addColumnIfMissing(db *sql.DB, table, column, ddl string) error {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return fmt.Errorf("pragma table_info(%s): %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("scan table_info(%s): %w", table, err)
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iter table_info(%s): %w", table, err)
+	}
+	if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, ddl)); err != nil {
+		return fmt.Errorf("add column %s.%s: %w", table, column, err)
+	}
+	return nil
+}
+
 // tableExists reports whether a table by the given name exists in the DB.
 func tableExists(db *sql.DB, name string) (bool, error) {
 	var got string
@@ -207,9 +241,11 @@ func tableExists(db *sql.DB, name string) (bool, error) {
 
 // --- session mutators ---
 
-// CreateSession inserts a new session row. ferberEnabled only meaningful when
-// kind == SessionKindNight; callers must pass false (and a zero number) for day.
-func (s *Store) CreateSession(kind domain.SessionKind, startedAt time.Time, ferberEnabled bool, ferberNightNumber int) (*domain.Session, error) {
+// CreateSession inserts a new session row. ferberEnabled / chairEnabled only
+// meaningful when kind == SessionKindNight; callers must pass false (and a
+// zero ferber number) for day. ferberEnabled and chairEnabled are mutually
+// exclusive — at most one is true on any session (handler-validated).
+func (s *Store) CreateSession(kind domain.SessionKind, startedAt time.Time, ferberEnabled bool, ferberNightNumber int, chairEnabled bool) (*domain.Session, error) {
 	now := time.Now()
 	var ferberNumArg any
 	var ferberNumPtr *int
@@ -220,13 +256,17 @@ func (s *Store) CreateSession(kind domain.SessionKind, startedAt time.Time, ferb
 		ferberNumPtr = &n
 		ferberEnabledInt = 1
 	}
+	chairEnabledInt := 0
+	if chairEnabled {
+		chairEnabledInt = 1
+	}
 
 	result, err := s.db.Exec(
-		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number, chair_enabled)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		string(kind),
 		startedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
-		ferberEnabledInt, ferberNumArg,
+		ferberEnabledInt, ferberNumArg, chairEnabledInt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert session: %w", err)
@@ -243,6 +283,7 @@ func (s *Store) CreateSession(kind domain.SessionKind, startedAt time.Time, ferb
 		CreatedAt:         now,
 		FerberEnabled:     ferberEnabled,
 		FerberNightNumber: ferberNumPtr,
+		ChairEnabled:      chairEnabled,
 	}, nil
 }
 
@@ -261,6 +302,7 @@ func (s *Store) StartNewSession(
 	kind domain.SessionKind,
 	ferberEnabled bool,
 	ferberNightNumber int,
+	chairEnabled bool,
 	startEvent *domain.Event,
 ) (*domain.Session, error) {
 	tx, err := s.db.Begin()
@@ -290,12 +332,16 @@ func (s *Store) StartNewSession(
 		ferberNumPtr = &n
 		ferberEnabledInt = 1
 	}
+	chairEnabledInt := 0
+	if chairEnabled {
+		chairEnabledInt = 1
+	}
 
 	res, err := tx.Exec(
-		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO sessions (kind, started_at, created_at, ferber_enabled, ferber_night_number, chair_enabled)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		string(kind), ts, now.Format(time.RFC3339Nano),
-		ferberEnabledInt, ferberNumArg,
+		ferberEnabledInt, ferberNumArg, chairEnabledInt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("start session: insert session: %w", err)
@@ -345,6 +391,7 @@ func (s *Store) StartNewSession(
 		CreatedAt:         now,
 		FerberEnabled:     ferberEnabled,
 		FerberNightNumber: ferberNumPtr,
+		ChairEnabled:      chairEnabled,
 	}, nil
 }
 
@@ -479,7 +526,7 @@ func (s *Store) PopEvent(sessionID int64) (*domain.Event, error) {
 
 // --- session queries ---
 
-const sessionColumns = `id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number`
+const sessionColumns = `id, kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number, chair_enabled`
 
 func (s *Store) CurrentSession() (*domain.Session, []domain.Event, error) {
 	session, err := s.scanSession(
@@ -745,10 +792,10 @@ func (s *Store) scanSession(row scanner) (*domain.Session, error) {
 	var sess domain.Session
 	var kindStr, startedAt, createdAt string
 	var endedAt sql.NullString
-	var ferberEnabled int
+	var ferberEnabled, chairEnabled int
 	var ferberNightNumber sql.NullInt64
 
-	if err := row.Scan(&sess.ID, &kindStr, &startedAt, &endedAt, &createdAt, &ferberEnabled, &ferberNightNumber); err != nil {
+	if err := row.Scan(&sess.ID, &kindStr, &startedAt, &endedAt, &createdAt, &ferberEnabled, &ferberNightNumber, &chairEnabled); err != nil {
 		return nil, err
 	}
 	sess.Kind = domain.SessionKind(kindStr)
@@ -773,6 +820,7 @@ func (s *Store) scanSession(row scanner) (*domain.Session, error) {
 		v := int(ferberNightNumber.Int64)
 		sess.FerberNightNumber = &v
 	}
+	sess.ChairEnabled = chairEnabled == 1
 	return &sess, nil
 }
 

@@ -13,6 +13,7 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   poop:              { icon: '💩', label: 'Diaper Change' },
   learning:          { icon: '🌱', label: 'Learning' },
   check_in:          { icon: '👣', label: 'Checking In' },
+  chair:             { icon: '🪑', label: 'Chair' },
   // Day subgraph
   day_awake:         { icon: '👀', label: 'Awake' },
   day_feeding:       { icon: '🍼', label: 'Feeding' },
@@ -65,6 +66,9 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   check_in:               { icon: '👣', label: 'Check in',            cls: 'primary' },
   end_check_in:           { icon: '🌱', label: 'Resume learning',     cls: '' },
   exit_ferber:            { icon: '🏳️', label: 'Give up',            cls: 'danger' },
+  // Chair.
+  sit_chair:              { icon: '🪑', label: 'Sit in chair',        cls: 'full-width' },
+  exit_chair:             { icon: '🏳️', label: 'Give up',            cls: 'danger' },
 };
 
 /** Get single-line label for an action */
@@ -152,6 +156,8 @@ export const STATE_COLORS: Record<string, string> = {
   poop: '#8a6030',
   learning: '#5a8060',
   check_in: '#888888',
+  chair: '#9a5a7a',
+
   // Day subgraph. Awake/feeding/poop reuse night colors so a 24h timeline
   // bar shows visually continuous AWAKE / feeding spans across chain
   // boundaries. DaySleeping gets a distinct teal to separate naps from

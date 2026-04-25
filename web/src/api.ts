@@ -18,6 +18,7 @@ export type State =
   | 'poop'
   | 'learning'
   | 'check_in'
+  | 'chair'
   // Day subgraph
   | 'day_awake'
   | 'day_feeding'
@@ -60,11 +61,14 @@ export interface SessionResponse {
   };
   // Present whenever start_night is a valid action: night_off AND day_awake.
   suggestFerberNight?: number;
+  chairEnabled?: boolean;
+  suggestChair?: boolean;
 }
 
 export interface ServerConfig {
   features: {
     ferber: boolean;
+    chair: boolean;
   };
 }
 
@@ -77,6 +81,7 @@ export interface SessionMeta {
   endedAt?: string;
   ferberEnabled?: boolean;
   ferberNightNumber?: number | null;
+  chairEnabled?: boolean;
 }
 
 export interface DaySegment {
@@ -216,15 +221,30 @@ export async function postEvent(
   return resp.json();
 }
 
+// NightModeChoice is the picker's discriminated-union output. Mutually
+// exclusive by construction: a single mode value carries any mode-specific
+// data (e.g. ferber nightNumber), so the picker can't emit "both modes set".
+export type NightModeChoice =
+  | { mode: 'plain' }
+  | { mode: 'ferber'; nightNumber: number }
+  | { mode: 'chair' };
+
 export interface StartSessionConfig {
   kind: SessionKind;
-  ferber?: { nightNumber: number };  // only valid when kind === 'night'
+  // Only meaningful when kind === 'night'. Defaults to plain when omitted.
+  choice?: NightModeChoice;
   timestamp?: Date;
 }
 
 export async function postStartSession(config: StartSessionConfig): Promise<SessionResponse> {
   const body: Record<string, unknown> = { kind: config.kind };
-  if (config.ferber) body.ferber = config.ferber;
+  if (config.kind === 'night' && config.choice) {
+    if (config.choice.mode === 'ferber') {
+      body.ferber = { nightNumber: config.choice.nightNumber };
+    } else if (config.choice.mode === 'chair') {
+      body.chair = true;
+    }
+  }
   if (config.timestamp) body.timestamp = toLocalISO(config.timestamp);
 
   const resp = await checkResponse(await fetch(`${API}/session/start`, {

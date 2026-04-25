@@ -113,7 +113,7 @@ function cardKey(c: CycleSummary, idx: number): string {
 }
 
 function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => void }) {
-  const ferberVisible = useConfig().features.ferber;
+  const features = useConfig().features;
   const anchor = cycle.day?.startedAt ?? cycle.night?.startedAt;
   if (!anchor) return null;
   const date = new Date(anchor);
@@ -123,12 +123,17 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
     : '';
   const day = cycle.stats.day;
   const night = cycle.stats.night;
-  const isFerber = ferberVisible && !!cycle.night?.ferberEnabled;
+  const isFerber = features.ferber && !!cycle.night?.ferberEnabled;
+  const isChair = features.chair && !!cycle.night?.chairEnabled;
 
   return (
     <div class="night-card clickable" onClick={onClick}>
       <h3>
-        <span>{dateStr}{isFerber && <span class="ferber-badge" title={`Night ${cycle.night?.ferberNightNumber ?? ''}`}>🌱</span>}</span>
+        <span>
+          {dateStr}
+          {isFerber && <span class="ferber-badge" title={`Night ${cycle.night?.ferberNightNumber ?? ''}`}>🌱</span>}
+          {isChair && <span class="chair-badge" title="Chair night">🪑</span>}
+        </span>
         <span>{timeStr}</span>
       </h3>
       {day && (
@@ -163,11 +168,16 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
 // --- Trends view ---
 
 function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
-  const ferberVisible = useConfig().features.ferber;
-  // Spread at each chart so we don't copy these two props 10 times.
-  const ferberProps = ferberVisible
-    ? { highlightFerber: true, isFerber: (c: CycleSummary) => !!c.night?.ferberEnabled }
-    : {};
+  const features = useConfig().features;
+  // Spread at each chart so we don't copy these props on every chart.
+  const modeProps = {
+    ...(features.ferber
+      ? { highlightFerber: true, isFerber: (c: CycleSummary) => !!c.night?.ferberEnabled }
+      : {}),
+    ...(features.chair
+      ? { highlightChair: true, isChair: (c: CycleSummary) => !!c.night?.chairEnabled }
+      : {}),
+  };
   // Trends are indexed oldest → newest for line charts; the cycles list is
   // newest-first, so reverse.
   const chronological = [...cycles].reverse();
@@ -193,7 +203,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
         title="Feed Times"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <NightHourChart
@@ -203,7 +213,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getAvgHour={c => bedtimeAvgByCycle.get(c) ?? null}
         color="#6a9aff"
         title="Real Bedtime"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -216,7 +226,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Nap Duration"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -229,7 +239,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Longest Sleep Block (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -242,7 +252,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Sleep (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -254,7 +264,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Wake Count (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -266,7 +276,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Feed Count (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -279,7 +289,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Feed Time (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
       <TrendChart
@@ -291,10 +301,10 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         ]}
         formatValue={fmtDur}
         title="Feed Time by Side (night)"
-        {...ferberProps}
+        {...modeProps}
       />
 
-      {ferberVisible && (
+      {features.ferber && (
         <>
           {chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
             <TrendChart

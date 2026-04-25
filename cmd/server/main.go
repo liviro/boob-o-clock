@@ -23,10 +23,14 @@ func main() {
 		addr = ":" + p
 	}
 	dbPath := "boob-o-clock.db"
-	cfg := api.Config{FerberEnabled: os.Getenv("FERBER_ENABLED") == "true"}
+	cfg := api.Config{
+		FerberEnabled: os.Getenv("FERBER_ENABLED") == "true",
+		ChairEnabled:  os.Getenv("CHAIR_ENABLED") == "true",
+	}
 	flag.StringVar(&addr, "addr", addr, "listen address")
 	flag.StringVar(&dbPath, "db", dbPath, "SQLite database path")
 	flag.BoolVar(&cfg.FerberEnabled, "ferber", cfg.FerberEnabled, "enable Ferber sleep-training mode")
+	flag.BoolVar(&cfg.ChairEnabled, "chair", cfg.ChairEnabled, "enable Chair sleep-training mode")
 	flag.Parse()
 
 	s, err := store.New(dbPath)

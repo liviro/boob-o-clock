@@ -75,7 +75,7 @@ func TestCreateSessionNight(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, err := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, err := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestCreateSessionDay(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, err := s.CreateSession(domain.SessionKindDay, now, false, 0)
+	sess, err := s.CreateSession(domain.SessionKindDay, now, false, 0, false)
 	if err != nil {
 		t.Fatalf("CreateSession day: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestCreateSessionDay(t *testing.T) {
 func TestCreateNightWithFerber(t *testing.T) {
 	s := newTestStore(t)
 	started := time.Now()
-	sess, err := s.CreateSession(domain.SessionKindNight, started, true, 3)
+	sess, err := s.CreateSession(domain.SessionKindNight, started, true, 3, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -132,11 +132,34 @@ func TestCreateNightWithFerber(t *testing.T) {
 	}
 }
 
+func TestCreateNightWithChair(t *testing.T) {
+	s := newTestStore(t)
+	started := time.Now()
+	sess, err := s.CreateSession(domain.SessionKindNight, started, false, 0, true)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if !sess.ChairEnabled {
+		t.Error("ChairEnabled = false, want true")
+	}
+	if sess.FerberEnabled {
+		t.Error("FerberEnabled should be false on a chair session")
+	}
+
+	roundTrip, _, err := s.CurrentSession()
+	if err != nil {
+		t.Fatalf("CurrentSession: %v", err)
+	}
+	if roundTrip == nil || !roundTrip.ChairEnabled {
+		t.Errorf("round-trip lost ChairEnabled: %+v", roundTrip)
+	}
+}
+
 func TestEndSession(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	endTime := now.Add(8 * time.Hour)
 
 	if err := s.EndSession(sess.ID, endTime); err != nil {
@@ -157,13 +180,13 @@ func TestOneOpenSessionInvariant(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 
 	// First open session is fine.
-	if _, err := s.CreateSession(domain.SessionKindNight, now, false, 0); err != nil {
+	if _, err := s.CreateSession(domain.SessionKindNight, now, false, 0, false); err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
 
 	// Second open session (without closing the first) must fail via the
 	// unique partial index on ended_at.
-	if _, err := s.CreateSession(domain.SessionKindDay, now.Add(time.Hour), false, 0); err == nil {
+	if _, err := s.CreateSession(domain.SessionKindDay, now.Add(time.Hour), false, 0, false); err == nil {
 		t.Error("expected unique constraint error on second open session, got none")
 	}
 }
@@ -178,9 +201,9 @@ func TestLastFeedStart(t *testing.T) {
 
 	now := time.Now().Truncate(time.Millisecond)
 	// Two sessions: a historical night with feeds, a current day with a later feed.
-	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-10*time.Hour), false, 0)
+	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-10*time.Hour), false, 0, false)
 	s.EndSession(night.ID, now.Add(-4*time.Hour))
-	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-4*time.Hour), false, 0)
+	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-4*time.Hour), false, 0, false)
 
 	nightFeed := now.Add(-8 * time.Hour)
 	if err := s.AddEvent(&domain.Event{
@@ -222,9 +245,9 @@ func TestLastWakeFromSleep(t *testing.T) {
 	}
 
 	now := time.Now().Truncate(time.Millisecond)
-	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-12*time.Hour), false, 0)
+	night, _ := s.CreateSession(domain.SessionKindNight, now.Add(-12*time.Hour), false, 0, false)
 	s.EndSession(night.ID, now.Add(-6*time.Hour))
-	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-6*time.Hour), false, 0)
+	day, _ := s.CreateSession(domain.SessionKindDay, now.Add(-6*time.Hour), false, 0, false)
 
 	// Night sleep (transfer_success → sleeping_crib). Not a wake; must be ignored.
 	if err := s.AddEvent(&domain.Event{
@@ -269,7 +292,7 @@ func TestAddEventAndGetSession(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 
 	evt := &domain.Event{
 		SessionID: sess.ID,
@@ -322,7 +345,7 @@ func TestPopEvent(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 
 	s.AddEvent(&domain.Event{
 		SessionID: sess.ID, FromState: domain.NightOff,
@@ -353,7 +376,7 @@ func TestPopEventEmpty(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 
 	if _, err := s.PopEvent(sess.ID); err == nil {
 		t.Error("PopEvent on empty session should return error")
@@ -373,7 +396,7 @@ func TestCurrentSession(t *testing.T) {
 	}
 
 	now := time.Now().Truncate(time.Millisecond)
-	opened, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	opened, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	s.AddEvent(&domain.Event{
 		SessionID: opened.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -404,13 +427,13 @@ func TestListSessions(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	s.EndSession(n1.ID, now.Add(8*time.Hour))
 
-	d1, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0)
+	d1, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0, false)
 	s.EndSession(d1.ID, now.Add(22*time.Hour))
 
-	n2, _ := s.CreateSession(domain.SessionKindNight, now.Add(22*time.Hour), false, 0)
+	n2, _ := s.CreateSession(domain.SessionKindNight, now.Add(22*time.Hour), false, 0, false)
 	s.EndSession(n2.ID, now.Add(32*time.Hour))
 
 	// Unfiltered: all three.
@@ -445,7 +468,7 @@ func TestGetEventsForSessions(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	n1, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	s.AddEvent(&domain.Event{
 		SessionID: n1.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -456,7 +479,7 @@ func TestGetEventsForSessions(t *testing.T) {
 	})
 	s.EndSession(n1.ID, now.Add(8*time.Hour))
 
-	n2, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0)
+	n2, _ := s.CreateSession(domain.SessionKindDay, now.Add(8*time.Hour), false, 0, false)
 	s.AddEvent(&domain.Event{
 		SessionID: n2.ID, FromState: domain.Awake,
 		Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: now.Add(8 * time.Hour),
@@ -486,7 +509,7 @@ func TestDeleteSession(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Now().Truncate(time.Millisecond)
 
-	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0)
+	sess, _ := s.CreateSession(domain.SessionKindNight, now, false, 0, false)
 	s.AddEvent(&domain.Event{
 		SessionID: sess.ID, FromState: domain.NightOff,
 		Action: domain.StartNight, ToState: domain.Awake, Timestamp: now,
@@ -518,9 +541,9 @@ func TestLastSession(t *testing.T) {
 	}
 
 	// Create two nights.
-	_, _ = s.CreateSession(domain.SessionKindNight, time.Now().Add(-48*time.Hour), false, 0)
+	_, _ = s.CreateSession(domain.SessionKindNight, time.Now().Add(-48*time.Hour), false, 0, false)
 	s.EndSession(1, time.Now().Add(-40*time.Hour))
-	n2, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), true, 2)
+	n2, _ := s.CreateSession(domain.SessionKindNight, time.Now().Add(-24*time.Hour), true, 2, false)
 	_ = s.EndSession(n2.ID, time.Now().Add(-23*time.Hour))
 
 	got, err = s.LastSession(domain.SessionKindNight)
@@ -539,11 +562,11 @@ func TestPrevSessionBeforeAndNextSessionAfter(t *testing.T) {
 	s := newTestStore(t)
 	t0 := time.Now().Truncate(time.Millisecond)
 
-	n1, _ := s.CreateSession(domain.SessionKindNight, t0, false, 0)
+	n1, _ := s.CreateSession(domain.SessionKindNight, t0, false, 0, false)
 	s.EndSession(n1.ID, t0.Add(8*time.Hour))
-	d1, _ := s.CreateSession(domain.SessionKindDay, t0.Add(8*time.Hour), false, 0)
+	d1, _ := s.CreateSession(domain.SessionKindDay, t0.Add(8*time.Hour), false, 0, false)
 	s.EndSession(d1.ID, t0.Add(22*time.Hour))
-	n2, _ := s.CreateSession(domain.SessionKindNight, t0.Add(22*time.Hour), false, 0)
+	n2, _ := s.CreateSession(domain.SessionKindNight, t0.Add(22*time.Hour), false, 0, false)
 	s.EndSession(n2.ID, t0.Add(30*time.Hour))
 
 	// Prev of n1 is nil (first session).
