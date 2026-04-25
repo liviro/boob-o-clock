@@ -23,7 +23,7 @@ The app models your day and night as a single state machine. Depending on the cu
 - **Self-soothing** — baby put down awake or stirring in crib, settling without intervention.
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
-- **Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. We tried it; the method was rough on our household, so we ship it disabled. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
+- **Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. I tried it — the feature worked fine; the method, not so much. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
 
 ### Day
 - **Day feeds** — same feed tracking as night, with switch-breast suggestion based on the last side.
