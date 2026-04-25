@@ -5,6 +5,7 @@ import "net/http"
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /api/config", h.GetConfig)
 	mux.HandleFunc("GET /api/session/current", h.GetCurrentSession)
 	mux.HandleFunc("POST /api/session/start", h.StartSession)
 	mux.HandleFunc("POST /api/session/event", h.PostEvent)

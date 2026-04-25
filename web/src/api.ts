@@ -173,6 +173,12 @@ function toLocalISO(d: Date): string {
   return `${fmtLocalYMDHM(d)}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
 }
 
+export interface ServerConfig {
+  features: {
+    ferber: boolean;
+  };
+}
+
 async function checkResponse(resp: Response): Promise<Response> {
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -182,6 +188,11 @@ async function checkResponse(resp: Response): Promise<Response> {
 }
 
 // --- fetch functions ---
+
+export async function getConfig(): Promise<ServerConfig> {
+  const resp = await checkResponse(await fetch(`${API}/config`));
+  return resp.json();
+}
 
 export async function getCurrentSession(): Promise<SessionResponse> {
   const resp = await checkResponse(await fetch(`${API}/session/current`));

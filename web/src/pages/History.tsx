@@ -7,6 +7,7 @@ import { TrendChart } from '../components/TrendChart';
 import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
+import { useConfig } from '../hooks/useConfig';
 
 type View = 'cycles' | 'trends';
 
@@ -112,6 +113,7 @@ function cardKey(c: CycleSummary, idx: number): string {
 }
 
 function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => void }) {
+  const ferberVisible = useConfig().features.ferber;
   const anchor = cycle.day?.startedAt ?? cycle.night?.startedAt;
   if (!anchor) return null;
   const date = new Date(anchor);
@@ -121,7 +123,7 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
     : '';
   const day = cycle.stats.day;
   const night = cycle.stats.night;
-  const isFerber = !!cycle.night?.ferberEnabled;
+  const isFerber = ferberVisible && !!cycle.night?.ferberEnabled;
 
   return (
     <div class="night-card clickable" onClick={onClick}>
@@ -161,6 +163,7 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
 // --- Trends view ---
 
 function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
+  const ferberVisible = useConfig().features.ferber;
   // Trends are indexed oldest → newest for line charts; the cycles list is
   // newest-first, so reverse.
   const chronological = [...cycles].reverse();
@@ -186,7 +189,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
         title="Feed Times"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -197,7 +200,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getAvgHour={c => bedtimeAvgByCycle.get(c) ?? null}
         color="#6a9aff"
         title="Real Bedtime"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -211,7 +214,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Nap Duration"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -225,7 +228,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Longest Sleep Block (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -239,7 +242,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Sleep (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -252,7 +255,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Wake Count (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -265,7 +268,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Feed Count (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -279,7 +282,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Feed Time (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
@@ -292,11 +295,11 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         ]}
         formatValue={fmtDur}
         title="Feed Time by Side (night)"
-        highlightFerber
+        highlightFerber={ferberVisible}
         isFerber={c => !!c.night?.ferberEnabled}
       />
 
-      {chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
+      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
         <TrendChart
           points={chronological.filter(c => c.stats.night?.ferber?.cryTime != null)}
           getDate={c => c.night?.startedAt ?? c.day!.startedAt}
@@ -309,7 +312,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           title="🌱 Cry time per night"
         />
       )}
-      {chronological.some(c => c.stats.night?.ferber?.checkIns != null) && (
+      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.checkIns != null) && (
         <TrendChart
           points={chronological.filter(c => c.stats.night?.ferber?.checkIns != null)}
           getDate={c => c.night?.startedAt ?? c.day!.startedAt}
@@ -322,7 +325,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           title="🌱 Check-ins per night"
         />
       )}
-      {chronological.some(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0) && (
+      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0) && (
         <TrendChart
           points={chronological.filter(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0)}
           getDate={c => c.night?.startedAt ?? c.day!.startedAt}
@@ -374,6 +377,7 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
 // --- Cycle detail view ---
 
 function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
+  const ferberVisible = useConfig().features.ferber;
   const { day, night } = detail.cycle;
   const anchor = day?.startedAt ?? night?.startedAt;
   const date = anchor ? new Date(anchor) : new Date();
@@ -421,7 +425,7 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
               <Stat value={fmtDur(nightStats.totalFeedTime)} label="Feed Time" />
               <Stat value={fmtDur(nightStats.totalSleepTime)} label="Total Sleep" />
             </div>
-            {nightStats.ferber && night?.ferberEnabled && (
+            {ferberVisible && nightStats.ferber && night?.ferberEnabled && (
               <div class="ferber-stats">
                 <div class="ferber-stats-header">🌱 Night {night.ferberNightNumber}</div>
                 <div class="night-stats">
