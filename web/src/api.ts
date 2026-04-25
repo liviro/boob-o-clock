@@ -62,6 +62,12 @@ export interface SessionResponse {
   suggestFerberNight?: number;
 }
 
+export interface ServerConfig {
+  features: {
+    ferber: boolean;
+  };
+}
+
 // --- cycle types ---
 
 export interface SessionMeta {
@@ -171,12 +177,6 @@ function toLocalISO(d: Date): string {
   const hh = pad(Math.floor(Math.abs(off) / 60));
   const mm = pad(Math.abs(off) % 60);
   return `${fmtLocalYMDHM(d)}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
-}
-
-export interface ServerConfig {
-  features: {
-    ferber: boolean;
-  };
 }
 
 async function checkResponse(resp: Response): Promise<Response> {
