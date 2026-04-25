@@ -164,6 +164,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
 
 function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
   const ferberVisible = useConfig().features.ferber;
+  // Spread at each chart so we don't copy these two props 10 times.
+  const ferberProps = ferberVisible
+    ? { highlightFerber: true, isFerber: (c: CycleSummary) => !!c.night?.ferberEnabled }
+    : {};
   // Trends are indexed oldest → newest for line charts; the cycles list is
   // newest-first, so reverse.
   const chronological = [...cycles].reverse();
@@ -189,8 +193,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
         title="Feed Times"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <NightHourChart
@@ -200,8 +203,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getAvgHour={c => bedtimeAvgByCycle.get(c) ?? null}
         color="#6a9aff"
         title="Real Bedtime"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -214,8 +216,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Nap Duration"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -228,8 +229,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Longest Sleep Block (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -242,8 +242,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Sleep (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -255,8 +254,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Wake Count (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -268,8 +266,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={v => String(Math.round(v))}
         title="Feed Count (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -282,8 +279,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         }]}
         formatValue={fmtDur}
         title="Total Feed Time (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
       <TrendChart
@@ -295,48 +291,51 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         ]}
         formatValue={fmtDur}
         title="Feed Time by Side (night)"
-        highlightFerber={ferberVisible}
-        isFerber={c => !!c.night?.ferberEnabled}
+        {...ferberProps}
       />
 
-      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
-        <TrendChart
-          points={chronological.filter(c => c.stats.night?.ferber?.cryTime != null)}
-          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-          series={[{
-            getValue: c => nsToMinutes(c.stats.night!.ferber!.cryTime),
-            getAvg: () => null,
-            color: '#ff5a8a',
-          }]}
-          formatValue={v => `${Math.round(v)}m`}
-          title="🌱 Cry time per night"
-        />
-      )}
-      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.checkIns != null) && (
-        <TrendChart
-          points={chronological.filter(c => c.stats.night?.ferber?.checkIns != null)}
-          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-          series={[{
-            getValue: c => c.stats.night!.ferber!.checkIns,
-            getAvg: () => null,
-            color: '#a05aff',
-          }]}
-          formatValue={v => String(Math.round(v))}
-          title="🌱 Check-ins per night"
-        />
-      )}
-      {ferberVisible && chronological.some(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0) && (
-        <TrendChart
-          points={chronological.filter(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0)}
-          getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-          series={[{
-            getValue: c => nsToMinutes(c.stats.night!.ferber!.avgTimeToSettle),
-            getAvg: () => null,
-            color: '#5affaa',
-          }]}
-          formatValue={v => `${Math.round(v)}m`}
-          title="🌱 Avg time to settle"
-        />
+      {ferberVisible && (
+        <>
+          {chronological.some(c => c.stats.night?.ferber?.cryTime != null) && (
+            <TrendChart
+              points={chronological.filter(c => c.stats.night?.ferber?.cryTime != null)}
+              getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+              series={[{
+                getValue: c => nsToMinutes(c.stats.night!.ferber!.cryTime),
+                getAvg: () => null,
+                color: '#ff5a8a',
+              }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="🌱 Cry time per night"
+            />
+          )}
+          {chronological.some(c => c.stats.night?.ferber?.checkIns != null) && (
+            <TrendChart
+              points={chronological.filter(c => c.stats.night?.ferber?.checkIns != null)}
+              getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+              series={[{
+                getValue: c => c.stats.night!.ferber!.checkIns,
+                getAvg: () => null,
+                color: '#a05aff',
+              }]}
+              formatValue={v => String(Math.round(v))}
+              title="🌱 Check-ins per night"
+            />
+          )}
+          {chronological.some(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0) && (
+            <TrendChart
+              points={chronological.filter(c => c.stats.night?.ferber?.avgTimeToSettle != null && c.stats.night.ferber.avgTimeToSettle > 0)}
+              getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+              series={[{
+                getValue: c => nsToMinutes(c.stats.night!.ferber!.avgTimeToSettle),
+                getAvg: () => null,
+                color: '#5affaa',
+              }]}
+              formatValue={v => `${Math.round(v)}m`}
+              title="🌱 Avg time to settle"
+            />
+          )}
+        </>
       )}
     </div>
   );

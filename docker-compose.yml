@@ -7,9 +7,7 @@ services:
     volumes:
       - boc-data:/data
     environment:
-      # Opt-in sleep-training modes. Default off; set "true" to expose the UI
-      # (Start Night toggle + history charts + detail stats). Flip and
-      # `docker compose up -d` to apply — no image rebuild needed.
+      # Sleep-training mode flag; see README "Configuration".
       FERBER_ENABLED: "false"
 
 volumes:

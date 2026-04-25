@@ -87,9 +87,8 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
       return;
     }
 
-    // Start-night routes through the Ferber-config modal only when Ferber
-    // is enabled — otherwise the modal would ask no question, so we fall
-    // through to the default chain-advance path (same as start_day).
+    // With Ferber off the modal has no question to ask; fall through to
+    // the default chain-advance path (same as start_day).
     if (action === 'start_night' && ferberVisible) {
       setModal({ type: 'startNight', wantsTimePicker });
       return;

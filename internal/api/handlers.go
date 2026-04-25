@@ -138,9 +138,7 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 	}
 
 	// Suggest Ferber night wherever start_night is a valid action: that's
-	// NightOff (first-start) AND DayAwake (chain advance at bedtime). Skip
-	// entirely when the feature flag is off — the client should never see a
-	// Ferber suggestion from a server that refuses Ferber starts.
+	// NightOff (first-start) AND DayAwake (chain advance at bedtime).
 	if h.cfg.FerberEnabled && (state == domain.NightOff || state == domain.DayAwake) {
 		last, err := h.store.LastSession(domain.SessionKindNight)
 		if err != nil {
