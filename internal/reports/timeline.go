@@ -16,19 +16,20 @@ type TimelineEntry struct {
 
 // NightStats summarizes a single night.
 type NightStats struct {
-	NightDuration     time.Duration   `json:"nightDuration"`
-	TotalSleepTime    time.Duration   `json:"totalSleepTime"`
-	TotalFeedTime     time.Duration   `json:"totalFeedTime"`
-	FeedTimeLeft      time.Duration   `json:"feedTimeLeft"`
-	FeedTimeRight     time.Duration   `json:"feedTimeRight"`
-	TotalAwakeTime    time.Duration   `json:"totalAwakeTime"`
-	FeedCount         int             `json:"feedCount"`
-	WakeCount         int             `json:"wakeCount"`
-	LongestSleepBlock time.Duration   `json:"longestSleepBlock"`
-	SleepBlocks       []time.Duration `json:"sleepBlocks"`
-	FeedTimes         []time.Time     `json:"feedTimes"`
-	RealBedtime       *time.Time      `json:"realBedtime,omitempty"`
-	Ferber            *FerberStats    `json:"ferber,omitempty"`
+	NightDuration      time.Duration   `json:"nightDuration"`
+	TotalSleepTime     time.Duration   `json:"totalSleepTime"`
+	TotalFeedTime      time.Duration   `json:"totalFeedTime"`
+	IntraSleepFeedTime time.Duration   `json:"intraSleepFeedTime"`
+	FeedTimeLeft       time.Duration   `json:"feedTimeLeft"`
+	FeedTimeRight      time.Duration   `json:"feedTimeRight"`
+	TotalAwakeTime     time.Duration   `json:"totalAwakeTime"`
+	FeedCount          int             `json:"feedCount"`
+	WakeCount          int             `json:"wakeCount"`
+	LongestSleepBlock  time.Duration   `json:"longestSleepBlock"`
+	SleepBlocks        []time.Duration `json:"sleepBlocks"`
+	FeedTimes          []time.Time     `json:"feedTimes"`
+	RealBedtime        *time.Time      `json:"realBedtime,omitempty"`
+	Ferber             *FerberStats    `json:"ferber,omitempty"`
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
@@ -150,7 +151,11 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 	}
 
 	// Accumulate durations from timeline
+	var seenIndependentSleep bool
 	for _, entry := range timeline {
+		if independentSleepStates[entry.State] {
+			seenIndependentSleep = true
+		}
 		if sleepStates[entry.State] {
 			stats.TotalSleepTime += entry.Duration
 		}
@@ -168,6 +173,9 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 		}
 		if entry.State == domain.Feeding {
 			stats.TotalFeedTime += entry.Duration
+			if seenIndependentSleep {
+				stats.IntraSleepFeedTime += entry.Duration
+			}
 			switch entry.Metadata["breast"] {
 			case "L":
 				stats.FeedTimeLeft += entry.Duration

@@ -471,8 +471,12 @@ func TestAttachMovingAverages_InsufficientHistory(t *testing.T) {
 func TestAttachMovingAverages_Window3(t *testing.T) {
 	summaries := make([]CycleSummary, 5)
 	sleeps := []time.Duration{6 * time.Hour, 8 * time.Hour, 10 * time.Hour, 7 * time.Hour, 9 * time.Hour}
-	for i, s := range sleeps {
-		summaries[i] = CycleSummary{Stats: CycleStats{Night: &NightStats{TotalSleepTime: s}}}
+	intraSleepFeeds := []time.Duration{30 * time.Minute, 45 * time.Minute, 60 * time.Minute, 15 * time.Minute, 30 * time.Minute}
+	for i := range sleeps {
+		summaries[i] = CycleSummary{Stats: CycleStats{Night: &NightStats{
+			TotalSleepTime:     sleeps[i],
+			IntraSleepFeedTime: intraSleepFeeds[i],
+		}}}
 	}
 
 	AttachMovingAverages(summaries, 3)
@@ -489,6 +493,10 @@ func TestAttachMovingAverages_Window3(t *testing.T) {
 	}
 	if summaries[2].Avg.Night.TotalSleepTime != 8*time.Hour {
 		t.Errorf("cycle 2 avg TotalSleep = %v, want 8h", summaries[2].Avg.Night.TotalSleepTime)
+	}
+	// Index 2: avg intra-sleep feed time = (30+45+60)/3 = 45m.
+	if summaries[2].Avg.Night.IntraSleepFeedTime != 45*time.Minute {
+		t.Errorf("cycle 2 avg IntraSleepFeedTime = %v, want 45m", summaries[2].Avg.Night.IntraSleepFeedTime)
 	}
 	// Index 4: avg of sleeps[2..4] = (10+7+9)/3 = 26/3 ≈ 8h40m.
 	wantAvg4 := (10*time.Hour + 7*time.Hour + 9*time.Hour) / 3

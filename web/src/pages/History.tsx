@@ -4,6 +4,7 @@ import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
+import { ScatterChart } from '../components/ScatterChart';
 import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
@@ -204,7 +205,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
-        title="Feed Times"
+        title="Intra-sleep feed times"
         {...modeProps}
       />
 
@@ -277,7 +278,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           color: '#ffaa5a',
         }]}
         formatValue={v => String(Math.round(v))}
-        title="Feed Count (night)"
+        title="Intra-sleep feed count"
         {...modeProps}
       />
 
@@ -290,7 +291,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           color: '#ffaa5a',
         }]}
         formatValue={fmtDur}
-        title="Total Feed Time (night)"
+        title="Total night feed time"
         {...modeProps}
       />
 
@@ -302,8 +303,18 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           { getValue: c => c.stats.night?.feedTimeRight ?? 0, getAvg: c => c.avg?.night?.feedTimeRight ?? null, color: '#ff7a5a', label: 'Right' },
         ]}
         formatValue={fmtDur}
-        title="Feed Time by Side (night)"
+        title="Night feed by side"
         {...modeProps}
+      />
+
+      <ScatterChart
+        points={chronological.filter(c => c.stats.day != null && c.stats.night != null)}
+        getX={c => (c.stats.day?.dayTotalFeedTime ?? 0) + (c.stats.night?.totalFeedTime ?? 0) - (c.stats.night?.intraSleepFeedTime ?? 0)}
+        getY={c => c.stats.night?.intraSleepFeedTime ?? 0}
+        formatX={fmtDur}
+        formatY={fmtDur}
+        title="Intra-sleep feeding (Y) vs. other feeds in cycle (X)"
+        color="#c0b040"
       />
 
       {features.ferber && (

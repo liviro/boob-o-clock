@@ -93,6 +93,11 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("TotalFeedTime = %v, want 35m", stats.TotalFeedTime)
 	}
 
+	// Intra-sleep feed time: only the 15min feed at 01:00 (post first independent sleep at 21:25). Bedtime feed excluded.
+	if stats.IntraSleepFeedTime != 15*time.Minute {
+		t.Errorf("IntraSleepFeedTime = %v, want 15m", stats.IntraSleepFeedTime)
+	}
+
 	// Per-breast: L=20min (first feed), R=15min (second feed)
 	if stats.FeedTimeLeft != 20*time.Minute {
 		t.Errorf("FeedTimeLeft = %v, want 20m", stats.FeedTimeLeft)
@@ -884,4 +889,25 @@ func TestRealBedtimeViaTransferSuccessOnly(t *testing.T) {
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(16*time.Minute), "transfer_success as bedtime when block has no earlier asleep signal")
+}
+
+// Baby contact-naps the whole night (only SleepingOnMe, never crib/stroller).
+// IntraSleepFeedTime requires *independent* sleep as the boundary, so without
+// it the metric is 0 even though feeds happened.
+func TestIntraSleepFeedTime_NoIndependentSleep(t *testing.T) {
+	start := t0()
+	end := start.Add(6 * time.Hour)
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(3*time.Hour), breast("R")),
+		mkEvent(6, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(3*time.Hour+15*time.Minute), nil),
+		mkEvent(7, domain.SleepingOnMe, domain.Action("end_night"), domain.NightOff, end, nil),
+	}
+	stats, _ := computeBaseStats(events, start, end)
+	if stats.IntraSleepFeedTime != 0 {
+		t.Errorf("IntraSleepFeedTime = %v, want 0 (no independent-sleep boundary was crossed)", stats.IntraSleepFeedTime)
+	}
 }
