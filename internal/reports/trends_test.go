@@ -231,6 +231,36 @@ func TestWakeWindows_FeedsAndPoopDoNotBreak(t *testing.T) {
 
 // --- ComputeDayStats ---
 
+func TestComputeDayStats_DayDuration_Closed(t *testing.T) {
+	start := dayStart()                // 7am
+	end := start.Add(11 * time.Hour)   // 6pm
+	day := mkSession(1, domain.SessionKindDay, start, ptrTime(end))
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	if stats.DayDuration != 11*time.Hour {
+		t.Errorf("DayDuration = %v, want 11h (end - start for closed day)", stats.DayDuration)
+	}
+}
+
+// In-progress day clamps end to time.Now(). Tolerance covers test-execution slack.
+func TestComputeDayStats_DayDuration_InProgress(t *testing.T) {
+	start := time.Now().Add(-3 * time.Hour)
+	day := mkSession(1, domain.SessionKindDay, start, nil)
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	if stats.DayDuration < 3*time.Hour || stats.DayDuration > 3*time.Hour+time.Second {
+		t.Errorf("DayDuration = %v, want ~3h (in-progress, end clamps to now)", stats.DayDuration)
+	}
+}
+
 func TestComputeDayStats_NapDurations(t *testing.T) {
 	start := dayStart()
 	nap1Start := start.Add(2 * time.Hour)
@@ -285,6 +315,40 @@ func TestComputeDayStats_DayFeedCountIgnoresSwitchBreast(t *testing.T) {
 	if stats.DayFeedCount != 3 {
 		t.Errorf("DayFeedCount = %d, want 3 (three start_feed events; switch_breast does NOT count)", stats.DayFeedCount)
 	}
+	// Feed1 L 20m + Feed2 first half R 10m + Feed2 second half L 15m + Feed3 L 15m
+	// = L: 20+15+15 = 50m, R: 10m. Total 60m.
+	if stats.FeedTimeLeft != 50*time.Minute {
+		t.Errorf("FeedTimeLeft = %v, want 50m (20m feed1 + 15m feed2-after-switch + 15m feed3)", stats.FeedTimeLeft)
+	}
+	if stats.FeedTimeRight != 10*time.Minute {
+		t.Errorf("FeedTimeRight = %v, want 10m (feed2 first half before switch)", stats.FeedTimeRight)
+	}
+	if stats.DayTotalFeedTime != 60*time.Minute {
+		t.Errorf("DayTotalFeedTime = %v, want 60m (20+25+15)", stats.DayTotalFeedTime)
+	}
+}
+
+// In-progress day feed: end clamps to time.Now(), so the side accumulator
+// captures the elapsed time on the active side.
+func TestComputeDayStats_FeedSidesInProgress(t *testing.T) {
+	start := time.Now().Add(-2 * time.Hour)
+	feedStart := start.Add(30 * time.Minute) // feed started 1h30m ago
+	day := mkSession(1, domain.SessionKindDay, start, nil)
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+		mkEvent(2, domain.DayAwake, domain.StartFeed, domain.DayFeeding, feedStart, map[string]string{"breast": "L"}),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	// FeedTimeLeft ≈ 1h30m (allow 1s slack).
+	want := 90 * time.Minute
+	if stats.FeedTimeLeft < want || stats.FeedTimeLeft > want+time.Second {
+		t.Errorf("FeedTimeLeft = %v, want ~90m (open feed, clamps to now)", stats.FeedTimeLeft)
+	}
+	if stats.FeedTimeRight != 0 {
+		t.Errorf("FeedTimeRight = %v, want 0", stats.FeedTimeRight)
+	}
 }
 
 func TestComputeDayStats_FeedTimes(t *testing.T) {
@@ -312,6 +376,12 @@ func TestComputeDayStats_FeedTimes(t *testing.T) {
 	wantTotal := 20*time.Minute + 15*time.Minute
 	if stats.DayTotalFeedTime != wantTotal {
 		t.Errorf("DayTotalFeedTime = %v, want %v", stats.DayTotalFeedTime, wantTotal)
+	}
+	if stats.FeedTimeLeft != 20*time.Minute {
+		t.Errorf("FeedTimeLeft = %v, want 20m", stats.FeedTimeLeft)
+	}
+	if stats.FeedTimeRight != 15*time.Minute {
+		t.Errorf("FeedTimeRight = %v, want 15m", stats.FeedTimeRight)
 	}
 }
 
@@ -441,8 +511,12 @@ func TestAttachMovingAverages_InsufficientHistory(t *testing.T) {
 func TestAttachMovingAverages_Window3(t *testing.T) {
 	summaries := make([]CycleSummary, 5)
 	sleeps := []time.Duration{6 * time.Hour, 8 * time.Hour, 10 * time.Hour, 7 * time.Hour, 9 * time.Hour}
-	for i, s := range sleeps {
-		summaries[i] = CycleSummary{Stats: CycleStats{Night: &NightStats{TotalSleepTime: s}}}
+	intraSleepFeeds := []time.Duration{30 * time.Minute, 45 * time.Minute, 60 * time.Minute, 15 * time.Minute, 30 * time.Minute}
+	for i := range sleeps {
+		summaries[i] = CycleSummary{Stats: CycleStats{Night: &NightStats{
+			TotalSleepTime:     sleeps[i],
+			IntraSleepFeedTime: intraSleepFeeds[i],
+		}}}
 	}
 
 	AttachMovingAverages(summaries, 3)
@@ -460,6 +534,10 @@ func TestAttachMovingAverages_Window3(t *testing.T) {
 	if summaries[2].Avg.Night.TotalSleepTime != 8*time.Hour {
 		t.Errorf("cycle 2 avg TotalSleep = %v, want 8h", summaries[2].Avg.Night.TotalSleepTime)
 	}
+	// Index 2: avg intra-sleep feed time = (30+45+60)/3 = 45m.
+	if summaries[2].Avg.Night.IntraSleepFeedTime != 45*time.Minute {
+		t.Errorf("cycle 2 avg IntraSleepFeedTime = %v, want 45m", summaries[2].Avg.Night.IntraSleepFeedTime)
+	}
 	// Index 4: avg of sleeps[2..4] = (10+7+9)/3 = 26/3 ≈ 8h40m.
 	wantAvg4 := (10*time.Hour + 7*time.Hour + 9*time.Hour) / 3
 	if summaries[4].Avg.Night.TotalSleepTime != wantAvg4 {
@@ -472,9 +550,9 @@ func TestAttachMovingAverages_Window3(t *testing.T) {
 // non-nil halves, not by window.
 func TestAttachMovingAverages_MixedOrphans(t *testing.T) {
 	summaries := []CycleSummary{
-		{Stats: CycleStats{Day: &DayStats{NapCount: 2, TotalNapTime: 2 * time.Hour}}},
+		{Stats: CycleStats{Day: &DayStats{NapCount: 2, TotalNapTime: 2 * time.Hour, DayDuration: 11 * time.Hour, FeedTimeLeft: 30 * time.Minute, FeedTimeRight: 20 * time.Minute}}},
 		{Stats: CycleStats{Night: &NightStats{TotalSleepTime: 8 * time.Hour}}}, // orphan (no day)
-		{Stats: CycleStats{Day: &DayStats{NapCount: 4, TotalNapTime: 4 * time.Hour}}},
+		{Stats: CycleStats{Day: &DayStats{NapCount: 4, TotalNapTime: 4 * time.Hour, DayDuration: 13 * time.Hour, FeedTimeLeft: 50 * time.Minute, FeedTimeRight: 40 * time.Minute}}},
 	}
 
 	AttachMovingAverages(summaries, 3)
@@ -492,6 +570,17 @@ func TestAttachMovingAverages_MixedOrphans(t *testing.T) {
 	// Avg total nap time = (2h + 4h) / 2 = 3h.
 	if got := summaries[2].Avg.Day.TotalNapTime; got != 3*time.Hour {
 		t.Errorf("avg TotalNapTime = %v, want 3h", got)
+	}
+	// Avg day duration = (11h + 13h) / 2 = 12h.
+	if got := summaries[2].Avg.Day.DayDuration; got != 12*time.Hour {
+		t.Errorf("avg DayDuration = %v, want 12h", got)
+	}
+	// Avg per-side feed = (30m + 50m) / 2 = 40m and (20m + 40m) / 2 = 30m.
+	if got := summaries[2].Avg.Day.FeedTimeLeft; got != 40*time.Minute {
+		t.Errorf("avg FeedTimeLeft = %v, want 40m", got)
+	}
+	if got := summaries[2].Avg.Day.FeedTimeRight; got != 30*time.Minute {
+		t.Errorf("avg FeedTimeRight = %v, want 30m", got)
 	}
 }
 

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
-import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
+import { getCycles, getCycleDetail, CycleSummary, CycleDetail, DaySegment } from '../api';
+import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
+import { ScatterChart } from '../components/ScatterChart';
 import { NightHourChart } from '../components/NightHourChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
@@ -118,9 +119,6 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
   if (!anchor) return null;
   const date = new Date(anchor);
   const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-  const timeStr = cycle.night
-    ? new Date(cycle.night.startedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : '';
   const day = cycle.stats.day;
   const night = cycle.stats.night;
   const isFerber = features.ferber && !!cycle.night?.ferberEnabled;
@@ -134,23 +132,13 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           {isFerber && <span class="ferber-badge" title={`Night ${cycle.night?.ferberNightNumber ?? ''}`}>🌱</span>}
           {isChair && <span class="chair-badge" title="Chair night">🪑</span>}
         </span>
-        <span>{timeStr}</span>
       </h3>
-      {day && (
-        <div class="cycle-section cycle-section-day">
-          <div class="cycle-section-header">☀️ Day</div>
-          <div class="night-stats">
-            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
-            <Stat value={String(day.napCount)} label="Naps" />
-            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
-            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
-          </div>
-          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
-        </div>
-      )}
       {night && (
         <div class="cycle-section cycle-section-night">
-          <div class="cycle-section-header">🌙 Night</div>
+          <div class="cycle-section-header">
+            <span>🌙 Night</span>
+            {cycle.night && <span class="cycle-section-time">{fmtClockTime(cycle.night.startedAt)}</span>}
+          </div>
           <div class="night-stats">
             <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
             <Stat value={String(night.wakeCount)} label="Wakes" />
@@ -159,6 +147,21 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           </div>
           <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
           <FeedTimesPills times={night.feedTimes} />
+        </div>
+      )}
+      {day && (
+        <div class="cycle-section cycle-section-day">
+          <div class="cycle-section-header">
+            <span>☀️ Day</span>
+            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
+          </div>
+          <div class="night-stats">
+            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
+            <Stat value={String(day.napCount)} label="Naps" />
+            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
+            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
+          </div>
+          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
         </div>
       )}
     </div>
@@ -202,7 +205,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
         color="#c0b040"
-        title="Feed Times"
+        title="Intra-sleep feed times"
         {...modeProps}
       />
 
@@ -275,7 +278,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           color: '#ffaa5a',
         }]}
         formatValue={v => String(Math.round(v))}
-        title="Feed Count (night)"
+        title="Intra-sleep feed count"
         {...modeProps}
       />
 
@@ -283,25 +286,23 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.totalFeedTime ?? 0,
-          getAvg: c => c.avg?.night?.totalFeedTime ?? null,
+          getValue: c => c.stats.night?.intraSleepFeedTime ?? 0,
+          getAvg: c => c.avg?.night?.intraSleepFeedTime ?? null,
           color: '#ffaa5a',
         }]}
         formatValue={fmtDur}
-        title="Total Feed Time (night)"
+        title="Total intra-sleep feed time"
         {...modeProps}
       />
 
-      <TrendChart
-        points={chronological}
-        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        series={[
-          { getValue: c => c.stats.night?.feedTimeLeft ?? 0, getAvg: c => c.avg?.night?.feedTimeLeft ?? null, color: '#5a9aff', label: 'Left' },
-          { getValue: c => c.stats.night?.feedTimeRight ?? 0, getAvg: c => c.avg?.night?.feedTimeRight ?? null, color: '#ff7a5a', label: 'Right' },
-        ]}
-        formatValue={fmtDur}
-        title="Feed Time by Side (night)"
-        {...modeProps}
+      <ScatterChart
+        points={chronological.filter(c => c.stats.day != null && c.stats.night != null)}
+        getX={c => (c.stats.day?.dayTotalFeedTime ?? 0) + (c.stats.night?.totalFeedTime ?? 0) - (c.stats.night?.intraSleepFeedTime ?? 0)}
+        getY={c => c.stats.night?.intraSleepFeedTime ?? 0}
+        formatX={fmtDur}
+        formatY={fmtDur}
+        title="Intra-sleep feeding (Y) vs. other feeds in cycle (X)"
+        color="#c0b040"
       />
 
       {features.ferber && (
@@ -347,6 +348,28 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           )}
         </>
       )}
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[
+          {
+            getValue: c => (c.stats.day?.feedTimeLeft ?? 0) + (c.stats.night?.feedTimeLeft ?? 0),
+            getAvg: c => c.avg ? (c.avg.day?.feedTimeLeft ?? 0) + (c.avg.night?.feedTimeLeft ?? 0) : null,
+            color: '#5a9aff',
+            label: 'Left',
+          },
+          {
+            getValue: c => (c.stats.day?.feedTimeRight ?? 0) + (c.stats.night?.feedTimeRight ?? 0),
+            getAvg: c => c.avg ? (c.avg.day?.feedTimeRight ?? 0) + (c.avg.night?.feedTimeRight ?? 0) : null,
+            color: '#ff7a5a',
+            label: 'Right',
+          },
+        ]}
+        formatValue={fmtDur}
+        title="Feed by side"
+        {...modeProps}
+      />
     </div>
   );
 }
@@ -357,10 +380,24 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
 // is at index+1 since the list is newest-first), so the bar can render state
 // inherited across the 7am boundary (e.g., sleep trailing from last night).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
+  // Night crossed midnight before a new day session opened — give post-midnight events a row.
+  const synthetic = synthesizeTodayRow(cycles[0]);
+
   return (
     <div class="trend-chart">
       <div class="trend-title">24h Cycle Timelines</div>
       <div class="stacked-cycle-list">
+        {synthetic && (
+          <CycleTimelineBar
+            key="synthetic-today"
+            day={null}
+            night={cycles[0].night}
+            events={[]}
+            prevEvents={cycles[0].events}
+            anchorDateIso={synthetic.anchorIso}
+            label={synthetic.label}
+          />
+        )}
         {cycles.map((c, i) => {
           const anchor = c.day?.startedAt ?? c.night?.startedAt;
           if (!anchor) return null;
@@ -383,6 +420,33 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   );
 }
 
+function localDayKey(dateLike: string | Date): number {
+  const d = typeof dateLike === 'string' ? new Date(dateLike) : dateLike;
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string; label: string } | null {
+  if (!top) return null;
+  const anchor = top.day?.startedAt ?? top.night?.startedAt;
+  if (!anchor) return null;
+  const anchorKey = localDayKey(anchor);
+
+  let latestTs: string | null = null;
+  for (let i = top.events.length - 1; i >= 0; i--) {
+    if (localDayKey(top.events[i].timestamp) > anchorKey) {
+      latestTs = top.events[i].timestamp;
+      break;
+    }
+  }
+  if (latestTs === null) return null;
+
+  const date = new Date(latestTs);
+  return {
+    anchorIso: date.toISOString(),
+    label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+  };
+}
+
 // --- Cycle detail view ---
 
 function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
@@ -403,31 +467,14 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
       <div class="night-card">
         <h3>
           <span>{dateStr}</span>
-          <span>{nightStats ? fmtDur(nightStats.nightDuration) : ''}</span>
         </h3>
-
-        {dayStats && (
-          <div class="cycle-section cycle-section-day">
-            <div class="cycle-section-header">☀️ Day</div>
-            <div class="night-stats">
-              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
-              <Stat value={String(dayStats.napCount)} label="Naps" />
-              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
-              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
-            </div>
-            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
-            {detail.dayTimeline.length > 0 && day && (
-              <TimelineBar
-                timeline={detail.dayTimeline}
-                totalDurationNs={dayDurationNs(day)}
-              />
-            )}
-          </div>
-        )}
 
         {nightStats && (
           <div class="cycle-section cycle-section-night">
-            <div class="cycle-section-header">🌙 Night</div>
+            <div class="cycle-section-header">
+              <span>🌙 Night</span>
+              <span class="cycle-section-time">{fmtDur(nightStats.nightDuration)}</span>
+            </div>
             <div class="night-stats">
               <Stat value={fmtDur(nightStats.longestSleepBlock)} label="Longest Sleep" />
               <Stat value={String(nightStats.wakeCount)} label="Wakes" />
@@ -460,13 +507,35 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
             )}
           </div>
         )}
+
+        {dayStats && (
+          <div class="cycle-section cycle-section-day">
+            <div class="cycle-section-header">
+              <span>☀️ Day</span>
+              <span class="cycle-section-time">{fmtDur(dayStats.dayDuration)}</span>
+            </div>
+            <div class="night-stats">
+              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+              <Stat value={String(dayStats.napCount)} label="Naps" />
+              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
+              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
+            </div>
+            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
+            {detail.dayTimeline.length > 0 && (
+              <TimelineBar
+                timeline={detail.dayTimeline}
+                totalDurationNs={dayStats.dayDuration}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       <div class="night-card">
         <h3><span>Event Log</span></h3>
         <div class="event-log">
           {detail.events.map((evt, i) => {
-            const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            const t = fmtClockTime(evt.timestamp);
             const ai = ACTION_INFO[evt.action];
             const label = ai ? `${ai.icon} ${actionLabel(evt.action)}` : evt.action;
             const meta = fmtEventMeta(evt.metadata);
@@ -476,15 +545,6 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
       </div>
     </div>
   );
-}
-
-// dayDurationNs returns the day session's total duration in nanoseconds,
-// falling back to "now" for in-progress (unended) sessions — same convention
-// as the server's ComputeStats for open sessions.
-function dayDurationNs(day: SessionMeta): number {
-  const startMs = new Date(day.startedAt).getTime();
-  const endMs = day.endedAt ? new Date(day.endedAt).getTime() : Date.now();
-  return (endMs - startMs) * 1e6;
 }
 
 // DayRhythmPills renders the alternating awake/nap segment durations. The
@@ -541,7 +601,7 @@ function FeedTimesPills({ times }: { times: string[] | null }) {
       <div class="pill-group-pills">
         {times.map((t, i) => (
           <span key={i} class="pill pill-feed">
-            {new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+            {fmtClockTime(t)}
           </span>
         ))}
       </div>

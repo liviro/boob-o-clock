@@ -93,6 +93,11 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("TotalFeedTime = %v, want 35m", stats.TotalFeedTime)
 	}
 
+	// Intra-sleep feed time: only the 15min feed at 01:00 (post first independent sleep at 21:25). Bedtime feed excluded.
+	if stats.IntraSleepFeedTime != 15*time.Minute {
+		t.Errorf("IntraSleepFeedTime = %v, want 15m", stats.IntraSleepFeedTime)
+	}
+
 	// Per-breast: L=20min (first feed), R=15min (second feed)
 	if stats.FeedTimeLeft != 20*time.Minute {
 		t.Errorf("FeedTimeLeft = %v, want 20m", stats.FeedTimeLeft)
@@ -249,8 +254,11 @@ func TestStatsWithRootBack(t *testing.T) {
 		// New feed after waking — this IS a new feed
 		mkEvent(9, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
 		mkEvent(10, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+15*time.Minute), nil),
-		mkEvent(11, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(8*time.Hour), nil),
-		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(8*time.Hour), nil),
+		// Transfer back to crib so the mid-night feed is bounded by independent sleep on both sides.
+		mkEvent(11, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(12, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(13, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(8*time.Hour), nil),
+		mkEvent(14, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(8*time.Hour), nil),
 	}
 
 	stats, _ := computeBaseStats(events, start, start.Add(8*time.Hour))
@@ -361,10 +369,14 @@ func TestFeedCountAfterStrollerSleep(t *testing.T) {
 		mkEvent(6, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
 		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
 		mkEvent(8, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(4*time.Hour+15*time.Minute), nil),
-		mkEvent(9, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour+15*time.Minute), nil),
+		// Back to stroller so the post-feed sleep bounds the feed.
+		mkEvent(9, domain.Awake, domain.StartStrolling, domain.Strolling, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(10, domain.Strolling, domain.FellAsleep, domain.SleepingStroller, start.Add(4*time.Hour+25*time.Minute), nil),
+		mkEvent(11, domain.SleepingStroller, domain.BabyWoke, domain.Awake, start.Add(6*time.Hour), nil),
+		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(6*time.Hour), nil),
 	}
 
-	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour+15*time.Minute))
+	stats, _ := computeBaseStats(events, start, start.Add(6*time.Hour))
 
 	if stats.FeedCount != 1 {
 		t.Errorf("FeedCount = %d, want 1 (only post-stroller feed counts)", stats.FeedCount)
@@ -884,4 +896,148 @@ func TestRealBedtimeViaTransferSuccessOnly(t *testing.T) {
 	}
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 	mustTime(t, stats.RealBedtime, start.Add(16*time.Minute), "transfer_success as bedtime when block has no earlier asleep signal")
+}
+
+// A feed that is followed only by Awake (e.g. morning wake-feed leading
+// straight into start_day) is not "intra-sleep" — the upper bound also
+// requires independent sleep. The bedtime feed plus a real mid-night feed
+// (properly bounded by independent sleep on both sides) is included; the
+// morning feed is not. FeedCount and FeedTimes share the same gating, so
+// they should also exclude the morning feed.
+func TestIntraSleepFeedTime_UpperBoundMorningWakeFeed(t *testing.T) {
+	start := t0()
+	end := start.Add(10 * time.Hour) // 7am
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Bedtime feed (excluded by lower bound).
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(25*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		// Mid-night feed (bounded by independent sleep on both sides — counts).
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
+		mkEvent(8, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+15*time.Minute), nil),
+		mkEvent(9, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(10, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(4*time.Hour+25*time.Minute), nil),
+		// Morning wake-feed: NOT bounded by independent sleep on the upper side.
+		mkEvent(11, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(9*time.Hour), nil),
+		mkEvent(12, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(9*time.Hour), breast("L")),
+		mkEvent(13, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(9*time.Hour+30*time.Minute), nil),
+		mkEvent(14, domain.Awake, domain.Action("end_night"), domain.NightOff, end, nil),
+	}
+	stats, _ := computeBaseStats(events, start, end)
+
+	// Only the mid-night feed (15min) counts — bedtime excluded by lower bound,
+	// morning feed excluded by upper bound.
+	if stats.IntraSleepFeedTime != 15*time.Minute {
+		t.Errorf("IntraSleepFeedTime = %v, want 15m (only the mid-night feed)", stats.IntraSleepFeedTime)
+	}
+	if stats.FeedCount != 1 {
+		t.Errorf("FeedCount = %d, want 1 (only the mid-night feed; morning feed excluded by upper bound)", stats.FeedCount)
+	}
+	if len(stats.FeedTimes) != 1 {
+		t.Fatalf("FeedTimes count = %d, want 1", len(stats.FeedTimes))
+	}
+	if !stats.FeedTimes[0].Equal(start.Add(4 * time.Hour)) {
+		t.Errorf("FeedTimes[0] = %v, want %v", stats.FeedTimes[0], start.Add(4*time.Hour))
+	}
+}
+
+// Two feeds with a failed transfer between them, eventually bounded by a
+// successful transfer back to crib. Both feeds are sandwiched between
+// independent-sleep entries (the pending buffer accumulates and commits both
+// at the second SleepingCrib), so both count.
+func TestIntraSleepFeedTime_FailedTransferThenRetry(t *testing.T) {
+	start := t0()
+	end := start.Add(9 * time.Hour) // 6am
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Bedtime → first SleepingCrib (lower-bound boundary).
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(25*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(25*time.Minute), nil),
+		// Feed 1 (15min): wake → feed → on-me → transfer fails → awake.
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
+		mkEvent(8, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+15*time.Minute), nil),
+		mkEvent(9, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(10, domain.Transferring, domain.TransferFailed, domain.Awake, start.Add(4*time.Hour+20*time.Minute), nil),
+		// Feed 2 (12min): retry — feed → on-me → transfer succeeds → SleepingCrib.
+		mkEvent(11, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour+30*time.Minute), breast("L")),
+		mkEvent(12, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+42*time.Minute), nil),
+		mkEvent(13, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(4*time.Hour+45*time.Minute), nil),
+		mkEvent(14, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(4*time.Hour+45*time.Minute), nil),
+		mkEvent(15, domain.SleepingCrib, domain.BabyWoke, domain.Awake, end, nil),
+		mkEvent(16, domain.Awake, domain.Action("end_night"), domain.NightOff, end, nil),
+	}
+	stats, _ := computeBaseStats(events, start, end)
+
+	// Both mid-night feeds are bounded by SleepingCrib (start at 21:25, end at 01:45).
+	if stats.IntraSleepFeedTime != 15*time.Minute+12*time.Minute {
+		t.Errorf("IntraSleepFeedTime = %v, want 27m (both feeds count — failed transfer then retry, eventually bounded)", stats.IntraSleepFeedTime)
+	}
+	if stats.FeedCount != 2 {
+		t.Errorf("FeedCount = %d, want 2 (both feeds count)", stats.FeedCount)
+	}
+	if len(stats.FeedTimes) != 2 {
+		t.Fatalf("FeedTimes count = %d, want 2", len(stats.FeedTimes))
+	}
+	if !stats.FeedTimes[0].Equal(start.Add(4 * time.Hour)) {
+		t.Errorf("FeedTimes[0] = %v, want %v", stats.FeedTimes[0], start.Add(4*time.Hour))
+	}
+	if !stats.FeedTimes[1].Equal(start.Add(4*time.Hour + 30*time.Minute)) {
+		t.Errorf("FeedTimes[1] = %v, want %v", stats.FeedTimes[1], start.Add(4*time.Hour+30*time.Minute))
+	}
+}
+
+// A feed followed only by SleepingOnMe (no return to crib/stroller) is
+// excluded: the upper bound requires *independent* sleep. Parallels the
+// lower bound's "on-me doesn't count as the first real sleep" semantics.
+func TestIntraSleepFeedTime_UpperBoundOnMeOnly(t *testing.T) {
+	start := t0()
+	end := start.Add(8 * time.Hour)
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		// Bedtime feed → crib (first independent sleep).
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(25*time.Minute), nil),
+		mkEvent(5, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		// Wake, feed, on-me sleep until end of night (never returns to crib).
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("R")),
+		mkEvent(8, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(9, domain.SleepingOnMe, domain.Action("end_night"), domain.NightOff, end, nil),
+	}
+	stats, _ := computeBaseStats(events, start, end)
+
+	if stats.IntraSleepFeedTime != 0 {
+		t.Errorf("IntraSleepFeedTime = %v, want 0 (feed followed only by on-me sleep, no return to independent sleep)", stats.IntraSleepFeedTime)
+	}
+	if stats.FeedCount != 0 {
+		t.Errorf("FeedCount = %d, want 0", stats.FeedCount)
+	}
+}
+
+// Baby contact-naps the whole night (only SleepingOnMe, never crib/stroller).
+// IntraSleepFeedTime requires *independent* sleep as the boundary, so without
+// it the metric is 0 even though feeds happened.
+func TestIntraSleepFeedTime_NoIndependentSleep(t *testing.T) {
+	start := t0()
+	end := start.Add(6 * time.Hour)
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(3*time.Hour), breast("R")),
+		mkEvent(6, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(3*time.Hour+15*time.Minute), nil),
+		mkEvent(7, domain.SleepingOnMe, domain.Action("end_night"), domain.NightOff, end, nil),
+	}
+	stats, _ := computeBaseStats(events, start, end)
+	if stats.IntraSleepFeedTime != 0 {
+		t.Errorf("IntraSleepFeedTime = %v, want 0 (no independent-sleep boundary was crossed)", stats.IntraSleepFeedTime)
+	}
 }

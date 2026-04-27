@@ -818,6 +818,7 @@ body {
   margin-bottom: 8px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -827,6 +828,12 @@ body {
 
 .cycle-section-night .cycle-section-header {
   color: #7a9ad4;
+}
+
+.cycle-section-time {
+  font-weight: normal;
+  letter-spacing: 0;
+  opacity: 0.7;
 }
 
 /* Cycle timeline bar: 7am → 7am, used in detail view (one row) and stacked trends (N rows) */
