@@ -95,6 +95,8 @@ export interface DayStats {
   totalNapTime: number;          // ns
   dayFeedCount: number;
   dayTotalFeedTime: number;       // ns
+  feedTimeLeft: number;           // ns
+  feedTimeRight: number;          // ns
   wakeWindows: number[];          // ns — awake-kind subset of daySegments
   lastWakeWindow: number | null;  // ns
   // Alternating awake/nap rhythm in order. Drives the "Day rhythm" pills.

@@ -31,6 +31,8 @@ type DayStats struct {
 	TotalNapTime     time.Duration   `json:"totalNapTime"`
 	DayFeedCount     int             `json:"dayFeedCount"`
 	DayTotalFeedTime time.Duration   `json:"dayTotalFeedTime"`
+	FeedTimeLeft     time.Duration   `json:"feedTimeLeft"`
+	FeedTimeRight    time.Duration   `json:"feedTimeRight"`
 	WakeWindows      []time.Duration `json:"wakeWindows"`
 	LastWakeWindow   *time.Duration  `json:"lastWakeWindow"`
 	DaySegments      []DaySegment    `json:"daySegments"`
@@ -96,23 +98,46 @@ func ComputeDayStats(day *domain.Session, dayEvents []domain.Event, night *domai
 	var stats DayStats
 	stats.DayDuration = dayEndTime(day).Sub(day.StartedAt)
 
-	// Feed stats: count start_feed events and sum time spent inside
-	// DayFeeding (start_feed → dislatch_*).
+	// Feed stats: count start_feed events, sum total feed time, and split per
+	// breast side. switch_breast cuts a feed into per-side spans without
+	// resetting the count (it's a side switch, not a new feed).
 	var feedStart *time.Time
+	var currentSide string
+	attribute := func(end time.Time) {
+		if feedStart == nil {
+			return
+		}
+		d := end.Sub(*feedStart)
+		stats.DayTotalFeedTime += d
+		switch currentSide {
+		case "L":
+			stats.FeedTimeLeft += d
+		case "R":
+			stats.FeedTimeRight += d
+		}
+	}
 	for _, e := range dayEvents {
-		if e.Action == domain.StartFeed {
+		switch {
+		case e.Action == domain.StartFeed:
 			stats.DayFeedCount++
 			if e.ToState == domain.DayFeeding {
 				t := e.Timestamp
 				feedStart = &t
+				currentSide = e.Metadata["breast"]
 			}
-		} else if e.FromState == domain.DayFeeding && e.ToState != domain.DayFeeding && feedStart != nil {
-			stats.DayTotalFeedTime += e.Timestamp.Sub(*feedStart)
+		case e.Action == domain.SwitchBreast && feedStart != nil:
+			attribute(e.Timestamp)
+			t := e.Timestamp
+			feedStart = &t
+			currentSide = e.Metadata["breast"]
+		case e.FromState == domain.DayFeeding && e.ToState != domain.DayFeeding && feedStart != nil:
+			attribute(e.Timestamp)
 			feedStart = nil
+			currentSide = ""
 		}
 	}
 	if feedStart != nil {
-		stats.DayTotalFeedTime += dayEndTime(day).Sub(*feedStart)
+		attribute(dayEndTime(day))
 	}
 
 	// Awake/nap rhythm — last awake span extends into the night until first
@@ -228,6 +253,8 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 			dayAcc.TotalNapTime += c.Stats.Day.TotalNapTime
 			dayAcc.DayFeedCount += c.Stats.Day.DayFeedCount
 			dayAcc.DayTotalFeedTime += c.Stats.Day.DayTotalFeedTime
+			dayAcc.FeedTimeLeft += c.Stats.Day.FeedTimeLeft
+			dayAcc.FeedTimeRight += c.Stats.Day.FeedTimeRight
 		}
 		if c.Stats.Night != nil {
 			nightCount++
@@ -250,6 +277,8 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 		d.TotalNapTime = dayAcc.TotalNapTime / time.Duration(dayCount)
 		d.DayFeedCount = dayAcc.DayFeedCount / dayCount
 		d.DayTotalFeedTime = dayAcc.DayTotalFeedTime / time.Duration(dayCount)
+		d.FeedTimeLeft = dayAcc.FeedTimeLeft / time.Duration(dayCount)
+		d.FeedTimeRight = dayAcc.FeedTimeRight / time.Duration(dayCount)
 		d.WakeWindows = nil // not meaningful as a per-window average
 		d.LastWakeWindow = nil
 		avg.Day = &d

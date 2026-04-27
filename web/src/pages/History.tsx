@@ -295,18 +295,6 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         {...modeProps}
       />
 
-      <TrendChart
-        points={chronological}
-        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        series={[
-          { getValue: c => c.stats.night?.feedTimeLeft ?? 0, getAvg: c => c.avg?.night?.feedTimeLeft ?? null, color: '#5a9aff', label: 'Left' },
-          { getValue: c => c.stats.night?.feedTimeRight ?? 0, getAvg: c => c.avg?.night?.feedTimeRight ?? null, color: '#ff7a5a', label: 'Right' },
-        ]}
-        formatValue={fmtDur}
-        title="Night feed by side"
-        {...modeProps}
-      />
-
       <ScatterChart
         points={chronological.filter(c => c.stats.day != null && c.stats.night != null)}
         getX={c => (c.stats.day?.dayTotalFeedTime ?? 0) + (c.stats.night?.totalFeedTime ?? 0) - (c.stats.night?.intraSleepFeedTime ?? 0)}
@@ -360,6 +348,28 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
           )}
         </>
       )}
+
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[
+          {
+            getValue: c => (c.stats.day?.feedTimeLeft ?? 0) + (c.stats.night?.feedTimeLeft ?? 0),
+            getAvg: c => c.avg ? (c.avg.day?.feedTimeLeft ?? 0) + (c.avg.night?.feedTimeLeft ?? 0) : null,
+            color: '#5a9aff',
+            label: 'Left',
+          },
+          {
+            getValue: c => (c.stats.day?.feedTimeRight ?? 0) + (c.stats.night?.feedTimeRight ?? 0),
+            getAvg: c => c.avg ? (c.avg.day?.feedTimeRight ?? 0) + (c.avg.night?.feedTimeRight ?? 0) : null,
+            color: '#ff7a5a',
+            label: 'Right',
+          },
+        ]}
+        formatValue={fmtDur}
+        title="Feed by side"
+        {...modeProps}
+      />
     </div>
   );
 }
