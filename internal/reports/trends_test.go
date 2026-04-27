@@ -231,6 +231,36 @@ func TestWakeWindows_FeedsAndPoopDoNotBreak(t *testing.T) {
 
 // --- ComputeDayStats ---
 
+func TestComputeDayStats_DayDuration_Closed(t *testing.T) {
+	start := dayStart()                // 7am
+	end := start.Add(11 * time.Hour)   // 6pm
+	day := mkSession(1, domain.SessionKindDay, start, ptrTime(end))
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	if stats.DayDuration != 11*time.Hour {
+		t.Errorf("DayDuration = %v, want 11h (end - start for closed day)", stats.DayDuration)
+	}
+}
+
+// In-progress day clamps end to time.Now(). Tolerance covers test-execution slack.
+func TestComputeDayStats_DayDuration_InProgress(t *testing.T) {
+	start := time.Now().Add(-3 * time.Hour)
+	day := mkSession(1, domain.SessionKindDay, start, nil)
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	if stats.DayDuration < 3*time.Hour || stats.DayDuration > 3*time.Hour+time.Second {
+		t.Errorf("DayDuration = %v, want ~3h (in-progress, end clamps to now)", stats.DayDuration)
+	}
+}
+
 func TestComputeDayStats_NapDurations(t *testing.T) {
 	start := dayStart()
 	nap1Start := start.Add(2 * time.Hour)
@@ -472,9 +502,9 @@ func TestAttachMovingAverages_Window3(t *testing.T) {
 // non-nil halves, not by window.
 func TestAttachMovingAverages_MixedOrphans(t *testing.T) {
 	summaries := []CycleSummary{
-		{Stats: CycleStats{Day: &DayStats{NapCount: 2, TotalNapTime: 2 * time.Hour}}},
+		{Stats: CycleStats{Day: &DayStats{NapCount: 2, TotalNapTime: 2 * time.Hour, DayDuration: 11 * time.Hour}}},
 		{Stats: CycleStats{Night: &NightStats{TotalSleepTime: 8 * time.Hour}}}, // orphan (no day)
-		{Stats: CycleStats{Day: &DayStats{NapCount: 4, TotalNapTime: 4 * time.Hour}}},
+		{Stats: CycleStats{Day: &DayStats{NapCount: 4, TotalNapTime: 4 * time.Hour, DayDuration: 13 * time.Hour}}},
 	}
 
 	AttachMovingAverages(summaries, 3)
@@ -492,6 +522,10 @@ func TestAttachMovingAverages_MixedOrphans(t *testing.T) {
 	// Avg total nap time = (2h + 4h) / 2 = 3h.
 	if got := summaries[2].Avg.Day.TotalNapTime; got != 3*time.Hour {
 		t.Errorf("avg TotalNapTime = %v, want 3h", got)
+	}
+	// Avg day duration = (11h + 13h) / 2 = 12h.
+	if got := summaries[2].Avg.Day.DayDuration; got != 12*time.Hour {
+		t.Errorf("avg DayDuration = %v, want 12h", got)
 	}
 }
 

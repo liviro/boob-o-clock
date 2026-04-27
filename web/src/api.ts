@@ -90,6 +90,7 @@ export interface DaySegment {
 }
 
 export interface DayStats {
+  dayDuration: number;            // ns; clamps to "now" for in-progress
   napCount: number;
   totalNapTime: number;          // ns
   dayFeedCount: number;

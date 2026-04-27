@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
+import { getCycles, getCycleDetail, CycleSummary, CycleDetail, DaySegment } from '../api';
 import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
@@ -439,7 +439,6 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
   const s = detail.stats;
   const dayStats = s.day;
   const nightStats = s.night;
-  const dayDurNs = day ? dayDurationNs(day) : 0;
 
   return (
     <div class="history-content">
@@ -493,7 +492,7 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           <div class="cycle-section cycle-section-day">
             <div class="cycle-section-header">
               <span>☀️ Day</span>
-              {day && <span class="cycle-section-time">{fmtDur(dayDurNs)}</span>}
+              <span class="cycle-section-time">{fmtDur(dayStats.dayDuration)}</span>
             </div>
             <div class="night-stats">
               <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
@@ -502,10 +501,10 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
               <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
             </div>
             <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
-            {detail.dayTimeline.length > 0 && day && (
+            {detail.dayTimeline.length > 0 && (
               <TimelineBar
                 timeline={detail.dayTimeline}
-                totalDurationNs={dayDurNs}
+                totalDurationNs={dayStats.dayDuration}
               />
             )}
           </div>
@@ -526,15 +525,6 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
       </div>
     </div>
   );
-}
-
-// dayDurationNs returns the day session's total duration in nanoseconds,
-// falling back to "now" for in-progress (unended) sessions — same convention
-// as the server's ComputeStats for open sessions.
-function dayDurationNs(day: SessionMeta): number {
-  const startMs = new Date(day.startedAt).getTime();
-  const endMs = day.endedAt ? new Date(day.endedAt).getTime() : Date.now();
-  return (endMs - startMs) * 1e6;
 }
 
 // DayRhythmPills renders the alternating awake/nap segment durations. The

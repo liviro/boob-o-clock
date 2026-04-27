@@ -26,6 +26,7 @@ type DaySegment struct {
 }
 
 type DayStats struct {
+	DayDuration      time.Duration   `json:"dayDuration"`
 	NapCount         int             `json:"napCount"`
 	TotalNapTime     time.Duration   `json:"totalNapTime"`
 	DayFeedCount     int             `json:"dayFeedCount"`
@@ -93,6 +94,7 @@ var nightSleepStates = map[domain.State]bool{
 // DaySegments by construction.
 func ComputeDayStats(day *domain.Session, dayEvents []domain.Event, night *domain.Session, nightEvents []domain.Event) DayStats {
 	var stats DayStats
+	stats.DayDuration = dayEndTime(day).Sub(day.StartedAt)
 
 	// Feed stats: count start_feed events and sum time spent inside
 	// DayFeeding (start_feed → dislatch_*).
@@ -221,6 +223,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 	for _, c := range cycles {
 		if c.Stats.Day != nil {
 			dayCount++
+			dayAcc.DayDuration += c.Stats.Day.DayDuration
 			dayAcc.NapCount += c.Stats.Day.NapCount
 			dayAcc.TotalNapTime += c.Stats.Day.TotalNapTime
 			dayAcc.DayFeedCount += c.Stats.Day.DayFeedCount
@@ -241,6 +244,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 
 	if dayCount > 0 {
 		d := dayAcc
+		d.DayDuration = dayAcc.DayDuration / time.Duration(dayCount)
 		d.NapCount = dayAcc.NapCount / dayCount
 		d.TotalNapTime = dayAcc.TotalNapTime / time.Duration(dayCount)
 		d.DayFeedCount = dayAcc.DayFeedCount / dayCount
