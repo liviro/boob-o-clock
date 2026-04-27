@@ -8,6 +8,8 @@ interface Props {
   // Previous cycle's events — lets the bar render state inherited across
   // the cycle boundary (e.g., sleep trailing into the morning).
   prevEvents?: EventEntry[];
+  // Overrides the day/night-derived anchor; lets a row render without a session.
+  anchorDateIso?: string;
   label?: string;
 }
 
@@ -17,8 +19,8 @@ const CYCLE_DURATION_MS = 24 * 60 * 60 * 1000;
 // long pause) — don't prepend, show blank rather than fabricate state.
 const PREV_SEED_LOOKBACK_MS = 12 * 60 * 60 * 1000;
 
-export function CycleTimelineBar({ day, night, events, prevEvents, label }: Props) {
-  const bar = buildSegments(day, night, events, prevEvents);
+export function CycleTimelineBar({ day, night, events, prevEvents, anchorDateIso, label }: Props) {
+  const bar = buildSegments(day, night, events, prevEvents, anchorDateIso);
 
   return (
     <div class="cycle-timeline-row">
@@ -56,8 +58,9 @@ function buildSegments(
   night: SessionMeta | null,
   events: EventEntry[],
   prevEvents: EventEntry[] | undefined,
+  anchorDateIsoOverride: string | undefined,
 ): BarData {
-  const anchorDateIso = day?.startedAt ?? night?.startedAt;
+  const anchorDateIso = anchorDateIsoOverride ?? day?.startedAt ?? night?.startedAt;
   if (!anchorDateIso) return { segments: [] };
 
   const cycleStart = new Date(anchorDateIso);

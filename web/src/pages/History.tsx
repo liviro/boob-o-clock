@@ -357,10 +357,24 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
 // is at index+1 since the list is newest-first), so the bar can render state
 // inherited across the 7am boundary (e.g., sleep trailing from last night).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
+  // Night crossed midnight before a new day session opened — give post-midnight events a row.
+  const synthetic = synthesizeTodayRow(cycles[0]);
+
   return (
     <div class="trend-chart">
       <div class="trend-title">24h Cycle Timelines</div>
       <div class="stacked-cycle-list">
+        {synthetic && (
+          <CycleTimelineBar
+            key="synthetic-today"
+            day={null}
+            night={cycles[0].night}
+            events={[]}
+            prevEvents={cycles[0].events}
+            anchorDateIso={synthetic.anchorIso}
+            label={synthetic.label}
+          />
+        )}
         {cycles.map((c, i) => {
           const anchor = c.day?.startedAt ?? c.night?.startedAt;
           if (!anchor) return null;
@@ -381,6 +395,34 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
       </div>
     </div>
   );
+}
+
+function localDayKey(dateLike: string | Date): number {
+  const d = typeof dateLike === 'string' ? new Date(dateLike) : dateLike;
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string; label: string } | null {
+  if (!top) return null;
+  const anchor = top.day?.startedAt ?? top.night?.startedAt;
+  if (!anchor) return null;
+  const anchorKey = localDayKey(anchor);
+
+  // Events are chronologically sorted — scan from the end for the latest past-anchor entry.
+  let latestTs: string | null = null;
+  for (let i = top.events.length - 1; i >= 0; i--) {
+    if (localDayKey(top.events[i].timestamp) > anchorKey) {
+      latestTs = top.events[i].timestamp;
+      break;
+    }
+  }
+  if (latestTs === null) return null;
+
+  const date = new Date(latestTs);
+  return {
+    anchorIso: date.toISOString(),
+    label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+  };
 }
 
 // --- Cycle detail view ---
