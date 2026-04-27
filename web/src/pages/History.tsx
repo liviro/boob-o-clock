@@ -132,21 +132,6 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           {isChair && <span class="chair-badge" title="Chair night">🪑</span>}
         </span>
       </h3>
-      {day && (
-        <div class="cycle-section cycle-section-day">
-          <div class="cycle-section-header">
-            <span>☀️ Day</span>
-            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
-          </div>
-          <div class="night-stats">
-            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
-            <Stat value={String(day.napCount)} label="Naps" />
-            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
-            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
-          </div>
-          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
-        </div>
-      )}
       {night && (
         <div class="cycle-section cycle-section-night">
           <div class="cycle-section-header">
@@ -161,6 +146,21 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           </div>
           <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
           <FeedTimesPills times={night.feedTimes} />
+        </div>
+      )}
+      {day && (
+        <div class="cycle-section cycle-section-day">
+          <div class="cycle-section-header">
+            <span>☀️ Day</span>
+            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
+          </div>
+          <div class="night-stats">
+            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
+            <Stat value={String(day.napCount)} label="Naps" />
+            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
+            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
+          </div>
+          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
         </div>
       )}
     </div>
@@ -439,6 +439,7 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
   const s = detail.stats;
   const dayStats = s.day;
   const nightStats = s.night;
+  const dayDurNs = day ? dayDurationNs(day) : 0;
 
   return (
     <div class="history-content">
@@ -447,31 +448,14 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
       <div class="night-card">
         <h3>
           <span>{dateStr}</span>
-          <span>{nightStats ? fmtDur(nightStats.nightDuration) : ''}</span>
         </h3>
-
-        {dayStats && (
-          <div class="cycle-section cycle-section-day">
-            <div class="cycle-section-header">☀️ Day</div>
-            <div class="night-stats">
-              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
-              <Stat value={String(dayStats.napCount)} label="Naps" />
-              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
-              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
-            </div>
-            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
-            {detail.dayTimeline.length > 0 && day && (
-              <TimelineBar
-                timeline={detail.dayTimeline}
-                totalDurationNs={dayDurationNs(day)}
-              />
-            )}
-          </div>
-        )}
 
         {nightStats && (
           <div class="cycle-section cycle-section-night">
-            <div class="cycle-section-header">🌙 Night</div>
+            <div class="cycle-section-header">
+              <span>🌙 Night</span>
+              <span class="cycle-section-time">{fmtDur(nightStats.nightDuration)}</span>
+            </div>
             <div class="night-stats">
               <Stat value={fmtDur(nightStats.longestSleepBlock)} label="Longest Sleep" />
               <Stat value={String(nightStats.wakeCount)} label="Wakes" />
@@ -501,6 +485,28 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
             <FeedTimesPills times={nightStats.feedTimes} />
             {detail.timeline.length > 0 && (
               <TimelineBar timeline={detail.timeline} totalDurationNs={nightStats.nightDuration} />
+            )}
+          </div>
+        )}
+
+        {dayStats && (
+          <div class="cycle-section cycle-section-day">
+            <div class="cycle-section-header">
+              <span>☀️ Day</span>
+              {day && <span class="cycle-section-time">{fmtDur(dayDurNs)}</span>}
+            </div>
+            <div class="night-stats">
+              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+              <Stat value={String(dayStats.napCount)} label="Naps" />
+              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
+              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
+            </div>
+            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
+            {detail.dayTimeline.length > 0 && day && (
+              <TimelineBar
+                timeline={detail.dayTimeline}
+                totalDurationNs={dayDurNs}
+              />
             )}
           </div>
         )}
