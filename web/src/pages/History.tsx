@@ -421,7 +421,6 @@ function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string;
   if (!anchor) return null;
   const anchorKey = localDayKey(anchor);
 
-  // Events are chronologically sorted — scan from the end for the latest past-anchor entry.
   let latestTs: string | null = null;
   for (let i = top.events.length - 1; i >= 0; i--) {
     if (localDayKey(top.events[i].timestamp) > anchorKey) {
