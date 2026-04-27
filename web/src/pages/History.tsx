@@ -286,12 +286,12 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.totalFeedTime ?? 0,
-          getAvg: c => c.avg?.night?.totalFeedTime ?? null,
+          getValue: c => c.stats.night?.intraSleepFeedTime ?? 0,
+          getAvg: c => c.avg?.night?.intraSleepFeedTime ?? null,
           color: '#ffaa5a',
         }]}
         formatValue={fmtDur}
-        title="Total night feed time"
+        title="Total intra-sleep feed time"
         {...modeProps}
       />
 
