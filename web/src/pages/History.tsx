@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { getCycles, getCycleDetail, CycleSummary, CycleDetail, SessionMeta, DaySegment } from '../api';
-import { fmtDur, toNightHour, ACTION_INFO, actionLabel } from '../constants';
+import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
@@ -118,9 +118,6 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
   if (!anchor) return null;
   const date = new Date(anchor);
   const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-  const timeStr = cycle.night
-    ? new Date(cycle.night.startedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : '';
   const day = cycle.stats.day;
   const night = cycle.stats.night;
   const isFerber = features.ferber && !!cycle.night?.ferberEnabled;
@@ -134,11 +131,13 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
           {isFerber && <span class="ferber-badge" title={`Night ${cycle.night?.ferberNightNumber ?? ''}`}>🌱</span>}
           {isChair && <span class="chair-badge" title="Chair night">🪑</span>}
         </span>
-        <span>{timeStr}</span>
       </h3>
       {day && (
         <div class="cycle-section cycle-section-day">
-          <div class="cycle-section-header">☀️ Day</div>
+          <div class="cycle-section-header">
+            <span>☀️ Day</span>
+            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
+          </div>
           <div class="night-stats">
             <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
             <Stat value={String(day.napCount)} label="Naps" />
@@ -150,7 +149,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
       )}
       {night && (
         <div class="cycle-section cycle-section-night">
-          <div class="cycle-section-header">🌙 Night</div>
+          <div class="cycle-section-header">
+            <span>🌙 Night</span>
+            {cycle.night && <span class="cycle-section-time">{fmtClockTime(cycle.night.startedAt)}</span>}
+          </div>
           <div class="night-stats">
             <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
             <Stat value={String(night.wakeCount)} label="Wakes" />
@@ -508,7 +510,7 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
         <h3><span>Event Log</span></h3>
         <div class="event-log">
           {detail.events.map((evt, i) => {
-            const t = new Date(evt.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            const t = fmtClockTime(evt.timestamp);
             const ai = ACTION_INFO[evt.action];
             const label = ai ? `${ai.icon} ${actionLabel(evt.action)}` : evt.action;
             const meta = fmtEventMeta(evt.metadata);
@@ -583,7 +585,7 @@ function FeedTimesPills({ times }: { times: string[] | null }) {
       <div class="pill-group-pills">
         {times.map((t, i) => (
           <span key={i} class="pill pill-feed">
-            {new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+            {fmtClockTime(t)}
           </span>
         ))}
       </div>

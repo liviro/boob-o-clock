@@ -105,6 +105,11 @@ export function fmtTimer(seconds: number): string {
   return `${m}:${pad(s)}`;
 }
 
+/** Format an ISO timestamp as a localized "HH:MM AM/PM" clock time. */
+export function fmtClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
