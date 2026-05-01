@@ -135,9 +135,9 @@ export function toNightHour(ts: string): number {
   return h - NIGHT_EPOCH_H;
 }
 
-/** Format a Date as "M/D" for chart axis labels. */
+/** Format a Date as a short numeric day/month for chart axis labels. */
 export function fmtDayMonth(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  return d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' });
 }
 
 /** Format a Date as "YYYY-MM-DDTHH:MM" in local time. Shared between the

@@ -84,7 +84,9 @@ export function NightHourChart<T>({
     let clock = Math.round(h + NIGHT_EPOCH_H);
     if (clock >= 24) clock -= 24;
     if (clock < 0) clock += 24;
-    return String(clock).padStart(2, '0');
+    const period = clock < 12 ? 'AM' : 'PM';
+    const hour12 = clock === 0 ? 12 : clock > 12 ? clock - 12 : clock;
+    return `${hour12} ${period}`;
   }
 
   // Step adapts to range to keep the axis around 6 labels.
