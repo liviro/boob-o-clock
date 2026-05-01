@@ -857,6 +857,10 @@ body {
   font-size: 10px;
   color: #999;
   text-align: right;
+  /* Fixed gutter so stacked rows' bars align regardless of label width
+     (e.g. "Apr 30" vs "May 1"). */
+  flex: 0 0 40px;
+  white-space: nowrap;
 }
 
 .cycle-timeline-bar {
