@@ -1,9 +1,12 @@
 import { fmtDayMonth } from '../constants';
 import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
+import { buildGappedPath } from './svgPath';
 
 interface Series<T> {
-  getValue: (p: T) => number;
+  // null = skip the point (no dot, breaks the line, excluded from min/max).
+  // 0 is a real plotted value — use null when the underlying stat is absent.
+  getValue: (p: T) => number | null;
   // Omit to render the series without a moving-average overlay.
   getAvg?: (p: T) => number | null;
   color: string;
@@ -35,13 +38,17 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
 
   if (points.length === 0) return null;
 
-  // Compute global min/max across all series.
+  const seriesValues = series.map(s => points.map(s.getValue));
+  const seriesAvgs = series.map(s => s.getAvg ? points.map(s.getAvg) : null);
+
   let maxVal = 1;
   let minVal = 0;
-  for (const s of series) {
-    const vals = points.map(s.getValue);
-    maxVal = Math.max(maxVal, ...vals);
-    minVal = Math.min(minVal, ...vals);
+  for (const values of seriesValues) {
+    for (const v of values) {
+      if (v == null) continue;
+      if (v > maxVal) maxVal = v;
+      if (v < minVal) minVal = v;
+    }
   }
   const range = maxVal - minVal || 1;
 
@@ -54,23 +61,6 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
     return PAD.top + CHART_H - ((v - minVal) / range) * CHART_H;
   }
 
-  function buildPath(values: number[]): string {
-    return values
-      .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`)
-      .join(' ');
-  }
-
-  function buildAvgPath(s: Series<T>): string {
-    if (!s.getAvg) return '';
-    const getAvg = s.getAvg;
-    return points
-      .map((p, i) => ({ i, v: getAvg(p) }))
-      .filter((d): d is { i: number; v: number } => d.v !== null)
-      .map((d, j) => `${j === 0 ? 'M' : 'L'}${x(d.i).toFixed(1)},${y(d.v).toFixed(1)}`)
-      .join(' ');
-  }
-
-  // Date labels.
   const dateLabels: { x: number; label: string }[] = [];
   if (points.length <= 7) {
     points.forEach((p, i) => {
@@ -124,15 +114,16 @@ export function TrendChart<T>({ points, getDate, series, formatValue, title, hig
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
         {series.map((s, si) => {
-          const values = points.map(s.getValue);
-          const avgPath = buildAvgPath(s);
+          const values = seriesValues[si];
+          const avgs = seriesAvgs[si];
+          const avgPath = avgs ? buildGappedPath(avgs, x, y) : '';
           return (
             <g key={si}>
               {avgPath && (
                 <path d={avgPath} fill="none" stroke={s.color} stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5" />
               )}
-              <path d={buildPath(values)} fill="none" stroke={s.color} stroke-width="2" />
-              {values.map((v, i) => (
+              <path d={buildGappedPath(values, x, y)} fill="none" stroke={s.color} stroke-width="2" />
+              {values.map((v, i) => v == null ? null : (
                 <circle key={i} cx={x(i)} cy={y(v)} r="3" fill={s.color} />
               ))}
             </g>

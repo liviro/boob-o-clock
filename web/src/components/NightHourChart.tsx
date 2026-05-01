@@ -1,6 +1,7 @@
 import { NIGHT_EPOCH_H, fmtDayMonth } from '../constants';
 import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
+import { buildGappedPath } from './svgPath';
 
 export type HourDot = {
   hour: number;  // hours since NIGHT_EPOCH_H
@@ -66,23 +67,7 @@ export function NightHourChart<T>({
   const x = (ni: number) => n === 1 ? PAD.left + CHART_W / 2 : PAD.left + (ni / (n - 1)) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 
-  // Build the moving-average polyline path. Gaps (null avg values) produce
-  // separate sub-paths via SVG's "M" command.
-  let avgPath = '';
-  if (avgHours.length > 0) {
-    const segments: string[] = [];
-    let inPath = false;
-    for (let i = 0; i < avgHours.length; i++) {
-      const v = avgHours[i];
-      if (v == null) {
-        inPath = false;
-        continue;
-      }
-      segments.push(`${inPath ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-      inPath = true;
-    }
-    avgPath = segments.join(' ');
-  }
+  const avgPath = avgHours.length > 0 ? buildGappedPath(avgHours, x, y) : '';
 
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
@@ -99,7 +84,9 @@ export function NightHourChart<T>({
     let clock = Math.round(h + NIGHT_EPOCH_H);
     if (clock >= 24) clock -= 24;
     if (clock < 0) clock += 24;
-    return String(clock).padStart(2, '0');
+    const period = clock < 12 ? 'AM' : 'PM';
+    const hour12 = clock === 0 ? 12 : clock > 12 ? clock - 12 : clock;
+    return `${hour12} ${period}`;
   }
 
   // Step adapts to range to keep the axis around 6 labels.

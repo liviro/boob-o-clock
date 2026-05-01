@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleSummary, CycleDetail, DaySegment } from '../api';
+import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats } from '../api';
 import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
@@ -15,6 +15,18 @@ type View = 'cycles' | 'trends';
 const DISPLAY_LIMIT = 30;
 
 const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
+
+// Sum a per-side feed-time field across a cycle's day + night halves. Returns
+// null when the stats block is absent or both halves are missing; a partial
+// cycle still plots, treating the missing half as 0 feeds on that side.
+function sumFeedSide(
+  stats: CycleStats | null | undefined,
+  pick: (s: DayStats | NightStats) => number,
+): number | null {
+  if (stats == null) return null;
+  if (stats.day == null && stats.night == null) return null;
+  return (stats.day ? pick(stats.day) : 0) + (stats.night ? pick(stats.night) : 0);
+}
 
 // computeMovingAvg returns the trailing `window`-wide mean at each index.
 // Requires ALL values within the window to be non-null (no partial averaging)
@@ -223,7 +235,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.day?.totalNapTime ?? 0,
+          getValue: c => c.stats.day?.totalNapTime ?? null,
           getAvg: c => c.avg?.day?.totalNapTime ?? null,
           color: '#5affaa',
         }]}
@@ -236,7 +248,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.longestSleepBlock ?? 0,
+          getValue: c => c.stats.night?.longestSleepBlock ?? null,
           getAvg: () => null,
           color: '#4a8aff',
         }]}
@@ -249,7 +261,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.totalSleepTime ?? 0,
+          getValue: c => c.stats.night?.totalSleepTime ?? null,
           getAvg: c => c.avg?.night?.totalSleepTime ?? null,
           color: '#6a5aff',
         }]}
@@ -262,7 +274,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.wakeCount ?? 0,
+          getValue: c => c.stats.night?.wakeCount ?? null,
           color: '#ff5a5a',
         }]}
         formatValue={v => String(Math.round(v))}
@@ -274,7 +286,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.feedCount ?? 0,
+          getValue: c => c.stats.night?.feedCount ?? null,
           color: '#ffaa5a',
         }]}
         formatValue={v => String(Math.round(v))}
@@ -286,7 +298,7 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[{
-          getValue: c => c.stats.night?.intraSleepFeedTime ?? 0,
+          getValue: c => c.stats.night?.intraSleepFeedTime ?? null,
           getAvg: c => c.avg?.night?.intraSleepFeedTime ?? null,
           color: '#ffaa5a',
         }]}
@@ -354,14 +366,14 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
         series={[
           {
-            getValue: c => (c.stats.day?.feedTimeLeft ?? 0) + (c.stats.night?.feedTimeLeft ?? 0),
-            getAvg: c => c.avg ? (c.avg.day?.feedTimeLeft ?? 0) + (c.avg.night?.feedTimeLeft ?? 0) : null,
+            getValue: c => sumFeedSide(c.stats, s => s.feedTimeLeft),
+            getAvg: c => sumFeedSide(c.avg, s => s.feedTimeLeft),
             color: '#5a9aff',
             label: 'Left',
           },
           {
-            getValue: c => (c.stats.day?.feedTimeRight ?? 0) + (c.stats.night?.feedTimeRight ?? 0),
-            getAvg: c => c.avg ? (c.avg.day?.feedTimeRight ?? 0) + (c.avg.night?.feedTimeRight ?? 0) : null,
+            getValue: c => sumFeedSide(c.stats, s => s.feedTimeRight),
+            getAvg: c => sumFeedSide(c.avg, s => s.feedTimeRight),
             color: '#ff7a5a',
             label: 'Right',
           },
@@ -374,14 +386,25 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
   );
 }
 
-// StackedCycleTimelines renders one CycleTimelineBar per cycle, newest at top.
-// Uses the events inline on each CycleSummary — no additional fetches. Each
-// cycle is handed the *previous* cycle's events too (the older cycle, which
-// is at index+1 since the list is newest-first), so the bar can render state
+// Each cycle is handed the *previous* cycle's events (the older one, at
+// index+1 since the list is newest-first), so the bar can render state
 // inherited across the 7am boundary (e.g., sleep trailing from last night).
+//
+// Collapsed by default; tapping expands. Avoids a fixed-height scroll region
+// because nested scrolling on the trends page conflicts with iOS page-scroll
+// gestures.
+const TIMELINE_COLLAPSED_COUNT = 10;
+
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
+  const [expanded, setExpanded] = useState(false);
   // Night crossed midnight before a new day session opened — give post-midnight events a row.
   const synthetic = synthesizeTodayRow(cycles[0]);
+
+  const canCollapse = cycles.length > TIMELINE_COLLAPSED_COUNT;
+  const visibleCycles = canCollapse && !expanded
+    ? cycles.slice(0, TIMELINE_COLLAPSED_COUNT)
+    : cycles;
+  const hiddenCount = cycles.length - visibleCycles.length;
 
   return (
     <div class="trend-chart">
@@ -398,11 +421,14 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
             label={synthetic.label}
           />
         )}
-        {cycles.map((c, i) => {
+        {visibleCycles.map((c, i) => {
           const anchor = c.day?.startedAt ?? c.night?.startedAt;
           if (!anchor) return null;
           const label = new Date(anchor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-          // Older cycle = next one in the newest-first array.
+          // Older cycle = next one in the newest-first array. Index into the
+          // full `cycles` list, not `visibleCycles`, so the row at the
+          // collapse boundary still inherits trailing sleep from the cycle
+          // just below it (which is hidden but still in the dataset).
           const prevCycle = cycles[i + 1];
           return (
             <CycleTimelineBar
@@ -416,6 +442,14 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
           );
         })}
       </div>
+      {canCollapse && (
+        <button
+          class="stacked-cycle-toggle"
+          onClick={() => setExpanded(e => !e)}
+        >
+          {expanded ? 'Show less' : `Show all (${hiddenCount} more)`}
+        </button>
+      )}
     </div>
   );
 }
