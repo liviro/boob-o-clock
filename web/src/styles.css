@@ -229,9 +229,6 @@ body {
   gap: 10px;
   width: 100%;
   margin-top: 10px;
-  /* As a flex item of .modal-content, allow shrinking below content min-size
-     so an oversized child (the iOS native datetime input) can't push us wider
-     than the modal. */
   min-width: 0;
 }
 
@@ -248,10 +245,12 @@ body {
   box-sizing: border-box;
   /* iOS Safari respects color-scheme to theme the native picker popup. */
   color-scheme: dark;
-  /* iOS Safari sets an intrinsic min-width on native datetime-local inputs
-     based on the rendered date string, which overrides `width: 100%` and
-     overflows .ts-custom (which then drags the Set-time button off-screen).
-     min-width: 0 lets the flex item shrink to its container. */
+  /* iOS computes an intrinsic min-width on native datetime-local from the
+     rendered date string and partially ignores `min-width: 0`. Stripping the
+     native appearance drops the input out of that sizing path so `width: 100%`
+     wins. Tap-to-open-picker still works (driven by `type`, not appearance). */
+  -webkit-appearance: none;
+  appearance: none;
   min-width: 0;
 }
 
