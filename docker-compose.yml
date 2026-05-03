@@ -7,8 +7,9 @@ services:
     volumes:
       - boc-data:/data
     environment:
-      # Sleep-training mode flag; see README "Configuration".
+      # Sleep-training mode flags; see README "Configuration".
       FERBER_ENABLED: "false"
+      CHAIR_ENABLED: "false"
 
 volumes:
   boc-data:

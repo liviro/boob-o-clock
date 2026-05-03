@@ -1,16 +1,22 @@
 # Boob O'Clock
 
-A 24-hour baby sleep and feed tracker for breastfeeding parents. Built for one-handed use on a small phone screen.
+A self-hosted, open-source 24-hour baby sleep and feed tracker for breastfeeding parents. No account, no cloud — your data stays on your network. Built for one-handed use on a small phone screen.
 
 Dark mode only. Single tap to record events. Long-press for time adjustments.
+
+<p align="center">
+  <img src="docs/tracker-awake.png" width="250" alt="Tracker — nighttime awake state">
+  <img src="docs/cycles.png" width="250" alt="Cycle card — combined night and day stats">
+  <img src="docs/trends.png" width="250" alt="Trend charts — 24h timelines and intra-sleep feed times">
+</p>
 
 ## Why I built this
 
 It started in the thick of newborn nights. At 3am, mid-feed, I genuinely could not remember which side and when I'd last fed on — and every baby tracker I found wanted an account, cloud sync, and a bright white screen in my face. So I vibecoded this for myself in a few evenings, and it's already been useful enough that I wanted to share it.
 
-As the baby got older, more questions came up alongside the old ones. At 3am: "which side last?" During the day: "how long has the baby been awake?" and "was that nap 20 minutes or 45?" So the app grew a day mode — same state-machine approach, now covering the full 24-hour rhythm.
+As the baby got older, more questions came up alongside the old ones. Middle of the night: "which side last?" During the day: "how long has the baby been awake?" and "was that nap 20 minutes or 45?" So the app grew a day mode — same state-machine approach, now covering the full 24-hour rhythm.
 
-Just your data, on your network, no account and no ads. If Boob O'Clock helped you survive the infant days and nights, you can [buy me a coffee](https://ko-fi.com/polinaturcu) — it means a lot.
+If Boob O'Clock helped you survive the infant days and nights, you can [buy me a coffee](https://ko-fi.com/polinaturcu) — it means a lot.
 
 ## What it tracks
 
@@ -23,38 +29,38 @@ The app models your day and night as a single state machine. Depending on the cu
 - **Self-soothing** — baby put down awake or stirring in crib, settling without intervention.
 - **Resettling** — in-crib settling without a feed.
 - **Strolling** — the nuclear option when the crib isn't working.
-- **Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. I tried it — the feature worked fine; the method, not so much. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
-- **Chair mode** _(off by default)_ — gentle sleep-training where the parent sits in the room while baby falls asleep. On chair nights, "put down awake" is replaced with "sit in chair" — tap when you settle into the chair, then "Settled!" when baby's asleep or "Give up" to abandon. Time-in-state and time-since-feed render live so a partner can glance from across the room. Set `CHAIR_ENABLED=true` to opt in.
+- **Diaper changes** — log a poop from any state without losing context.
+- <a id="ferber-mode"></a>**Ferber mode** _(off by default)_ — graduated check-in intervals (classic Ferber table), mood tracking (quiet / fussy / crying), and a countdown on the check-in button so you never check in too early. I tried it — the feature worked fine; the method, not so much. Set `FERBER_ENABLED=true` to opt in (no rebuild needed); toggle off any time — past Ferber data stays in the DB and reappears when you turn it back on.
+- <a id="chair-mode"></a>**Chair mode** _(off by default)_ — gentle sleep-training where the parent sits in the room while baby falls asleep. On chair nights, "put down awake" is replaced with "sit in chair" — tap when you settle into the chair, then "Settled!" when baby's asleep or "Give up" to abandon. Time-in-state and time-since-feed render live so a partner can glance from across the room. Set `CHAIR_ENABLED=true` to opt in.
 
 ### Day
 - **Day feeds** — same feed tracking as night, with switch-breast suggestion based on the last side.
 - **Naps** — tagged with location (crib / stroller / on me / car). Durations roll up to daily nap stats.
 - **Wake windows** — automatically derived from the awake/nap rhythm, including the last wake window before bedtime.
+- **Diaper changes** — log a poop from any state without losing context.
 
-**Diaper changes** are reachable anytime, day or night. The tracker moves between day and night with a single **Start day** / **Start night** tap — no separate "end" action.
+The tracker moves between day and night with a single **Start day** / **Start night** tap — no separate "end" action.
 
 ## What it reports
 
-- **Cycle view**: one card per 24h midnight-to-midnight window, stacked chronologically. Each card shows a color-coded timeline bar of the full day and the following night, tinted day/night sections, and live sleep/wake duration pills (the in-progress segment blinks).
-- Per-night summary: night duration, total sleep, total feed time, wake count, feed count, longest sleep block, individual sleep block durations, feed times
-- Per-day summary: nap count, total nap time, longest nap, day feed count and duration, wake windows, last wake window before bedtime
-- Ferber nights (when enabled) also show sessions, average time to settle, cry time, fuss time, check-ins, abandoned sessions, and quiet time
-- Full event log with timestamps
-- Feed times scatter plot showing when feeds happen across 24 hours
-- Real bedtime chart showing when the baby actually goes down
-- Trend charts with moving averages: longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R), nap count, total nap time
-- Ferber trend charts (when any night had Ferber on): cry time per night, check-ins per night, avg time to settle
-- Ferber nights are highlighted as sage-green blocks on all non-Ferber trend charts, so you can correlate Ferber periods with broader sleep/feed changes
-- Chair nights are highlighted as mauve blocks on trend charts (parallel to Ferber's sage-green) and tagged with 🪑 in the cycles list
-- CSV export for backup or analysis
+Two views in the History tab: **Cycles** (one card per 24h window, stacked chronologically) and **Trends (30d)** (charts across the last month).
 
-## Screenshots
+**Cycles** — each card has:
+- A color-coded timeline bar with tinted day/night sections and live duration pills (the in-progress segment blinks).
+- **Night**: total sleep, longest sleep block, wake count, feed time, feed count, individual sleep block durations, feed times.
+- **Day**: total nap time, longest nap, nap count, day feed count and duration, wake windows (including the last one before bedtime).
+- Full event log with timestamps.
 
-<p align="center">
-  <img src="docs/tracker-awake.png" width="250" alt="Tracker — awake state">
-  <img src="docs/night-detail.png" width="250" alt="Night detail with timeline">
-  <img src="docs/trends.png" width="250" alt="Trend charts with moving averages">
-</p>
+**Trends (30d)**:
+- **24h cycle strip** — every recent cycle stacked as a colored bar so patterns pop at a glance.
+- **Scatter plots** — intra-sleep feed times across 24h, real bedtime, intra-sleep vs. other feeds per cycle.
+- **Moving-average lines** — longest sleep, total sleep, wake count, feed count, total feed time, feed time by breast (L/R), nap count, total nap time.
+
+**Sleep-training overlays** (when enabled):
+- **Ferber** cycles show per-night sessions, avg time to settle, cry/fuss/quiet time, check-in count, and abandoned sessions. Dedicated trend charts for cry time, check-ins, and time to settle. Ferber nights are tagged with 🌱 in the cycles list and highlighted as sage-green blocks on every other trend chart, so you can correlate Ferber periods with broader sleep/feed changes.
+- **Chair** nights are tagged with 🪑 in the cycles list and highlighted as mauve blocks on trend charts (parallel to Ferber's sage-green).
+
+**Export**: CSV download of all events for backup or analysis.
 
 ## Deploy
 
@@ -109,13 +115,19 @@ make build
 ./boob-o-clock -addr :8080 -db ./boob-o-clock.db
 ```
 
+Back up by copying the SQLite file at the path you passed to `-db` (the server can keep running — SQLite handles the read):
+
+```bash
+cp ./boob-o-clock.db ./backup.db
+```
+
 ### Configuration
 
 | Env | Flag | Default | Description |
 |---|---|---|---|
-| `PORT` | `-addr :PORT` | `8080` | Listen port |
-| `FERBER_ENABLED` | `-ferber` | `false` | Enable Ferber sleep-training mode (see [What it tracks](#what-it-tracks)) |
-| `CHAIR_ENABLED` | `-chair` | `false` | Enable Chair sleep-training mode (see [What it tracks](#what-it-tracks)) |
+| `PORT` | `-addr` | `:8080` | Listen address. `PORT` takes a port number (`8080`); `-addr` takes a full address (`:8080`) and overrides `PORT` if both are set. |
+| `FERBER_ENABLED` | `-ferber` | `false` | Enable [Ferber mode](#ferber-mode) (graduated check-in intervals + mood tracking) |
+| `CHAIR_ENABLED` | `-chair` | `false` | Enable [Chair mode](#chair-mode) (parent sits in the room while baby falls asleep) |
 
 For Docker Compose, set these under `environment:` in `docker-compose.yml` and run `docker compose up -d` to apply.
 
@@ -123,7 +135,7 @@ For Docker Compose, set these under `environment:` in `docker-compose.yml` and r
 
 Open `http://<your-server-ip>:8080` in Safari and tap **Share → Add to Home Screen**. The app launches fullscreen like a native app.
 
-> **Note:** The PWA service worker requires HTTPS on non-localhost. For local network use, accessing via IP on HTTP works fine — you just won't get offline caching. To enable HTTPS, put a reverse proxy (Caddy, nginx) in front with a self-signed or Let's Encrypt cert.
+> **Note:** The app installs to the home screen via its manifest, but doesn't ship a service worker — so there's no offline caching, and the app needs to reach the server to work. HTTP works fine over a home LAN; for HTTPS, put a reverse proxy (Caddy, nginx) in front with a self-signed or Let's Encrypt cert.
 
 ## Develop
 
@@ -149,22 +161,24 @@ Generates one orphan historical night followed by full (day, night) cycles and a
 ### Test
 
 ```bash
-make test              # Go tests (150+ tests across 4 packages)
-cd web && npx tsc      # TypeScript type check
-cd web && npm run lint # ESLint (react-hooks rules)
+make test                  # Go tests (190+ tests across 4 packages)
+cd web && npx tsc --noEmit # TypeScript type check
+cd web && npm run lint     # ESLint (react-hooks rules)
 ```
 
 ### Project structure
 
 ```
-├── cmd/server/          Entry point, wiring, embed
+├── cmd/
+│   ├── server/    Entry point, wiring
+│   └── seed/      Dev fixture generator
 ├── internal/
-│   ├── domain/          Unified state machine (18 states, 56 transitions, zero deps)
-│   ├── store/           SQLite persistence (pure Go, no CGo)
-│   ├── reports/         Cycle/day/night stats, timelines, trends, breast tracking, Ferber session derivation
-│   ├── api/             REST handlers
-│   └── web/             Embedded frontend (go:embed)
-└── web/                 Preact + TypeScript + Vite source
+│   ├── domain/    Unified state machine (18 states, 56 transitions, zero deps)
+│   ├── store/     SQLite persistence (pure Go, no CGo)
+│   ├── reports/   Stats, timelines, trends, sleep-training sessions
+│   ├── api/       REST handlers
+│   └── web/       Embedded frontend (go:embed)
+└── web/           Preact + TypeScript + Vite source
 ```
 
 ### API
