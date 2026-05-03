@@ -170,15 +170,15 @@ cd web && npm run lint     # ESLint (react-hooks rules)
 
 ```
 ├── cmd/
-│   ├── server/          Entry point, wiring
-│   └── seed/            Dev fixture generator
+│   ├── server/    Entry point, wiring
+│   └── seed/      Dev fixture generator
 ├── internal/
-│   ├── domain/          Unified state machine (18 states, 56 transitions, zero deps)
-│   ├── store/           SQLite persistence (pure Go, no CGo)
-│   ├── reports/         Cycle/day/night stats, timelines, trends, breast tracking, Ferber session derivation
-│   ├── api/             REST handlers
-│   └── web/             Embedded frontend (go:embed)
-└── web/                 Preact + TypeScript + Vite source
+│   ├── domain/    Unified state machine (18 states, 56 transitions, zero deps)
+│   ├── store/     SQLite persistence (pure Go, no CGo)
+│   ├── reports/   Stats, timelines, trends, sleep-training sessions
+│   ├── api/       REST handlers
+│   └── web/       Embedded frontend (go:embed)
+└── web/           Preact + TypeScript + Vite source
 ```
 
 ### API
