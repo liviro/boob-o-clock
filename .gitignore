@@ -26,3 +26,6 @@ docs/superpowers/
 
 # Playwright MCP tool artifacts
 .playwright-mcp/
+
+# Claude Code local state (settings, scheduled-task lock)
+.claude/
