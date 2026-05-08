@@ -1,20 +1,20 @@
+import { useId } from 'preact/hooks';
 import { fmtDayMonth, fmtNightHourLabel } from '../constants';
 import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
-import { buildGappedPath } from './svgPath';
 
-export type HourDot = {
-  hour: number;  // hours since NIGHT_EPOCH_H
+export type FeedSpan = {
+  startHour: number;  // hours since NIGHT_EPOCH_H
+  endHour: number;    // hours since NIGHT_EPOCH_H, > startHour
 };
 
 interface Props<T> {
   points: T[];
   getDate: (p: T) => string;
-  // Returns dots for a given point. Each dot has an hour-offset from NIGHT_EPOCH_H.
-  getDots: (p: T) => HourDot[];
-  // Optional: moving-average line overlay (dashed). Return null for points
-  // without sufficient history. Same hour-offset space as getDots.
-  getAvgHour?: (p: T) => number | null;
+  // Returns intra-sleep feed spans for a given point. Each span has start
+  // and end as hour-offsets from NIGHT_EPOCH_H (matches NightHourChart's
+  // HourDot.hour). Empty for nights with no qualifying feeds.
+  getSpans: (p: T) => FeedSpan[];
   color: string;
   title: string;
   highlightFerber?: boolean;
@@ -23,35 +23,30 @@ interface Props<T> {
   isChair?: (p: T) => boolean;
 }
 
-const H = 160;
+const H = 230;
 const PAD = { top: 24, right: 8, bottom: 20, left: 44 };
-const CHART_H = H - PAD.top - PAD.bottom;
+const CHART_H = H - PAD.top - PAD.bottom;  // 186
 const MIN_RANGE_H = 2;
 
-export function NightHourChart<T>({
-  points, getDate, getDots, getAvgHour, color, title, highlightFerber, isFerber, highlightChair, isChair,
+export function FeedDurationChart<T>({
+  points, getDate, getSpans, color, title,
+  highlightFerber, isFerber, highlightChair, isChair,
 }: Props<T>) {
-  // See TrendChart: dynamic W so viewBox user units stay at 1:1 with CSS pixels.
+  // Dynamic W so viewBox user units stay 1:1 with CSS pixels — see TrendChart.
   const [svgRef, W] = useMeasuredWidth<SVGSVGElement>(320);
   const CHART_W = W - PAD.left - PAD.right;
+  const clipId = useId();
 
-  // Use points in the order they arrive — callers pass chronological
-  // (oldest-first) so i=0 plots at the left edge (matches TrendChart).
-  const dots: { ni: number; hour: number }[] = [];
+  const spans: { ni: number; startHour: number; endHour: number }[] = [];
   for (let i = 0; i < points.length; i++) {
-    for (const d of getDots(points[i])) {
-      dots.push({ ni: i, hour: d.hour });
+    for (const s of getSpans(points[i])) {
+      spans.push({ ni: i, ...s });
     }
   }
-  if (dots.length === 0) return null;
+  if (spans.length === 0) return null;
 
-  const avgHours: (number | null)[] = getAvgHour
-    ? points.map(p => getAvgHour(p))
-    : [];
-
-  const allHours = dots.map(d => d.hour).concat(
-    avgHours.filter((v): v is number => v != null),
-  );
+  // Y-axis range: include both ends of every span so the longest feed fits.
+  const allHours = spans.flatMap(s => [s.startHour, s.endHour]);
   let minH = Math.floor(Math.min(...allHours));
   let maxH = Math.ceil(Math.max(...allHours));
   if (maxH - minH < MIN_RANGE_H) {
@@ -64,10 +59,14 @@ export function NightHourChart<T>({
   const rangeH = maxH - minH;
 
   const n = points.length;
-  const x = (ni: number) => n === 1 ? PAD.left + CHART_W / 2 : PAD.left + (ni / (n - 1)) * CHART_W;
+  const x = (ni: number) => n === 1
+    ? PAD.left + CHART_W / 2
+    : PAD.left + (ni / (n - 1)) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 
-  const avgPath = avgHours.length > 0 ? buildGappedPath(avgHours, x, y) : '';
+  // Strict responsive: width scales inversely with night count. Slivers can
+  // overflow chart bounds at small n; the clipPath below contains them.
+  const sliverWidth = CHART_W / n;
 
   const dateLabels: { x: number; label: string }[] = [];
   if (n <= 7) {
@@ -80,7 +79,6 @@ export function NightHourChart<T>({
     }
   }
 
-  // Step adapts to range to keep the axis around 6 labels.
   const yStepH = rangeH <= 2 ? 1 : rangeH <= 6 ? 1 : rangeH <= 12 ? 2 : 4;
   const yLabels: { y: number; label: string }[] = [];
   for (let h = Math.ceil(minH); h <= Math.floor(maxH); h += yStepH) {
@@ -94,6 +92,12 @@ export function NightHourChart<T>({
     <div class="trend-chart">
       <div class="trend-title">{title}</div>
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%">
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={PAD.left} y={PAD.top} width={CHART_W} height={CHART_H} />
+          </clipPath>
+        </defs>
+
         {yLabels.map((yl, i) => (
           <text key={i} x={PAD.left - 4} y={yl.y + 3} fill="#999" font-size="9" text-anchor="end">
             {yl.label}
@@ -131,13 +135,23 @@ export function NightHourChart<T>({
 
         <line x1={PAD.left} y1={PAD.top + CHART_H} x2={PAD.left + CHART_W} y2={PAD.top + CHART_H} stroke="#222" />
 
-        {avgPath && (
-          <path d={avgPath} fill="none" stroke={color} stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5" />
-        )}
-
-        {dots.map((d, i) => (
-          <circle key={i} cx={x(d.ni)} cy={y(d.hour)} r="4" fill={color} opacity="0.85" />
-        ))}
+        <g clip-path={`url(#${clipId})`}>
+          {spans.map((s, i) => {
+            const yTop = y(s.startHour);
+            const yBottom = y(s.endHour);
+            return (
+              <rect
+                key={i}
+                x={x(s.ni) - sliverWidth / 2}
+                y={yTop}
+                width={sliverWidth}
+                height={yBottom - yTop}
+                fill={color}
+                opacity="0.85"
+              />
+            );
+          })}
+        </g>
 
         {dateLabels.map((dl, i) => (
           <text key={i} x={dl.x} y={H - 2} fill="#999" font-size="9" text-anchor="middle">
