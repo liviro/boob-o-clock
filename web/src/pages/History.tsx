@@ -6,7 +6,7 @@ import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { ScatterChart } from '../components/ScatterChart';
 import { NightHourChart } from '../components/NightHourChart';
-import { FeedDurationChart } from '../components/FeedDurationChart';
+import { FeedDurationChart, FeedSpan } from '../components/FeedDurationChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 import { useConfig } from '../hooks/useConfig';
@@ -42,16 +42,14 @@ function computeMovingAvg(values: (number | null)[], window: number): (number | 
   });
 }
 
-// Per intra-sleep feed start in `feedTimes`, walk forward through the cycle's
-// event log while we're still in the feeding state to find when the feed
-// ended. Switch-breast self-transitions stay in `feeding` and are absorbed
-// naturally; the loop exits at the first non-feeding event, whose timestamp
-// is the feed's end. Both `feedTimes` strings and `events[].timestamp` come
-// from the same Go time.Time serialization, so character equality is reliable.
-function feedSpansFor(c: CycleSummary): { startHour: number; endHour: number }[] {
+// Switch-breast self-transitions stay in `feeding` and are absorbed naturally
+// by the forward walk. Timestamp equality is character-exact because both
+// `feedTimes` and `events[].timestamp` come from the same Go time.Time
+// MarshalJSON output.
+function feedSpansFor(c: CycleSummary): FeedSpan[] {
   const feedTimes = c.stats.night?.feedTimes ?? [];
   const events = c.events;
-  const spans: { startHour: number; endHour: number }[] = [];
+  const spans: FeedSpan[] = [];
   for (const startStr of feedTimes) {
     const i = events.findIndex(e =>
       e.toState === 'feeding' && e.timestamp === startStr,
