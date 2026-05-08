@@ -6,6 +6,7 @@ import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { ScatterChart } from '../components/ScatterChart';
 import { NightHourChart } from '../components/NightHourChart';
+import { FeedDurationChart } from '../components/FeedDurationChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 import { useConfig } from '../hooks/useConfig';
@@ -39,6 +40,38 @@ function computeMovingAvg(values: (number | null)[], window: number): (number | 
     const sum = (slice as number[]).reduce((a, b) => a + b, 0);
     return sum / window;
   });
+}
+
+// Per intra-sleep feed start in `feedTimes`, walk forward through the cycle's
+// event log while we're still in the feeding state to find when the feed
+// ended. Switch-breast self-transitions stay in `feeding` and are absorbed
+// naturally; the loop exits at the first non-feeding event, whose timestamp
+// is the feed's end. Both `feedTimes` strings and `events[].timestamp` come
+// from the same Go time.Time serialization, so character equality is reliable.
+function feedSpansFor(c: CycleSummary): { startHour: number; endHour: number }[] {
+  const feedTimes = c.stats.night?.feedTimes ?? [];
+  const events = c.events;
+  const spans: { startHour: number; endHour: number }[] = [];
+  for (const startStr of feedTimes) {
+    const i = events.findIndex(e =>
+      e.toState === 'feeding' && e.timestamp === startStr,
+    );
+    if (i < 0) continue;
+    let endStr: string | null = null;
+    let j = i;
+    while (j < events.length && events[j].toState === 'feeding') {
+      const next = events[j + 1];
+      if (!next) break;
+      endStr = next.timestamp;
+      j++;
+    }
+    if (endStr == null) continue;
+    spans.push({
+      startHour: toNightHour(startStr),
+      endHour: toNightHour(endStr),
+    });
+  }
+  return spans;
 }
 
 export function History() {
@@ -212,10 +245,10 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
     <div class="trends-grid">
       <StackedCycleTimelines cycles={cycles} />
 
-      <NightHourChart
+      <FeedDurationChart
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
+        getSpans={feedSpansFor}
         color="#c0b040"
         title="Intra-sleep feed times"
         {...modeProps}
