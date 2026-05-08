@@ -135,9 +135,8 @@ export function toNightHour(ts: string): number {
   return h - NIGHT_EPOCH_H;
 }
 
-/** Format an "hours since NIGHT_EPOCH_H" value as a 12-hour clock label.
- *  Inverse-direction sibling of `toNightHour`. */
-export function fmtNightHour(h: number): string {
+/** Format an "hours since NIGHT_EPOCH_H" value as a 12-hour clock label. */
+export function fmtEpochHour(h: number): string {
   let clock = Math.round(h + NIGHT_EPOCH_H);
   if (clock >= 24) clock -= 24;
   if (clock < 0) clock += 24;
