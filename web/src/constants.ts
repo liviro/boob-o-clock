@@ -135,6 +135,16 @@ export function toNightHour(ts: string): number {
   return h - NIGHT_EPOCH_H;
 }
 
+/** Format an "hours since NIGHT_EPOCH_H" value as a 12-hour clock label. */
+export function fmtEpochHour(h: number): string {
+  let clock = Math.round(h + NIGHT_EPOCH_H);
+  if (clock >= 24) clock -= 24;
+  if (clock < 0) clock += 24;
+  const period = clock < 12 ? 'AM' : 'PM';
+  const hour12 = clock === 0 ? 12 : clock > 12 ? clock - 12 : clock;
+  return `${hour12} ${period}`;
+}
+
 /** Format a Date as a short numeric day/month for chart axis labels. */
 export function fmtDayMonth(d: Date): string {
   return d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' });

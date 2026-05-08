@@ -6,6 +6,7 @@ import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
 import { ScatterChart } from '../components/ScatterChart';
 import { NightHourChart } from '../components/NightHourChart';
+import { FeedDurationChart, FeedSpan } from '../components/FeedDurationChart';
 import { ErrorToast } from '../components/ErrorToast';
 import { useIsLandscape } from '../hooks/useIsLandscape';
 import { useConfig } from '../hooks/useConfig';
@@ -39,6 +40,36 @@ function computeMovingAvg(values: (number | null)[], window: number): (number | 
     const sum = (slice as number[]).reduce((a, b) => a + b, 0);
     return sum / window;
   });
+}
+
+// Switch-breast self-transitions stay in `feeding` and are absorbed naturally
+// by the forward walk. Timestamp equality is character-exact because both
+// `feedTimes` and `events[].timestamp` come from the same Go time.Time
+// MarshalJSON output.
+function feedSpansFor(c: CycleSummary): FeedSpan[] {
+  const feedTimes = c.stats.night?.feedTimes ?? [];
+  const events = c.events;
+  const spans: FeedSpan[] = [];
+  for (const startStr of feedTimes) {
+    const i = events.findIndex(e =>
+      e.toState === 'feeding' && e.timestamp === startStr,
+    );
+    if (i < 0) continue;
+    let endStr: string | null = null;
+    let j = i;
+    while (j < events.length && events[j].toState === 'feeding') {
+      const next = events[j + 1];
+      if (!next) break;
+      endStr = next.timestamp;
+      j++;
+    }
+    if (endStr == null) continue;
+    spans.push({
+      startHour: toNightHour(startStr),
+      endHour: toNightHour(endStr),
+    });
+  }
+  return spans;
 }
 
 export function History() {
@@ -212,10 +243,10 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
     <div class="trends-grid">
       <StackedCycleTimelines cycles={cycles} />
 
-      <NightHourChart
+      <FeedDurationChart
         points={chronological}
         getDate={c => c.night?.startedAt ?? c.day!.startedAt}
-        getDots={c => c.stats.night?.feedTimes?.map(t => ({ hour: toNightHour(t) })) ?? []}
+        getSpans={feedSpansFor}
         color="#c0b040"
         title="Intra-sleep feed times"
         {...modeProps}
