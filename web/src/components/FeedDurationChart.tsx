@@ -1,5 +1,5 @@
 import { useId } from 'preact/hooks';
-import { fmtDayMonth, fmtNightHourLabel } from '../constants';
+import { fmtDayMonth, fmtNightHour } from '../constants';
 import { NightModeHighlight } from './NightModeHighlight';
 import { useMeasuredWidth } from '../hooks/useMeasuredWidth';
 
@@ -82,7 +82,7 @@ export function FeedDurationChart<T>({
   const yStepH = rangeH <= 2 ? 1 : rangeH <= 6 ? 1 : rangeH <= 12 ? 2 : 4;
   const yLabels: { y: number; label: string }[] = [];
   for (let h = Math.ceil(minH); h <= Math.floor(maxH); h += yStepH) {
-    yLabels.push({ y: y(h), label: fmtNightHourLabel(h) });
+    yLabels.push({ y: y(h), label: fmtNightHour(h) });
   }
 
   const ferberCheck = isFerber ?? ((_p: T) => false);
