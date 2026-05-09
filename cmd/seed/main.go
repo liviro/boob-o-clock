@@ -1,15 +1,19 @@
 // Command seed inserts plausible test data into a boob-o-clock database.
-// Usage: go run ./cmd/seed -db ./dev.db
+// Usage: go run ./cmd/seed -db ./dev.db -days 40
 //
 // Structure:
-//   - Day -8: one orphan night (no paired day) — exercises the historical
-//     pre-feature case. This tests the "day=null" branch of the cycle view.
-//   - Days -7..-1: six full cycles, each a day session paired with the
-//     following night. Day-start times vary around 7am (±30 min) so the
-//     cycle-bar's 7am epoch is visible in the stacked timelines.
-//   - Today: an in-progress day session with a few events already logged.
+//   - One orphan night (no paired day) at -(days+2) → -(days+1) — exercises
+//     the historical pre-feature case (the "day=null" branch of the cycle
+//     view).
+//   - `days` full cycles spanning -days .. -1, each a day session paired
+//     with the following night. Wake times and night-start times rotate
+//     through a fixed pattern (some 6:30 / 7:30 wakes for variety around
+//     the 7am cycle-bar epoch). Day and night activity fixtures rotate
+//     independently so longer windows stay visually varied.
+//   - Today: an in-progress day session that starts when the last cycle's
+//     night ends, with a few events already logged.
 //
-// No Ferber: removed per owner preference.
+// No Ferber / Chair: kept simple per owner preference.
 package main
 
 import (
@@ -25,6 +29,7 @@ import (
 
 func main() {
 	dbPath := flag.String("db", "./dev.db", "path to SQLite database")
+	days := flag.Int("days", 40, "number of complete day+night cycles to seed")
 	flag.Parse()
 
 	os.Remove(*dbPath) // start fresh
@@ -35,10 +40,10 @@ func main() {
 	}
 	defer s.Close()
 
-	if err := seedAll(s); err != nil {
+	if err := seedAll(s, *days); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Seeded plausible day+night cycles into %s\n", *dbPath)
+	fmt.Printf("Seeded %d day+night cycles into %s\n", *days, *dbPath)
 	fmt.Printf("To point the dev server at it: go run ./cmd/server -db %s\n", *dbPath)
 }
 
@@ -149,77 +154,18 @@ type cycleSpec struct {
 	night      []nightBlock
 }
 
-func seedAll(s *store.Store) error {
+func seedAll(s *store.Store, days int) error {
 	mid := midnightLocal()
 
-	// Orphan night: 8 days ago, 8:00 PM → 7 days ago, 6:45 AM.
-	orphanStart := atHourMin(mid.AddDate(0, 0, -8), 20, 0)
-	orphanEnd := atHourMin(mid.AddDate(0, 0, -7), 6, 45)
+	// Orphan night sits two days before the earliest cycle so the inter-cycle
+	// gap (no paired day) is unambiguous regardless of how many cycles follow.
+	orphanStart := atHourMin(mid.AddDate(0, 0, -(days+2)), 20, 0)
+	orphanEnd := atHourMin(mid.AddDate(0, 0, -(days+1)), 6, 45)
 	if err := seedNight(s, orphanStart, orphanEnd, nightOneWakeup()); err != nil {
 		return fmt.Errorf("orphan night: %w", err)
 	}
 
-	// Six complete cycles over days -6..-1. Under contiguous-chain semantics,
-	// each cycle's nightEnd must equal the next cycle's dayStart (no gaps).
-	// Day start times vary to exercise the 7am cycle boundary — some start
-	// before 7am (early wake), some after (late wake = late-sleeping baby,
-	// which visualizes as a sleep sliver at the left of the current cycle).
-	cycles := []cycleSpec{
-		// Day -6: typical 7am start. Next day wakes at 6:45 (early).
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -6), 7, 0),
-			nightStart: atHourMin(mid.AddDate(0, 0, -6), 19, 30),
-			nightEnd:   atHourMin(mid.AddDate(0, 0, -5), 6, 45),
-			day:        dayTwoNaps(),
-			night:      nightOneWakeup(),
-		},
-		// Day -5: early morning wake (6:45am, just before the 7am epoch).
-		// Night runs long (until 7:15am) → visualizes as a 15-min sleep
-		// sliver at the left of day -4's cycle bar.
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -5), 6, 45),
-			nightStart: atHourMin(mid.AddDate(0, 0, -5), 19, 45),
-			nightEnd:   atHourMin(mid.AddDate(0, 0, -4), 7, 15),
-			day:        dayThreeNaps(),
-			night:      nightTwoWakeups(),
-		},
-		// Day -4: late wake from previous night (7:15am — sleep tail visible
-		// at the left of this bar).
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -4), 7, 15),
-			nightStart: atHourMin(mid.AddDate(0, 0, -4), 19, 30),
-			nightEnd:   atHourMin(mid.AddDate(0, 0, -3), 6, 30),
-			day:        dayCarNap(),
-			night:      nightOneWakeup(),
-		},
-		// Day -3: very early wake (6:30am). Night runs until 7:30am next day
-		// — produces a noticeable 30-min sleep sliver at the left of day -2's
-		// cycle bar.
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -3), 6, 30),
-			nightStart: atHourMin(mid.AddDate(0, 0, -3), 19, 30),
-			nightEnd:   atHourMin(mid.AddDate(0, 0, -2), 7, 30),
-			day:        dayThreeNaps(),
-			night:      nightTwoWakeups(),
-		},
-		// Day -2: late wake (7:30am — inherits the 30-min sleep sliver).
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -2), 7, 30),
-			nightStart: atHourMin(mid.AddDate(0, 0, -2), 20, 0),
-			nightEnd:   atHourMin(mid.AddDate(0, 0, -1), 7, 0),
-			day:        dayTwoNaps(),
-			night:      nightOneWakeup(),
-		},
-		// Day -1: typical 7am wake.
-		{
-			dayStart:   atHourMin(mid.AddDate(0, 0, -1), 7, 0),
-			nightStart: atHourMin(mid.AddDate(0, 0, -1), 19, 30),
-			nightEnd:   atHourMin(mid, 6, 50),
-			day:        dayThreeNaps(),
-			night:      nightOneWakeup(),
-		},
-	}
-
+	cycles := generateCycles(days, mid)
 	for i, c := range cycles {
 		if err := seedDay(s, c.dayStart, c.nightStart, c.day); err != nil {
 			return fmt.Errorf("cycle %d day: %w", i+1, err)
@@ -229,9 +175,14 @@ func seedAll(s *store.Store) error {
 		}
 	}
 
-	// Today's in-progress day. Started at 6:50am; we've logged a morning
-	// feed and one nap so far. The session stays open (no EndSession call).
-	todayStart := atHourMin(mid, 6, 50)
+	// In-progress day starts where the last cycle's night ended so the chain
+	// stays unbroken; falls back to a sensible default when days == 0.
+	var todayStart time.Time
+	if len(cycles) > 0 {
+		todayStart = cycles[len(cycles)-1].nightEnd
+	} else {
+		todayStart = atHourMin(mid, 6, 50)
+	}
 	now := time.Now()
 	// Only include activities that can fit before "now".
 	todayActivities := []dayActivity{
@@ -254,6 +205,43 @@ func seedAll(s *store.Store) error {
 	}
 
 	return nil
+}
+
+// generateCycles produces n contiguous day+night cycles spanning days -n..-1,
+// rotating through wake times, night-start times, and activity fixtures so
+// longer windows stay visually varied. Each cycle's nightEnd matches the next
+// cycle's dayStart so the chain is unbroken.
+func generateCycles(n int, today time.Time) []cycleSpec {
+	if n <= 0 {
+		return nil
+	}
+
+	nightFixtures := [][]nightBlock{nightOneWakeup(), nightTwoWakeups()}
+	dayFixtures := [][]dayActivity{dayTwoNaps(), dayThreeNaps(), dayCarNap()}
+
+	type clock struct{ h, m int }
+	wakeTimes := []clock{
+		{7, 0}, {6, 45}, {7, 15}, {6, 30}, {7, 30}, {7, 0},
+	}
+	nightStartTimes := []clock{
+		{19, 30}, {19, 45}, {19, 30}, {19, 30}, {20, 0}, {19, 30},
+	}
+
+	cycles := make([]cycleSpec, n)
+	for i := 0; i < n; i++ {
+		dayOff := -(n - i)
+		ws := wakeTimes[i%len(wakeTimes)]
+		ns := nightStartTimes[i%len(nightStartTimes)]
+		nextWake := wakeTimes[(i+1)%len(wakeTimes)]
+		cycles[i] = cycleSpec{
+			dayStart:   atHourMin(today.AddDate(0, 0, dayOff), ws.h, ws.m),
+			nightStart: atHourMin(today.AddDate(0, 0, dayOff), ns.h, ns.m),
+			nightEnd:   atHourMin(today.AddDate(0, 0, dayOff+1), nextWake.h, nextWake.m),
+			day:        dayFixtures[i%len(dayFixtures)],
+			night:      nightFixtures[i%len(nightFixtures)],
+		}
+	}
+	return cycles
 }
 
 // --- seed helpers ---
