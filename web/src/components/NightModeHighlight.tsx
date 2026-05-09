@@ -13,7 +13,10 @@ interface Props {
 // whose night was tagged with a particular sleep-training mode (Ferber, Chair).
 // Charts call it once per mode with mode-specific predicate + color.
 export function NightModeHighlight({ count, isMode, fill, x, left, top, width, height }: Props) {
-  const stripeW = count > 1 ? width / (count - 1) : width * 0.15;
+  // Derive stripe width from actual column spacing so callers can pick any
+  // evenly-spaced projection (centered-lane, edge-aligned, etc.) without
+  // this helper needing to know which.
+  const stripeW = count > 1 ? Math.abs(x(1) - x(0)) : width * 0.15;
   const right = left + width;
   const rects = [];
   for (let i = 0; i < count; i++) {

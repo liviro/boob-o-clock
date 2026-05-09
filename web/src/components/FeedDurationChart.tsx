@@ -59,13 +59,12 @@ export function FeedDurationChart<T>({
   const rangeH = maxH - minH;
 
   const n = points.length;
-  const x = (ni: number) => n === 1
-    ? PAD.left + CHART_W / 2
-    : PAD.left + (ni / (n - 1)) * CHART_W;
+  // Center each column in its CHART_W/n lane so edge slivers sit flush
+  // inside the chart area without clipping. Matches NightHourChart.
+  const x = (ni: number) => PAD.left + ((ni + 0.5) / n) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 
-  // Strict responsive: width scales inversely with night count. Slivers can
-  // overflow chart bounds at small n; the clipPath below contains them.
+  // One sliver per lane; adjacent slivers touch at lane boundaries.
   const sliverWidth = CHART_W / n;
 
   const dateLabels: { x: number; label: string }[] = [];
