@@ -65,8 +65,7 @@ export function NightHourChart<T>({
 
   const n = points.length;
   // Center each column in its CHART_W/n lane so edge columns sit flush
-  // inside the chart area. FeedDurationChart relies on this layout to draw
-  // edge slivers without clipping.
+  // inside the chart area.
   const x = (ni: number) => PAD.left + ((ni + 0.5) / n) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 

@@ -60,11 +60,10 @@ export function FeedDurationChart<T>({
 
   const n = points.length;
   // Center each column in its CHART_W/n lane so edge slivers sit flush
-  // inside the chart area without clipping. Matches NightHourChart.
+  // inside the chart area without clipping.
   const x = (ni: number) => PAD.left + ((ni + 0.5) / n) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 
-  // One sliver per lane; adjacent slivers touch at lane boundaries.
   const sliverWidth = CHART_W / n;
 
   const dateLabels: { x: number; label: string }[] = [];
