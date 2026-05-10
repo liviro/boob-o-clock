@@ -64,7 +64,9 @@ export function NightHourChart<T>({
   const rangeH = maxH - minH;
 
   const n = points.length;
-  const x = (ni: number) => n === 1 ? PAD.left + CHART_W / 2 : PAD.left + (ni / (n - 1)) * CHART_W;
+  // Center each column in its CHART_W/n lane so edge columns sit flush
+  // inside the chart area.
+  const x = (ni: number) => PAD.left + ((ni + 0.5) / n) * CHART_W;
   const y = (h: number) => PAD.top + ((h - minH) / rangeH) * CHART_H;
 
   const avgPath = avgHours.length > 0 ? buildGappedPath(avgHours, x, y) : '';
