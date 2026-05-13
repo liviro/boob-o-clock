@@ -127,6 +127,15 @@ export const NIGHT_EPOCH_H = 18; // 6 PM
  */
 export const CYCLE_EPOCH_H = 0;
 
+/**
+ * Minimum width (as a percent of the bar's total span) for a timeline segment
+ * to be rendered. Shared by TimelineBar (per-night) and CycleTimelineBar
+ * (24h) so the two views drop the same fraction of sub-pixel transitions —
+ * otherwise short feeds/transfers/resettles silently disappear from one bar
+ * but not the other.
+ */
+export const TIMELINE_MIN_SEGMENT_PCT = 0.1;
+
 /** Convert a timestamp to "hours since NIGHT_EPOCH_H". E.g. 9 PM = 3, 1 AM = 7. */
 export function toNightHour(ts: string): number {
   const d = new Date(ts);

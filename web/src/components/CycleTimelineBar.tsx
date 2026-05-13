@@ -1,5 +1,5 @@
 import { EventEntry, SessionMeta } from '../api';
-import { STATE_COLORS, CYCLE_EPOCH_H } from '../constants';
+import { STATE_COLORS, CYCLE_EPOCH_H, TIMELINE_MIN_SEGMENT_PCT } from '../constants';
 
 interface Props {
   day: SessionMeta | null;
@@ -92,7 +92,7 @@ function buildSegments(
 
     const leftPct = ((start - cycleStartMs) / CYCLE_DURATION_MS) * 100;
     const widthPct = ((end - start) / CYCLE_DURATION_MS) * 100;
-    if (widthPct < 0.1) continue;
+    if (widthPct < TIMELINE_MIN_SEGMENT_PCT) continue;
 
     segments.push({
       state: evt.toState,
