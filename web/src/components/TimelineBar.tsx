@@ -52,7 +52,9 @@ export function TimelineBar({ timeline, totalDurationNs }: Props) {
       <div class="timeline-bar">
         {timeline.map((entry, i) => {
           const pct = totalMs > 0 ? (entry.duration / 1e6 / totalMs * 100) : 0;
-          if (pct < 0.5) return null;
+          // Match CycleTimelineBar's threshold so fine-grained transitions
+          // (short feeds, transfers, resettles) survive on this denser bar.
+          if (pct < 0.1) return null;
           return (
             <div
               key={i}
