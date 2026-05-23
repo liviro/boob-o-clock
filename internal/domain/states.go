@@ -152,6 +152,3 @@ type Session struct {
 
 // IsNight reports whether this is a night session.
 func (s *Session) IsNight() bool { return s.Kind == SessionKindNight }
-
-// IsDay reports whether this is a day session.
-func (s *Session) IsDay() bool { return s.Kind == SessionKindDay }

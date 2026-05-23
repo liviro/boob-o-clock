@@ -21,6 +21,10 @@ func New(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	// Serialize all DB access so the read-modify-write sequence in event
+	// handlers (load events → derive state → validate → append) stays
+	// atomic across concurrent requests without explicit transactions.
+	// Raising this requires rewriting those handlers to take row locks.
 	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db, dbPath: path}
