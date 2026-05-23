@@ -137,7 +137,7 @@ var transitions = map[transitionKey]State{
 
 	// 47: DAY_FEEDING → DAY_AWAKE
 	{DayFeeding, DislatchAwake}: DayAwake,
-	// 48: DAY_FEEDING → DAY_SLEEPING (handler implicitly fills location=on_me)
+	// 48: DAY_FEEDING → DAY_SLEEPING (parent picks location: crib/stroller/on_me/car)
 	{DayFeeding, DislatchAsleep}: DaySleeping,
 	// 49: DAY_FEEDING → DAY_FEEDING (switch breast)
 	{DayFeeding, SwitchBreast}: DayFeeding,
@@ -167,9 +167,17 @@ var actionsRequiringMood = map[Action]bool{
 	EndCheckIn:         true,
 }
 
-// actionsRequiringLocation is the set of actions that need location metadata.
+// actionsRequiringLocation is the set of actions that need location metadata
+// for every transition that uses them.
 var actionsRequiringLocation = map[Action]bool{
 	StartSleep: true,
+}
+
+// Day-side DislatchAsleep needs an explicit target because DaySleeping is a
+// single state that doesn't encode location; night-side always lands in
+// SleepingOnMe by definition, with other locations reached via Transferring.
+var transitionsRequiringLocation = map[transitionKey]bool{
+	{DayFeeding, DislatchAsleep}: true,
 }
 
 // Transition attempts a state transition and returns the new state.
@@ -185,7 +193,7 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 			return "", err
 		}
 	}
-	if actionsRequiringLocation[action] {
+	if actionsRequiringLocation[action] || transitionsRequiringLocation[transitionKey{from, action}] {
 		if err := validateLocation(metadata); err != nil {
 			return "", err
 		}
