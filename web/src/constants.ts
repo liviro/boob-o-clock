@@ -1,3 +1,5 @@
+import type { State } from './api';
+
 export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   night_off:         { icon: '🌙', label: 'Night Off' },
   // Night subgraph
@@ -28,6 +30,10 @@ export interface ActionDef {
   needsBreast?: boolean;
   needsMood?: boolean;
   needsLocation?: boolean;
+  // For actions whose location requirement depends on the current state
+  // (e.g. dislatch_asleep needs a target only on the day side; at night
+  // the destination state already encodes location).
+  needsLocationFrom?: State[];
   confirm?: boolean;
 }
 
@@ -38,7 +44,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   // Feeding cluster (shared between night and day).
   start_feed:             { icon: '🍼', label: 'Feed',                cls: 'feed full-width', needsBreast: true },
   dislatch_awake:         { icon: '👀', label: 'Dislatch (awake)',    cls: '' },
-  dislatch_asleep:        { icon: '😴', label: 'Dislatch (asleep)',   cls: 'sleep' },
+  dislatch_asleep:        { icon: '😴', label: 'Dislatch (asleep)',   cls: 'sleep', needsLocationFrom: ['day_feeding'] },
   switch_breast:          { icon: '🔄', label: 'Switch side',         cls: 'feed' },
   // Night transitions.
   start_transfer:         { icon: '🤞', label: 'Transfer to crib',    cls: '' },

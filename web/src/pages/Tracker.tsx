@@ -111,7 +111,7 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
       return;
     }
 
-    if (ai?.needsLocation) {
+    if (ai?.needsLocation || ai?.needsLocationFrom?.includes(session.state)) {
       setModal({ type: 'location', action, wantsTimePicker });
       return;
     }

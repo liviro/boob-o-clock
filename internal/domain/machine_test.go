@@ -91,7 +91,8 @@ func TestAllValidTransitions(t *testing.T) {
 		{"day: start sleep on me", DayAwake, StartSleep, DaySleeping, map[string]string{"location": "on_me"}},
 		{"day: poop from awake", DayAwake, PoopStart, DayPoop, nil},
 		{"day: dislatch awake", DayFeeding, DislatchAwake, DayAwake, nil},
-		{"day: dislatch asleep (implicit on_me)", DayFeeding, DislatchAsleep, DaySleeping, nil},
+		{"day: dislatch asleep on me", DayFeeding, DislatchAsleep, DaySleeping, map[string]string{"location": "on_me"}},
+		{"day: dislatch asleep to crib", DayFeeding, DislatchAsleep, DaySleeping, map[string]string{"location": "crib"}},
 		{"day: switch breast", DayFeeding, SwitchBreast, DayFeeding, map[string]string{"breast": "R"}},
 		{"day: poop from feeding", DayFeeding, PoopStart, DayPoop, nil},
 		{"day: baby woke from nap", DaySleeping, BabyWoke, DayAwake, nil},
@@ -582,6 +583,46 @@ func TestMoodValidation(t *testing.T) {
 	t.Run("end_check_in requires mood", func(t *testing.T) {
 		if _, err := Transition(CheckIn, EndCheckIn, nil); err == nil {
 			t.Error("expected mood-required error on end_check_in, got none")
+		}
+	})
+}
+
+func TestLocationValidation(t *testing.T) {
+	t.Run("day dislatch_asleep requires location", func(t *testing.T) {
+		if _, err := Transition(DayFeeding, DislatchAsleep, nil); err == nil {
+			t.Error("expected location-required error, got none")
+		}
+	})
+	t.Run("day dislatch_asleep with only breast still missing location", func(t *testing.T) {
+		if _, err := Transition(DayFeeding, DislatchAsleep, map[string]string{"breast": "L"}); err == nil {
+			t.Error("expected location-required error, got none")
+		}
+	})
+	t.Run("day dislatch_asleep rejects invalid location", func(t *testing.T) {
+		_, err := Transition(DayFeeding, DislatchAsleep, map[string]string{"location": "spaceship"})
+		if err == nil {
+			t.Error("expected invalid-location error, got none")
+		}
+	})
+	t.Run("day dislatch_asleep accepts all four locations", func(t *testing.T) {
+		for _, loc := range []string{"crib", "stroller", "on_me", "car"} {
+			to, err := Transition(DayFeeding, DislatchAsleep, map[string]string{"location": loc})
+			if err != nil {
+				t.Errorf("location %q rejected: %v", loc, err)
+			}
+			if to != DaySleeping {
+				t.Errorf("location %q: got destination %s, want %s", loc, to, DaySleeping)
+			}
+		}
+	})
+	t.Run("night dislatch_asleep does not require location", func(t *testing.T) {
+		if _, err := Transition(Feeding, DislatchAsleep, nil); err != nil {
+			t.Errorf("night dislatch_asleep should not require location: %v", err)
+		}
+	})
+	t.Run("start_sleep still requires location (regression)", func(t *testing.T) {
+		if _, err := Transition(DayAwake, StartSleep, nil); err == nil {
+			t.Error("expected location-required error on start_sleep, got none")
 		}
 	})
 }

@@ -318,18 +318,6 @@ func (h *Handler) PostEvent(w http.ResponseWriter, r *http.Request) {
 	currentState := domain.DeriveState(events)
 	metadata := req.Metadata
 
-	// Implicit location fill for dislatch_asleep during day feeding: the baby
-	// fell asleep on the breast; location is always "on_me" in that moment.
-	// (Handler-layer magic, not domain — keeps validators pure.)
-	if action == domain.DislatchAsleep && currentState == domain.DayFeeding {
-		if metadata == nil {
-			metadata = map[string]string{}
-		}
-		if _, set := metadata["location"]; !set {
-			metadata["location"] = string(domain.LocationOnMe)
-		}
-	}
-
 	nextState, err := domain.Transition(currentState, action, metadata)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

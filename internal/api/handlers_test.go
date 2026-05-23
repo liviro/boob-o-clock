@@ -326,31 +326,48 @@ func TestPostEventStartSleepWithLocation(t *testing.T) {
 	}
 }
 
-// TestDayDislatchAsleepImplicitLocation verifies the handler-layer magic: when
-// a user taps "dislatch asleep" during a day feed, the handler fills
-// location=on_me so the nap state gets its required metadata.
-func TestDayDislatchAsleepImplicitLocation(t *testing.T) {
-	ts := newTestServer(t)
-
-	startDay(t, ts)
-	doPost(t, ts, "/api/session/event", map[string]any{
-		"action":   "start_feed",
-		"metadata": map[string]string{"breast": "L"},
+// TestDayDislatchAsleepRequiresLocation verifies that dispatching
+// dislatch_asleep during a day feed requires the client to provide the
+// target location; the handler does not silently default it.
+func TestDayDislatchAsleepRequiresLocation(t *testing.T) {
+	t.Run("missing location returns 400", func(t *testing.T) {
+		ts := newTestServer(t)
+		startDay(t, ts)
+		doPost(t, ts, "/api/session/event", map[string]any{
+			"action":   "start_feed",
+			"metadata": map[string]string{"breast": "L"},
+		})
+		resp := doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_asleep"})
+		if resp.StatusCode != 400 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want 400 (body: %s)", resp.StatusCode, body)
+		}
 	})
-	// No location metadata in the request — handler should fill it.
-	resp := doPost(t, ts, "/api/session/event", map[string]any{"action": "dislatch_asleep"})
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200 (body: %s)", resp.StatusCode, body)
-	}
-	var sr SessionResponseJSON
-	decodeJSON(t, resp, &sr)
-	if sr.State != "day_sleeping" {
-		t.Errorf("state = %s, want day_sleeping", sr.State)
-	}
-	if sr.LastEvent == nil || sr.LastEvent.Metadata["location"] != "on_me" {
-		t.Errorf("last event location = %v, want on_me (implicit fill)", sr.LastEvent)
-	}
+
+	t.Run("explicit location is preserved in event metadata", func(t *testing.T) {
+		ts := newTestServer(t)
+		startDay(t, ts)
+		doPost(t, ts, "/api/session/event", map[string]any{
+			"action":   "start_feed",
+			"metadata": map[string]string{"breast": "L"},
+		})
+		resp := doPost(t, ts, "/api/session/event", map[string]any{
+			"action":   "dislatch_asleep",
+			"metadata": map[string]string{"location": "crib"},
+		})
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want 200 (body: %s)", resp.StatusCode, body)
+		}
+		var sr SessionResponseJSON
+		decodeJSON(t, resp, &sr)
+		if sr.State != "day_sleeping" {
+			t.Errorf("state = %s, want day_sleeping", sr.State)
+		}
+		if sr.LastEvent == nil || sr.LastEvent.Metadata["location"] != "crib" {
+			t.Errorf("last event location = %v, want crib", sr.LastEvent)
+		}
+	})
 }
 
 // --- full-flow tests ---
