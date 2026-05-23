@@ -478,7 +478,7 @@ function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
           class="stacked-cycle-toggle"
           onClick={() => setExpanded(e => !e)}
         >
-          {expanded ? 'Show less' : `Show all (${hiddenCount} more)`}
+          {expanded ? 'Show less' : `Show ${hiddenCount} more`}
         </button>
       )}
     </div>
