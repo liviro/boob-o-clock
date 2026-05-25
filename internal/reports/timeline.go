@@ -33,12 +33,12 @@ type NightStats struct {
 }
 
 // sleepStates are states where the baby is sleeping or settling toward sleep.
-// SelfSoothing is deliberately excluded — baby is in the crib but still awake.
+// SelfSoothing and Resettling are deliberately excluded — baby is in the crib
+// but still awake, and may not end up asleep.
 var sleepStates = map[domain.State]bool{
 	domain.SleepingOnMe:     true,
 	domain.SleepingCrib:     true,
 	domain.SleepingStroller: true,
-	domain.Resettling:       true,
 	domain.Strolling:        true,
 }
 
@@ -191,7 +191,7 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 				stats.FeedTimeRight += entry.Duration
 			}
 		}
-		if entry.State == domain.Awake || entry.State == domain.Poop || entry.State == domain.SelfSoothing {
+		if entry.State == domain.Awake || entry.State == domain.Poop || entry.State == domain.SelfSoothing || entry.State == domain.Resettling {
 			stats.TotalAwakeTime += entry.Duration
 		}
 	}

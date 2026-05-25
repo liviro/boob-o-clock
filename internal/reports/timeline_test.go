@@ -136,12 +136,11 @@ func TestNightStats(t *testing.T) {
 		t.Errorf("SleepBlocks[1] = %v, want 4h45m", stats.SleepBlocks[1])
 	}
 
-	// Total sleep: sleeping_on_me (5min) + sleeping_crib (3h35m) + sleeping_on_me (5min) + resettling (10min) + sleeping_crib (4h30m)
+	// Total sleep: sleeping_on_me (5min) + sleeping_crib (3h35m) + sleeping_on_me (5min) + sleeping_crib (4h30m)
 	// sleeping_on_me: 21:00+20m to 21:00+25m = 5min, and 01:15 to 01:20 = 5min
 	// sleeping_crib: 21:25 to 01:00 = 3h35m, and 01:30 to 06:00 = 4h30m
-	// resettling: 01:20 to 01:30 = 10min
-	// Total sleep-ish: 5m + 3h35m + 5m + 10m + 4h30m = 8h25m
-	expectedSleep := 5*time.Minute + 3*time.Hour + 35*time.Minute + 5*time.Minute + 10*time.Minute + 4*time.Hour + 30*time.Minute
+	// resettling (10min, 01:20 to 01:30) is excluded — baby not yet asleep.
+	expectedSleep := 5*time.Minute + 3*time.Hour + 35*time.Minute + 5*time.Minute + 4*time.Hour + 30*time.Minute
 	if stats.TotalSleepTime != expectedSleep {
 		t.Errorf("TotalSleepTime = %v, want %v", stats.TotalSleepTime, expectedSleep)
 	}
@@ -613,9 +612,10 @@ func TestTransferNeedResettleCountsAsSleep(t *testing.T) {
 
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 
-	// Transfer to resettle: 4m counts as sleep
-	// Total sleep: on_me(5m) + transferring(4m) + resettling(6m) + crib(3h30m) = 3h45m
-	expectedSleep := 5*time.Minute + 4*time.Minute + 6*time.Minute + 3*time.Hour + 30*time.Minute
+	// Transfer to resettle: 4m counts as sleep (transfer landed). Resettling 6m
+	// is excluded — baby in crib but not yet asleep.
+	// Total sleep: on_me(5m) + transferring(4m) + crib(3h30m) = 3h39m
+	expectedSleep := 5*time.Minute + 4*time.Minute + 3*time.Hour + 30*time.Minute
 	if stats.TotalSleepTime != expectedSleep {
 		t.Errorf("TotalSleepTime = %v, want %v", stats.TotalSleepTime, expectedSleep)
 	}
