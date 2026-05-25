@@ -168,11 +168,11 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 			stats.TotalSleepTime += entry.Duration
 		}
 		// Transfer: classify retroactively based on outcome.
-		// Success (→ SleepingCrib) or stir (→ Resettling) = sleep.
-		// Failure (→ anything else) = awake. In-progress (no outcome yet) = uncounted.
+		// Success (→ SleepingCrib) = sleep. Anything else (stir to Resettling,
+		// outright failure to Awake) = awake. In-progress (no outcome yet) = uncounted.
 		if entry.State == domain.Transferring {
 			if next, resolved := transferOutcome[entry.Start]; resolved {
-				if next == domain.SleepingCrib || next == domain.Resettling {
+				if next == domain.SleepingCrib {
 					stats.TotalSleepTime += entry.Duration
 				} else {
 					stats.TotalAwakeTime += entry.Duration

@@ -596,7 +596,7 @@ func TestTransferFailedCountsAsAwake(t *testing.T) {
 	}
 }
 
-func TestTransferNeedResettleCountsAsSleep(t *testing.T) {
+func TestTransferNeedResettleCountsAsAwake(t *testing.T) {
 	start := t0()
 	events := []domain.Event{
 		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
@@ -612,12 +612,16 @@ func TestTransferNeedResettleCountsAsSleep(t *testing.T) {
 
 	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour))
 
-	// Transfer to resettle: 4m counts as sleep (transfer landed). Resettling 6m
-	// is excluded — baby in crib but not yet asleep.
-	// Total sleep: on_me(5m) + transferring(4m) + crib(3h30m) = 3h39m
-	expectedSleep := 5*time.Minute + 4*time.Minute + 3*time.Hour + 30*time.Minute
+	// Transfer didn't land directly in crib (baby stirred → resettle), so 4m
+	// counts as awake. Resettling 6m also excluded from sleep.
+	// Total sleep: on_me(5m) + crib(3h30m) = 3h35m
+	expectedSleep := 5*time.Minute + 3*time.Hour + 30*time.Minute
 	if stats.TotalSleepTime != expectedSleep {
 		t.Errorf("TotalSleepTime = %v, want %v", stats.TotalSleepTime, expectedSleep)
+	}
+	// Total awake: transferring(4m) + resettling(6m) = 10m
+	if stats.TotalAwakeTime != 10*time.Minute {
+		t.Errorf("TotalAwakeTime = %v, want 10m", stats.TotalAwakeTime)
 	}
 }
 
