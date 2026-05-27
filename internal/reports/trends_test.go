@@ -621,3 +621,26 @@ func TestAttachMovingAverages_PreservesLists(t *testing.T) {
 		}
 	}
 }
+
+func TestAttachMovingAverages_IntraSleepCareTime(t *testing.T) {
+	cares := []time.Duration{30 * time.Minute, 60 * time.Minute, 90 * time.Minute}
+	summaries := make([]CycleSummary, 3)
+	for i := range summaries {
+		summaries[i] = CycleSummary{
+			Stats: CycleStats{
+				Night: &NightStats{IntraSleepCareTime: cares[i]},
+			},
+		}
+	}
+
+	AttachMovingAverages(summaries, 3)
+
+	if summaries[2].Avg == nil || summaries[2].Avg.Night == nil {
+		t.Fatal("expected cycle 2 to have a non-nil night average")
+	}
+	got := summaries[2].Avg.Night.IntraSleepCareTime
+	want := 60 * time.Minute
+	if got != want {
+		t.Errorf("cycle 2 avg IntraSleepCareTime = %v, want %v", got, want)
+	}
+}
