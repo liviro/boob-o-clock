@@ -1207,3 +1207,26 @@ func TestIntraSleepCareTime_MultiStateWindow(t *testing.T) {
 		t.Errorf("IntraSleepCareTime = %v, want 35m (feed+awake+poop+awake)", stats.IntraSleepCareTime)
 	}
 }
+
+// TestWakeCount_SelfSootheFailedCountsAsWake guards the SelfSoothing →
+// SelfSootheFailed → Awake path: the baby was asleep in crib, stirred, the
+// parent let them try to self-soothe, it didn't work, the parent took over.
+// That's a wake, even though the transition out of SelfSoothing uses a
+// different action than the canonical BabyWoke.
+func TestWakeCount_SelfSootheFailedCountsAsWake(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyStirred, domain.SelfSoothing, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.SelfSoothing, domain.SelfSootheFailed, domain.Awake, start.Add(3*time.Hour+10*time.Minute), nil),
+		mkEvent(6, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour+10*time.Minute), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour+10*time.Minute))
+
+	if stats.WakeCount != 1 {
+		t.Errorf("WakeCount = %d, want 1 (SelfSootheFailed from a stirred-from-crib session is a real wake)", stats.WakeCount)
+	}
+}

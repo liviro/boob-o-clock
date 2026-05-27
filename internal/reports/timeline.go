@@ -140,8 +140,11 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 			inFeedSession = false
 		}
 
-		// Count wakes: transitions INTO awake via BabyWoke action
-		if evt.Action == domain.BabyWoke {
+		// Count wakes: any "back to Awake" action that came from sleep or a
+		// stirred-from-sleep state. SelfSootheFailed is the failure exit from
+		// SelfSoothing, which is reachable from SleepingCrib via BabyStirred —
+		// so it represents a real wake when that's the entry path.
+		if evt.Action == domain.BabyWoke || evt.Action == domain.SelfSootheFailed {
 			stats.WakeCount++
 		}
 	}
