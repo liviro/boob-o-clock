@@ -69,7 +69,7 @@ var transitions = map[transitionKey]State{
 	// 23: SELF_SOOTHING → SLEEPING_CRIB
 	{SelfSoothing, Settled}: SleepingCrib,
 	// 24: SELF_SOOTHING → AWAKE
-	{SelfSoothing, BabyWoke}: Awake,
+	{SelfSoothing, SelfSootheFailed}: Awake,
 	// 25: SELF_SOOTHING → POOP
 	{SelfSoothing, PoopStart}: Poop,
 
@@ -221,7 +221,7 @@ var actionOrder = func() map[Action]int {
 		// Transfer / resettle / crib cluster.
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
 		PutDownAwake, PutDownAwakeFerber, SitChair,
-		StartResettle, Settled, ResettleFailed, BabyWoke,
+		StartResettle, Settled, ResettleFailed, SelfSootheFailed, BabyWoke,
 		// Stroller cluster.
 		StartStrolling, FellAsleep, GiveUp,
 		// Day-specific sleep entry (parallel to StartStrolling).
