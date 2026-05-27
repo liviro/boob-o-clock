@@ -20,6 +20,7 @@ type NightStats struct {
 	TotalSleepTime     time.Duration   `json:"totalSleepTime"`
 	TotalFeedTime      time.Duration   `json:"totalFeedTime"`
 	IntraSleepFeedTime time.Duration   `json:"intraSleepFeedTime"`
+	IntraSleepCareTime time.Duration   `json:"intraSleepCareTime"`
 	FeedTimeLeft       time.Duration   `json:"feedTimeLeft"`
 	FeedTimeRight      time.Duration   `json:"feedTimeRight"`
 	TotalAwakeTime     time.Duration   `json:"totalAwakeTime"`
@@ -139,8 +140,11 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 			inFeedSession = false
 		}
 
-		// Count wakes: transitions INTO awake via BabyWoke action
-		if evt.Action == domain.BabyWoke {
+		// Count wakes: any "back to Awake" action that came from sleep or a
+		// stirred-from-sleep state. SelfSootheFailed is the failure exit from
+		// SelfSoothing, which is reachable from SleepingCrib via BabyStirred —
+		// so it represents a real wake when that's the entry path.
+		if evt.Action == domain.BabyWoke || evt.Action == domain.SelfSootheFailed {
 			stats.WakeCount++
 		}
 	}
@@ -158,11 +162,14 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 	// Accumulate durations from timeline
 	var seenIndependentSleep bool
 	var pendingIntraSleepFeed time.Duration
+	var pendingIntraSleepCare time.Duration
 	for _, entry := range timeline {
 		if independentSleepStates[entry.State] {
 			seenIndependentSleep = true
 			stats.IntraSleepFeedTime += pendingIntraSleepFeed
 			pendingIntraSleepFeed = 0
+			stats.IntraSleepCareTime += pendingIntraSleepCare
+			pendingIntraSleepCare = 0
 		}
 		if sleepStates[entry.State] {
 			stats.TotalSleepTime += entry.Duration
@@ -193,6 +200,9 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 		}
 		if entry.State == domain.Awake || entry.State == domain.Poop || entry.State == domain.SelfSoothing || entry.State == domain.Resettling {
 			stats.TotalAwakeTime += entry.Duration
+		}
+		if !independentSleepStates[entry.State] && seenIndependentSleep {
+			pendingIntraSleepCare += entry.Duration
 		}
 	}
 

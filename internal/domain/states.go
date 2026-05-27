@@ -69,6 +69,7 @@ const (
 	StartResettle        Action = "start_resettle"
 	Settled              Action = "settled"
 	ResettleFailed       Action = "resettle_failed"
+	SelfSootheFailed     Action = "self_soothe_failed"
 	StartStrolling       Action = "start_strolling"
 	FellAsleep           Action = "fell_asleep"
 	GiveUp               Action = "give_up"

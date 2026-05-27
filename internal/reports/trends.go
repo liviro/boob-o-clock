@@ -262,6 +262,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 			nightAcc.TotalSleepTime += c.Stats.Night.TotalSleepTime
 			nightAcc.TotalFeedTime += c.Stats.Night.TotalFeedTime
 			nightAcc.IntraSleepFeedTime += c.Stats.Night.IntraSleepFeedTime
+			nightAcc.IntraSleepCareTime += c.Stats.Night.IntraSleepCareTime
 			nightAcc.FeedTimeLeft += c.Stats.Night.FeedTimeLeft
 			nightAcc.FeedTimeRight += c.Stats.Night.FeedTimeRight
 			nightAcc.LongestSleepBlock += c.Stats.Night.LongestSleepBlock
@@ -289,6 +290,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 		n.TotalSleepTime = nightAcc.TotalSleepTime / time.Duration(nightCount)
 		n.TotalFeedTime = nightAcc.TotalFeedTime / time.Duration(nightCount)
 		n.IntraSleepFeedTime = nightAcc.IntraSleepFeedTime / time.Duration(nightCount)
+		n.IntraSleepCareTime = nightAcc.IntraSleepCareTime / time.Duration(nightCount)
 		n.FeedTimeLeft = nightAcc.FeedTimeLeft / time.Duration(nightCount)
 		n.FeedTimeRight = nightAcc.FeedTimeRight / time.Duration(nightCount)
 		n.LongestSleepBlock = nightAcc.LongestSleepBlock / time.Duration(nightCount)

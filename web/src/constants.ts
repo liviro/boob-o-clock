@@ -54,6 +54,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   start_resettle:         { icon: '🤚', label: 'Resettle',            cls: 'full-width' },
   settled:                { icon: '😴', label: 'Settled!',             cls: 'sleep' },
   resettle_failed:        { icon: '❌', label: 'Resettle failed',     cls: 'danger' },
+  self_soothe_failed:     { icon: '👀', label: 'Still not sleeping',  cls: 'danger' },
   baby_woke:              { icon: '👀', label: 'Baby woke',           cls: 'danger' },
   start_strolling:        { icon: '🚶', label: 'Stroller',            cls: '' },
   fell_asleep:            { icon: '💤', label: 'Fell asleep!',        cls: 'sleep' },

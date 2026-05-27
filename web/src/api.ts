@@ -120,6 +120,7 @@ export interface NightStats {
   totalSleepTime: number;
   totalFeedTime: number;
   intraSleepFeedTime: number;
+  intraSleepCareTime: number;
   feedTimeLeft: number;
   feedTimeRight: number;
   totalAwakeTime?: number;

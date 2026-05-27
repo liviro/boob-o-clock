@@ -1045,3 +1045,192 @@ func TestIntraSleepFeedTime_NoIndependentSleep(t *testing.T) {
 		t.Errorf("IntraSleepFeedTime = %v, want 0 (no independent-sleep boundary was crossed)", stats.IntraSleepFeedTime)
 	}
 }
+
+// TestIntraSleepCareTime_BasicCase exercises the "feed sandwiched between two
+// crib blocks counts; trailing feed+awake dropped" pattern. Mirrors the
+// worked example in the spec (offsets from t0):
+//
+//	t+30m  → first crib    (window opens)
+//	t+2h   → feed 30m       (pending)
+//	t+2h30 → crib           (flush → IntraSleepCareTime += 30m)
+//	t+5h   → feed 30m       (pending)
+//	t+5h30 → awake 30m      (pending)
+//	t+6h   → end_night      (60m pending → dropped)
+func TestIntraSleepCareTime_BasicCase(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start.Add(30*time.Minute), nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(2*time.Hour), breast("L")),
+		mkEvent(6, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(7, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(8, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(9, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(5*time.Hour), nil),
+		mkEvent(10, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(5*time.Hour), breast("R")),
+		mkEvent(11, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(5*time.Hour+30*time.Minute), nil),
+		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(6*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(6*time.Hour))
+
+	if stats.IntraSleepCareTime != 30*time.Minute {
+		t.Errorf("IntraSleepCareTime = %v, want 30m", stats.IntraSleepCareTime)
+	}
+
+	// Invariant: IntraSleepFeedTime ≤ IntraSleepCareTime (spec).
+	if stats.IntraSleepFeedTime > stats.IntraSleepCareTime {
+		t.Errorf("invariant violated: IntraSleepFeedTime (%v) > IntraSleepCareTime (%v)",
+			stats.IntraSleepFeedTime, stats.IntraSleepCareTime)
+	}
+}
+
+// TestIntraSleepCareTime_OnMeCounts asserts SleepingOnMe within the window
+// contributes to care time. The baby may be asleep, but the parent is
+// occupied, so it's work for the parent.
+func TestIntraSleepCareTime_OnMeCounts(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(1*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(1*time.Hour), breast("L")),
+		mkEvent(6, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(1*time.Hour+10*time.Minute), nil),
+		mkEvent(7, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(1*time.Hour+50*time.Minute), nil),
+		mkEvent(8, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(1*time.Hour+50*time.Minute), nil),
+		mkEvent(9, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(3*time.Hour), nil),
+		mkEvent(10, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour))
+
+	// Care window: feed 10m + on-me 40m = 50m. Both flushed by the second crib.
+	if stats.IntraSleepCareTime != 50*time.Minute {
+		t.Errorf("IntraSleepCareTime = %v, want 50m (feed + on-me)", stats.IntraSleepCareTime)
+	}
+}
+
+// TestIntraSleepCareTime_ResettlingCountsTrailingAwakeDropped covers:
+// (i) Resettling counts as care, (ii) trailing awake before end_night is
+// buffered but dropped because no second IS arrives.
+func TestIntraSleepCareTime_ResettlingCountsTrailingAwakeDropped(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyStirred, domain.Resettling, start.Add(1*time.Hour), nil),
+		mkEvent(5, domain.Resettling, domain.Settled, domain.SleepingCrib, start.Add(1*time.Hour+15*time.Minute), nil),
+		mkEvent(6, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(7, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(4*time.Hour+30*time.Minute), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(4*time.Hour+30*time.Minute))
+
+	// Care = 15m (resettling). Trailing 30m awake is buffered but dropped.
+	if stats.IntraSleepCareTime != 15*time.Minute {
+		t.Errorf("IntraSleepCareTime = %v, want 15m (resettling only; trailing awake dropped)",
+			stats.IntraSleepCareTime)
+	}
+}
+
+// TestIntraSleepCareTime_NoIndependentSleep: a contact-nap-only night never
+// opens the intra-sleep window, so care time stays 0.
+func TestIntraSleepCareTime_NoIndependentSleep(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartFeed, domain.Feeding, start, breast("L")),
+		mkEvent(3, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(20*time.Minute), nil),
+		mkEvent(4, domain.SleepingOnMe, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(2*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(2*time.Hour))
+
+	if stats.IntraSleepCareTime != 0 {
+		t.Errorf("IntraSleepCareTime = %v, want 0 (no independent sleep ever)", stats.IntraSleepCareTime)
+	}
+}
+
+func TestIntraSleepCareTime_Empty(t *testing.T) {
+	stats, _ := computeBaseStats(nil, t0(), t0().Add(1*time.Hour))
+	if stats.IntraSleepCareTime != 0 {
+		t.Errorf("IntraSleepCareTime = %v, want 0 (empty events)", stats.IntraSleepCareTime)
+	}
+}
+
+// TestIntraSleepCareTime_SingleISDropsTrailingCare exercises the branch where
+// seenIndependentSleep flips true but no second IS arrives. Buffered care is
+// silently dropped at end of loop.
+func TestIntraSleepCareTime_SingleISDropsTrailingCare(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(4*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(4*time.Hour), breast("L")),
+		mkEvent(6, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(4*time.Hour+20*time.Minute), nil),
+		mkEvent(7, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(5*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(5*time.Hour))
+
+	if stats.IntraSleepCareTime != 0 {
+		t.Errorf("IntraSleepCareTime = %v, want 0 (single IS, trailing care dropped)",
+			stats.IntraSleepCareTime)
+	}
+}
+
+// TestIntraSleepCareTime_MultiStateWindow: a window containing feed + awake +
+// poop should sum all three.
+func TestIntraSleepCareTime_MultiStateWindow(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(2*time.Hour), breast("L")),
+		mkEvent(6, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(2*time.Hour+15*time.Minute), nil),
+		mkEvent(7, domain.Awake, domain.PoopStart, domain.Poop, start.Add(2*time.Hour+25*time.Minute), nil),
+		mkEvent(8, domain.Poop, domain.PoopDone, domain.Awake, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(9, domain.Awake, domain.StartTransfer, domain.Transferring, start.Add(2*time.Hour+35*time.Minute), nil),
+		mkEvent(10, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(2*time.Hour+35*time.Minute), nil),
+		mkEvent(11, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(7*time.Hour), nil),
+		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(7*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(7*time.Hour))
+
+	// Care window 2h → 2h35m = 35m. Components: feed 15m + awake 10m + poop 5m + awake 5m.
+	if stats.IntraSleepCareTime != 35*time.Minute {
+		t.Errorf("IntraSleepCareTime = %v, want 35m (feed+awake+poop+awake)", stats.IntraSleepCareTime)
+	}
+}
+
+// TestWakeCount_SelfSootheFailedCountsAsWake guards the SelfSoothing →
+// SelfSootheFailed → Awake path: the baby was asleep in crib, stirred, the
+// parent let them try to self-soothe, it didn't work, the parent took over.
+// That's a wake, even though the transition out of SelfSoothing uses a
+// different action than the canonical BabyWoke.
+func TestWakeCount_SelfSootheFailedCountsAsWake(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start, nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start, nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyStirred, domain.SelfSoothing, start.Add(3*time.Hour), nil),
+		mkEvent(5, domain.SelfSoothing, domain.SelfSootheFailed, domain.Awake, start.Add(3*time.Hour+10*time.Minute), nil),
+		mkEvent(6, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(3*time.Hour+10*time.Minute), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(3*time.Hour+10*time.Minute))
+
+	if stats.WakeCount != 1 {
+		t.Errorf("WakeCount = %d, want 1 (SelfSootheFailed from a stirred-from-crib session is a real wake)", stats.WakeCount)
+	}
+}
