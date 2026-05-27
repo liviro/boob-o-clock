@@ -338,6 +338,19 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
         {...modeProps}
       />
 
+      <TrendChart
+        points={chronological}
+        getDate={c => c.night?.startedAt ?? c.day!.startedAt}
+        series={[{
+          getValue: c => c.stats.night?.intraSleepCareTime ?? null,
+          getAvg: c => c.avg?.night?.intraSleepCareTime ?? null,
+          color: '#5acfd0',
+        }]}
+        formatValue={fmtDur}
+        title="Intra-sleep care time"
+        {...modeProps}
+      />
+
       <ScatterChart
         points={chronological.filter(c => c.stats.day != null && c.stats.night != null)}
         getX={c => (c.stats.day?.dayTotalFeedTime ?? 0) + (c.stats.night?.totalFeedTime ?? 0) - (c.stats.night?.intraSleepFeedTime ?? 0)}
