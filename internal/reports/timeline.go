@@ -20,6 +20,7 @@ type NightStats struct {
 	TotalSleepTime     time.Duration   `json:"totalSleepTime"`
 	TotalFeedTime      time.Duration   `json:"totalFeedTime"`
 	IntraSleepFeedTime time.Duration   `json:"intraSleepFeedTime"`
+	IntraSleepCareTime time.Duration   `json:"intraSleepCareTime"`
 	FeedTimeLeft       time.Duration   `json:"feedTimeLeft"`
 	FeedTimeRight      time.Duration   `json:"feedTimeRight"`
 	TotalAwakeTime     time.Duration   `json:"totalAwakeTime"`
@@ -158,11 +159,14 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 	// Accumulate durations from timeline
 	var seenIndependentSleep bool
 	var pendingIntraSleepFeed time.Duration
+	var pendingIntraSleepCare time.Duration
 	for _, entry := range timeline {
 		if independentSleepStates[entry.State] {
 			seenIndependentSleep = true
 			stats.IntraSleepFeedTime += pendingIntraSleepFeed
 			pendingIntraSleepFeed = 0
+			stats.IntraSleepCareTime += pendingIntraSleepCare
+			pendingIntraSleepCare = 0
 		}
 		if sleepStates[entry.State] {
 			stats.TotalSleepTime += entry.Duration
@@ -193,6 +197,9 @@ func computeBaseStats(events []domain.Event, nightStart, nightEnd time.Time) (Ni
 		}
 		if entry.State == domain.Awake || entry.State == domain.Poop || entry.State == domain.SelfSoothing {
 			stats.TotalAwakeTime += entry.Duration
+		}
+		if !independentSleepStates[entry.State] && seenIndependentSleep {
+			pendingIntraSleepCare += entry.Duration
 		}
 	}
 

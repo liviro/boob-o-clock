@@ -1041,3 +1041,43 @@ func TestIntraSleepFeedTime_NoIndependentSleep(t *testing.T) {
 		t.Errorf("IntraSleepFeedTime = %v, want 0 (no independent-sleep boundary was crossed)", stats.IntraSleepFeedTime)
 	}
 }
+
+// TestIntraSleepCareTime_BasicCase exercises the "feed sandwiched between two
+// crib blocks counts; trailing feed+awake dropped" pattern. Mirrors the
+// worked example in the spec (offsets from t0):
+//
+//	t+30m  → first crib    (window opens)
+//	t+2h   → feed 30m       (pending)
+//	t+2h30 → crib           (flush → IntraSleepCareTime += 30m)
+//	t+5h   → feed 30m       (pending)
+//	t+5h30 → awake 30m      (pending)
+//	t+6h   → end_night      (60m pending → dropped)
+func TestIntraSleepCareTime_BasicCase(t *testing.T) {
+	start := t0()
+	events := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartNight, domain.Awake, start, nil),
+		mkEvent(2, domain.Awake, domain.StartTransfer, domain.Transferring, start.Add(30*time.Minute), nil),
+		mkEvent(3, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(30*time.Minute), nil),
+		mkEvent(4, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(2*time.Hour), nil),
+		mkEvent(5, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(2*time.Hour), breast("L")),
+		mkEvent(6, domain.Feeding, domain.DislatchAsleep, domain.SleepingOnMe, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(7, domain.SleepingOnMe, domain.StartTransfer, domain.Transferring, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(8, domain.Transferring, domain.TransferSuccess, domain.SleepingCrib, start.Add(2*time.Hour+30*time.Minute), nil),
+		mkEvent(9, domain.SleepingCrib, domain.BabyWoke, domain.Awake, start.Add(5*time.Hour), nil),
+		mkEvent(10, domain.Awake, domain.StartFeed, domain.Feeding, start.Add(5*time.Hour), breast("R")),
+		mkEvent(11, domain.Feeding, domain.DislatchAwake, domain.Awake, start.Add(5*time.Hour+30*time.Minute), nil),
+		mkEvent(12, domain.Awake, domain.Action("end_night"), domain.NightOff, start.Add(6*time.Hour), nil),
+	}
+
+	stats, _ := computeBaseStats(events, start, start.Add(6*time.Hour))
+
+	if stats.IntraSleepCareTime != 30*time.Minute {
+		t.Errorf("IntraSleepCareTime = %v, want 30m", stats.IntraSleepCareTime)
+	}
+
+	// Invariant: IntraSleepFeedTime ≤ IntraSleepCareTime (spec).
+	if stats.IntraSleepFeedTime > stats.IntraSleepCareTime {
+		t.Errorf("invariant violated: IntraSleepFeedTime (%v) > IntraSleepCareTime (%v)",
+			stats.IntraSleepFeedTime, stats.IntraSleepCareTime)
+	}
+}
