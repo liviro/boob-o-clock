@@ -205,3 +205,35 @@ export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = 
   on_me:    { icon: '🤱', label: 'On me' },
   car:      { icon: '🚗', label: 'Car' },
 };
+
+// A session-half longer than this is "unusually long" — almost certainly a
+// forgotten Start day / Start night. Gates the History badge and split banner.
+// Strictly exceeds (> 18h): a normal night is 8–12h, a normal day 10–14h, so
+// 18h clears weekend lie-ins and shifted bedtimes without waiting for 24h+.
+export const UNUSUALLY_LONG_SESSION_HOURS = 18;
+
+// nextOccurrence returns the first local time at `hour`:00 strictly after
+// `after`. Used to pre-fill the split sheet's datetime picker at the typical
+// transition time (7am morning wake-up for a night, 8pm bedtime for a day).
+// It points at the FIRST missed transition regardless of how long the session
+// has been open; iterating splits cascades naturally because each trailing
+// session has its own start time.
+//
+// Test cases (validated by inspection; ready to port if Vitest is added):
+//   nextOccurrence(7,  Mon 21:00) === Tue 07:00
+//   nextOccurrence(7,  Mon 05:00) === Mon 07:00   (same day — 7am still ahead)
+//   nextOccurrence(7,  Mon 07:00) === Tue 07:00   (strict-after, not at-or-after)
+//   nextOccurrence(7,  Mon 06:59) === Mon 07:00
+//   nextOccurrence(20, Mon 07:00) === Mon 20:00
+//   nextOccurrence(20, Mon 21:00) === Tue 20:00   (today's 8pm already passed)
+//   nextOccurrence(20, Mon 20:00) === Tue 20:00
+//   nextOccurrence(7,  Tue 07:00:01) === Wed 07:00  (iterative cascade)
+//   Timezone: result keeps the same local hour in the input's local zone.
+export function nextOccurrence(hour: number, after: Date): Date {
+  const candidate = new Date(after);
+  candidate.setHours(hour, 0, 0, 0);
+  if (candidate.getTime() <= after.getTime()) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  return candidate;
+}

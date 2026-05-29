@@ -274,3 +274,16 @@ export async function getCycleDetail(sessionId: number): Promise<CycleDetail> {
   const resp = await checkResponse(await fetch(`${API}/cycles/${sessionId}`));
   return resp.json();
 }
+
+export interface SplitSessionResponse {
+  newSessionIds: number[];
+}
+
+export async function splitSession(sessionId: number, timestamp: Date): Promise<SplitSessionResponse> {
+  const resp = await checkResponse(await fetch(`${API}/session/split-at`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, timestamp: toLocalISO(timestamp) }),
+  }));
+  return resp.json();
+}
