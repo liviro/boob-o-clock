@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats } from '../api';
-import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
+import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats, SessionMeta } from '../api';
+import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel, UNUSUALLY_LONG_SESSION_HOURS } from '../constants';
+import { SplitSessionSheet } from '../components/SplitSessionSheet';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
@@ -16,6 +17,14 @@ type View = 'cycles' | 'trends';
 const DISPLAY_LIMIT = 30;
 
 const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
+
+const NS_PER_HOUR = 3.6e12;
+
+// isUnusuallyLong reports whether a stats-half's duration strictly exceeds the
+// 18h threshold. Durations are nanoseconds on the wire.
+function isUnusuallyLong(durationNs: number | undefined): boolean {
+  return durationNs != null && durationNs / NS_PER_HOUR > UNUSUALLY_LONG_SESSION_HOURS;
+}
 
 // Sum a per-side feed-time field across a cycle's day + night halves. Returns
 // null when the stats block is absent or both halves are missing; a partial
@@ -75,6 +84,7 @@ function feedSpansFor(c: CycleSummary): FeedSpan[] {
 export function History() {
   const [cycles, setCycles] = useState<CycleSummary[]>([]);
   const [detail, setDetail] = useState<CycleDetail | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [view, setView] = useState<View>('cycles');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,15 +112,31 @@ export function History() {
     try {
       const data = await getCycleDetail(sessionId);
       setDetail(data);
+      setDetailId(sessionId);
     } catch {
       setError('Failed to load cycle details');
+    }
+  }
+
+  async function refetchDetail() {
+    if (detailId == null) return;
+    try {
+      setDetail(await getCycleDetail(detailId));
+    } catch {
+      setError('Failed to reload cycle');
     }
   }
 
   if (loading) return <div class="no-data">Loading...</div>;
 
   if (detail) {
-    return <CycleDetailView detail={detail} onBack={() => setDetail(null)} />;
+    return (
+      <CycleDetailView
+        detail={detail}
+        onBack={() => { setDetail(null); setDetailId(null); }}
+        onSplit={refetchDetail}
+      />
+    );
   }
 
   if (cycles.length === 0) {
@@ -180,7 +206,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
         <div class="cycle-section cycle-section-night">
           <div class="cycle-section-header">
             <span>🌙 Night</span>
-            {cycle.night && <span class="cycle-section-time">{fmtClockTime(cycle.night.startedAt)}</span>}
+            <span class="cycle-section-time">
+              {cycle.night && fmtClockTime(cycle.night.startedAt)}
+              {isUnusuallyLong(night.nightDuration) && <span class="long-badge"> ⚠ unusually long</span>}
+            </span>
           </div>
           <div class="night-stats">
             <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
@@ -196,7 +225,10 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
         <div class="cycle-section cycle-section-day">
           <div class="cycle-section-header">
             <span>☀️ Day</span>
-            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
+            <span class="cycle-section-time">
+              {cycle.day && fmtClockTime(cycle.day.startedAt)}
+              {isUnusuallyLong(day.dayDuration) && <span class="long-badge"> ⚠ unusually long</span>}
+            </span>
           </div>
           <div class="night-stats">
             <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
@@ -527,9 +559,10 @@ function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string;
 
 // --- Cycle detail view ---
 
-function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
+function CycleDetailView({ detail, onBack, onSplit }: { detail: CycleDetail; onBack: () => void; onSplit: () => void }) {
   const ferberVisible = useConfig().features.ferber;
   const { day, night } = detail.cycle;
+  const [splitTarget, setSplitTarget] = useState<SessionMeta | null>(null);
   const anchor = day?.startedAt ?? night?.startedAt;
   const date = anchor ? new Date(anchor) : new Date();
   const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -546,6 +579,21 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
         <h3>
           <span>{dateStr}</span>
         </h3>
+
+        {night && nightStats && isUnusuallyLong(nightStats.nightDuration) && (
+          <LongSessionBanner
+            kind="night"
+            durationNs={nightStats.nightDuration}
+            onSplit={() => setSplitTarget(night)}
+          />
+        )}
+        {day && dayStats && isUnusuallyLong(dayStats.dayDuration) && (
+          <LongSessionBanner
+            kind="day"
+            durationNs={dayStats.dayDuration}
+            onSplit={() => setSplitTarget(day)}
+          />
+        )}
 
         {nightStats && (
           <div class="cycle-section cycle-section-night">
@@ -621,6 +669,28 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           })}
         </div>
       </div>
+
+      {splitTarget && (
+        <SplitSessionSheet
+          session={splitTarget}
+          onClose={() => setSplitTarget(null)}
+          onSplit={() => { setSplitTarget(null); onSplit(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// LongSessionBanner is the contextual recovery affordance shown in the detail
+// view above a session-half that exceeds 18h (a forgotten Start day/night). It
+// signals the problem and offers the split in one place.
+function LongSessionBanner({ kind, durationNs, onSplit }: { kind: 'night' | 'day'; durationNs: number; onSplit: () => void }) {
+  const hours = Math.round(durationNs / NS_PER_HOUR);
+  const word = kind === 'night' ? 'night' : 'day';
+  return (
+    <div class="long-banner">
+      <div class="long-banner-text">⚠ This {word} is unusually long ({hours}h).</div>
+      <button class="long-banner-btn" onClick={onSplit}>Split this session</button>
     </div>
   );
 }
