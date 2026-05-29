@@ -78,6 +78,12 @@ type startSessionRequest struct {
 	Chair     bool                 `json:"chair,omitempty"`
 }
 
+// splitAtRequest is the typed body for POST /api/session/split-at.
+type splitAtRequest struct {
+	SessionID int64  `json:"sessionId"`
+	Timestamp string `json:"timestamp"`
+}
+
 type eventResponse struct {
 	Action    domain.Action     `json:"action"`
 	FromState domain.State      `json:"fromState"`
@@ -403,6 +409,102 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
 	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, session, remaining))
+}
+
+// SplitAt splits an over-long session into a chained sequence at the given
+// timestamp. Kind-agnostic: the server reads session.Kind to pick the
+// validity state and synthetic event flavors. See design doc §7.
+func (h *Handler) SplitAt(w http.ResponseWriter, r *http.Request) {
+	var req splitAtRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.SessionID == 0 {
+		writeError(w, http.StatusBadRequest, "sessionId is required")
+		return
+	}
+	if req.Timestamp == "" {
+		writeError(w, http.StatusBadRequest, "timestamp is required")
+		return
+	}
+	t, err := time.Parse(time.RFC3339, req.Timestamp)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid timestamp format (use RFC3339)")
+		return
+	}
+
+	session, events, err := h.store.GetSession(req.SessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if session == nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	// Open-session upper bound: the domain bounds closed sessions by ended_at;
+	// for an open session, "now" is the effective end and lives at this layer.
+	if session.EndedAt == nil && t.After(time.Now()) {
+		writeError(w, http.StatusBadRequest, "pick a moment within this session")
+		return
+	}
+
+	plan, err := domain.SplitSession(*session, events, t)
+	if err != nil {
+		// Domain errors are user-facing validity messages. Phrase the
+		// rest-state case ("baby was <state> at that time") as the spec's
+		// guidance to pick an awake moment.
+		msg := err.Error()
+		if strings.HasPrefix(msg, "baby was ") {
+			msg = friendlySplitState(msg)
+		}
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+
+	degID, trailID, err := h.store.SplitSession(req.SessionID, plan)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"newSessionIds": []int64{degID, trailID},
+	})
+}
+
+// friendlySplitState rewrites the domain's "baby was <state> at that time"
+// into the spec's user-facing copy, naming the state in plain language and
+// telling the user to pick a moment when the baby was awake.
+func friendlySplitState(domainMsg string) string {
+	state := strings.TrimPrefix(domainMsg, "baby was ")
+	state = strings.TrimSuffix(state, " at that time")
+	return "Baby was " + plainStateName(domain.State(state)) + " at that time. Pick a moment when baby was awake."
+}
+
+// plainStateName maps a state to human copy for the split error. Falls back to
+// the raw state string for states without a bespoke phrase.
+func plainStateName(s domain.State) string {
+	switch s {
+	case domain.SleepingCrib:
+		return "sleeping in the crib"
+	case domain.SleepingOnMe:
+		return "sleeping on you"
+	case domain.SleepingStroller:
+		return "sleeping in the stroller"
+	case domain.DaySleeping:
+		return "napping"
+	case domain.Feeding, domain.DayFeeding:
+		return "feeding"
+	case domain.Poop, domain.DayPoop:
+		return "having a diaper change"
+	default:
+		return string(s)
+	}
 }
 
 // --- cycle endpoints ---

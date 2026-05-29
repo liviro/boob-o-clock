@@ -1470,3 +1470,107 @@ func TestSuggestChair_FlagOff_Suppressed(t *testing.T) {
 		t.Error("suggestChair = true with flag off, want false (suppressed)")
 	}
 }
+
+// seedSplittableNight inserts a closed over-long night with a known Awake span
+// at Tue 07:00, returning the session id. base is Mon 21:00.
+func seedSplittableNight(t *testing.T, s *store.Store, base time.Time) int64 {
+	t.Helper()
+	end := base.Add(20 * time.Hour)
+	sess, err := s.CreateSession(domain.SessionKindNight, base, false, 0, false)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.EndSession(sess.ID, end); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+	evts := []domain.Event{
+		{SessionID: sess.ID, FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: base},
+		{SessionID: sess.ID, FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: base.Add(10 * time.Hour)},
+		{SessionID: sess.ID, FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: base.Add(12 * time.Hour)},
+		{SessionID: sess.ID, FromState: domain.Feeding, Action: domain.DislatchAwake, ToState: domain.Awake, Timestamp: base.Add(13 * time.Hour)},
+	}
+	for i := range evts {
+		if err := s.AddEvent(&evts[i]); err != nil {
+			t.Fatalf("AddEvent: %v", err)
+		}
+	}
+	return sess.ID
+}
+
+func TestSplitAt_HappyPath(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+	base := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	id := seedSplittableNight(t, s, base)
+
+	splitAt := base.Add(10*time.Hour + 30*time.Minute) // Tue 07:30
+	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+		"sessionId": id,
+		"timestamp": splitAt.Format(time.RFC3339),
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var got struct {
+		NewSessionIDs []int64 `json:"newSessionIds"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.NewSessionIDs) != 2 {
+		t.Fatalf("newSessionIds = %v, want 2 ids", got.NewSessionIDs)
+	}
+	// Degenerate first, trailing second.
+	deg, _, _ := s.GetSession(got.NewSessionIDs[0])
+	trail, _, _ := s.GetSession(got.NewSessionIDs[1])
+	if deg.Kind != domain.SessionKindDay || trail.Kind != domain.SessionKindNight {
+		t.Errorf("kinds = (%s, %s), want (day, night)", deg.Kind, trail.Kind)
+	}
+}
+
+func TestSplitAt_RejectInsideFeed(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+	base := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	id := seedSplittableNight(t, s, base)
+
+	// Tue 09:30 — inside the Feeding span (09:00 → 10:00).
+	splitAt := base.Add(12*time.Hour + 30*time.Minute)
+	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+		"sessionId": id,
+		"timestamp": splitAt.Format(time.RFC3339),
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	var got map[string]string
+	json.NewDecoder(resp.Body).Decode(&got)
+	if !strings.Contains(got["error"], "feeding") {
+		t.Errorf("error = %q, want it to mention the feeding state", got["error"])
+	}
+}
+
+func TestSplitAt_NotFound(t *testing.T) {
+	ts := newTestServer(t)
+	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+		"sessionId": 9999,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestSplitAt_BadBody(t *testing.T) {
+	ts, s := newTestServerWithStore(t)
+	id := seedSplittableNight(t, s, time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local))
+
+	// Missing timestamp.
+	resp := doPost(t, ts, "/api/session/split-at", map[string]any{"sessionId": id})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing timestamp: status = %d, want 400", resp.StatusCode)
+	}
+}
