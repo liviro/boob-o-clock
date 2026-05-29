@@ -916,3 +916,20 @@ body {
   justify-content: center;
   align-self: center;
 }
+
+/* --- Split session sheet & long-session affordances --- */
+.split-sheet-prompt { margin: 0 0 0.5rem; }
+.split-sheet-note { font-size: 0.85rem; opacity: 0.7; margin: 0.75rem 0 0; }
+.split-sheet-error { color: #ff7a7a; margin: 0.5rem 0 0; }
+.split-sheet-confirm { width: 100%; min-height: 48px; margin-top: 1rem; background: #6a5aff; }
+
+.long-badge { color: #ffb04a; font-size: 0.8rem; font-weight: 600; }
+.long-banner {
+  background: #2a2010; border: 1px solid #ffb04a; border-radius: 8px;
+  padding: 0.75rem; margin: 0.5rem 0 1rem; text-align: center;
+}
+.long-banner-text { color: #ffd9a0; margin-bottom: 0.5rem; }
+.long-banner-btn {
+  background: #6a5aff; color: #fff; border: none; border-radius: 6px;
+  padding: 0.6rem 1rem; min-height: 48px; width: 100%; font-size: 1rem;
+}
