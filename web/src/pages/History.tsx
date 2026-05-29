@@ -121,7 +121,12 @@ export function History() {
   async function refetchDetail() {
     if (detailId == null) return;
     try {
-      setDetail(await getCycleDetail(detailId));
+      // Refresh the detail in place AND the underlying list, so navigating Back
+      // reflects the split — e.g. a still-over-long trailing surfaces as a new
+      // badged cycle instead of the stale pre-split card.
+      const [d, c] = await Promise.all([getCycleDetail(detailId), getCycles()]);
+      setDetail(d);
+      setCycles((c.cycles || []).slice().reverse());
     } catch {
       setError('Failed to reload cycle');
     }
