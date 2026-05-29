@@ -54,6 +54,10 @@ type sessionResponse struct {
 	State              domain.State        `json:"state"`
 	ValidActions       []domain.Action     `json:"validActions"`
 	SessionID          *int64              `json:"sessionId"`
+	// StartedAt is the current session's start; the frontend uses it to detect
+	// a session running well past its expected transition (the Start-day/night
+	// nudge). Nil when there is no active session.
+	StartedAt          *time.Time          `json:"startedAt,omitempty"`
 	LastEvent          *eventResponse      `json:"lastEvent"`
 	SuggestBreast      string              `json:"suggestBreast,omitempty"`
 	CurrentBreast      string              `json:"currentBreast,omitempty"`
@@ -132,6 +136,7 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 	if session != nil {
 		resp.Kind = &session.Kind
 		resp.SessionID = &session.ID
+		resp.StartedAt = &session.StartedAt
 		if ferberEnabled && session.FerberNightNumber != nil {
 			resp.Ferber = &ferberNight{NightNumber: *session.FerberNightNumber}
 			if fs := reports.CurrentFerberSession(state, events, *session.FerberNightNumber); fs != nil {

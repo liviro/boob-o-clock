@@ -206,11 +206,16 @@ export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = 
   car:      { icon: '🚗', label: 'Car' },
 };
 
-// A session-half longer than this is "unusually long" — almost certainly a
-// forgotten Start day / Start night. Gates the History badge and split banner.
-// Strictly exceeds (> 18h): a normal night is 8–12h, a normal day 10–14h, so
-// 18h clears weekend lie-ins and shifted bedtimes without waiting for 24h+.
-export const UNUSUALLY_LONG_SESSION_HOURS = 18;
+// Typical chain-transition hours: a night should end around the morning, a day
+// around bedtime. Shared by the split-default picker and the "unusually long"
+// heuristic so both speak the same language.
+export const NIGHT_TRANSITION_HOUR = 7;  // morning wake-up
+export const DAY_TRANSITION_HOUR = 20;   // bedtime
+
+// How long the open session may run past its expected transition before the
+// Start-day/night nudge fires (e.g. in night mode past ~1pm). Absorbs a
+// slept-in or slightly-late morning.
+export const OVERRUN_SLACK_HOURS = 6;
 
 // nextOccurrence returns the first local time at `hour`:00 strictly after
 // `after`. Used to pre-fill the split sheet's datetime picker at the typical
@@ -237,3 +242,46 @@ export function nextOccurrence(hour: number, after: Date): Date {
   }
   return candidate;
 }
+
+// isSessionUnusuallyLong reports whether a session SWALLOWED a full opposite
+// period — i.e. it ran more than one whole daytime (for a night) or nighttime
+// (for a day) past its first expected transition. That's the "there's a clean
+// period to peel off the front → offer Split" signal.
+//
+// `firstT = nextOccurrence(transitionHour, start)` is the first morning (night)
+// or bedtime (day) after the start. A night must run >13h past it (8pm−7am, a
+// full daytime); a day >11h (a full nighttime). Measuring from firstT is self-
+// aligning: a split's morning-started trailing has its firstT pushed ~24h out,
+// so `end − firstT` stays small and it is NOT flagged — splitting it again
+// can't recover a clean period, so we don't offer to. Works for open (end=now)
+// and closed sessions alike.
+export function isSessionUnusuallyLong(isNight: boolean, startedAt: Date, end: Date): boolean {
+  const hour = isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
+  const firstT = nextOccurrence(hour, startedAt);
+  const oppositePeriodHours = isNight
+    ? DAY_TRANSITION_HOUR - NIGHT_TRANSITION_HOUR        // a full daytime (13h)
+    : 24 - DAY_TRANSITION_HOUR + NIGHT_TRANSITION_HOUR;  // a full nighttime (11h)
+  return end.getTime() - firstT.getTime() > oppositePeriodHours * 3_600_000;
+}
+
+// shouldNudgeModeSwitch reports whether the OPEN current session is stuck in the
+// wrong mode for the wall clock and has overrun — the Start-day/night nudge.
+// Two conditions: (1) it ran past its expected transition by > slack, and (2)
+// the current clock phase disagrees with the session's kind (a night during
+// daytime → start day; a day during nighttime → start night). The clock check
+// keeps the nudge from pointing the wrong way when a session has wrapped back
+// into its own phase (e.g. a night that ate a full day, viewed at 11pm).
+export function shouldNudgeModeSwitch(isNight: boolean, startedAt: Date, now: Date): boolean {
+  const hour = isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
+  const firstT = nextOccurrence(hour, startedAt);
+  const overran = now.getTime() - firstT.getTime() > OVERRUN_SLACK_HOURS * 3_600_000;
+  if (!overran) return false;
+  const isDaytimeNow = now.getHours() >= NIGHT_TRANSITION_HOUR && now.getHours() < DAY_TRANSITION_HOUR;
+  return isNight ? isDaytimeNow : !isDaytimeNow;
+}
+
+// A split inserts a ~1s "degenerate" boundary session of the opposite kind
+// (a day on a night-split, a night on a day-split). The frontend detects it by
+// duration to label it honestly instead of rendering nonsensical zero-stats.
+// Mirrors the backend's 60s degenerate cutoff in reports (averageCycles).
+export const DEGENERATE_SESSION_MAX_MS = 60_000;

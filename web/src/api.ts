@@ -35,6 +35,8 @@ export interface SessionResponse {
   state: State;
   validActions: string[];
   sessionId: number | null;
+  // The current session's start (RFC3339). Drives the Start-day/night nudge.
+  startedAt?: string;
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
