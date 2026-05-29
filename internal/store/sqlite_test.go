@@ -1126,3 +1126,54 @@ func TestLegacyMigrationAtomic(t *testing.T) {
 		t.Errorf("after retry: sessions=%+v, want one session with id=1", sessions)
 	}
 }
+
+// TestPrevNextSessionChronological verifies PrevSessionBefore / NextSessionAfter
+// order by started_at, not id. A session inserted with a HIGH id but an EARLY
+// started_at (as a retroactive split would create) must be found as the
+// chronological neighbor — not skipped because its id is out of order.
+func TestPrevNextSessionChronological(t *testing.T) {
+	s := newTestStore(t)
+	base := time.Date(2026, 5, 26, 21, 0, 0, 0, time.Local)
+
+	// mkClosed creates a session and immediately closes it, so multiple
+	// fixtures can coexist without tripping the one_open_session index.
+	mkClosed := func(kind domain.SessionKind, startedAt time.Time) *domain.Session {
+		sess, err := s.CreateSession(kind, startedAt, false, 0, false)
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		if err := s.EndSession(sess.ID, startedAt.Add(time.Hour)); err != nil {
+			t.Fatalf("end session: %v", err)
+		}
+		return sess
+	}
+
+	// Insert in chronological order first: A (21:00), C (next day 07:00).
+	a := mkClosed(domain.SessionKindNight, base)
+	c := mkClosed(domain.SessionKindDay, base.Add(10*time.Hour))
+
+	// Now insert B with a started_at BETWEEN A and C but a HIGHER id than C
+	// (simulates a retroactive split: new row, mid-chain timestamp).
+	b := mkClosed(domain.SessionKindDay, base.Add(2*time.Hour))
+	if b.ID < c.ID {
+		t.Fatalf("test precondition: expected B.ID (%d) > C.ID (%d)", b.ID, c.ID)
+	}
+
+	// Chronological prev of C is B (23:00), NOT A (21:00) and NOT by-id (A).
+	prev, err := s.PrevSessionBefore(c.ID)
+	if err != nil {
+		t.Fatalf("PrevSessionBefore: %v", err)
+	}
+	if prev == nil || prev.ID != b.ID {
+		t.Fatalf("PrevSessionBefore(C) = %v, want B (id %d)", prev, b.ID)
+	}
+
+	// Chronological next of A is B, NOT C.
+	next, err := s.NextSessionAfter(a.ID)
+	if err != nil {
+		t.Fatalf("NextSessionAfter: %v", err)
+	}
+	if next == nil || next.ID != b.ID {
+		t.Fatalf("NextSessionAfter(A) = %v, want B (id %d)", next, b.ID)
+	}
+}

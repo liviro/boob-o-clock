@@ -624,12 +624,17 @@ func (s *Store) LastSession(kind domain.SessionKind) (*domain.Session, error) {
 	return sess, nil
 }
 
-// PrevSessionBefore returns the session with the largest id strictly less than
-// the given id, or nil if none exists. Used by the cycle resolver and
-// chain-advance undo detection.
+// PrevSessionBefore returns the session immediately before the given session
+// in started_at order, or nil if none exists. Used by the cycle resolver and
+// chain-advance undo detection. Ordering by started_at (not id) is required so
+// retroactive splits — which allocate high IDs for chronologically-middle
+// sessions — still resolve the correct chronological neighbor. The id
+// tiebreaker resolves the rare equal-started_at case deterministically.
 func (s *Store) PrevSessionBefore(id int64) (*domain.Session, error) {
 	sess, err := s.scanSession(
-		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id < ? ORDER BY id DESC LIMIT 1`, id),
+		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions
+			WHERE started_at < (SELECT started_at FROM sessions WHERE id = ?)
+			ORDER BY started_at DESC, id DESC LIMIT 1`, id),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -640,11 +645,13 @@ func (s *Store) PrevSessionBefore(id int64) (*domain.Session, error) {
 	return sess, nil
 }
 
-// NextSessionAfter returns the session with the smallest id strictly greater
-// than the given id, or nil if none exists.
+// NextSessionAfter returns the session immediately after the given session in
+// started_at order, or nil if none exists.
 func (s *Store) NextSessionAfter(id int64) (*domain.Session, error) {
 	sess, err := s.scanSession(
-		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id > ? ORDER BY id ASC LIMIT 1`, id),
+		s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions
+			WHERE started_at > (SELECT started_at FROM sessions WHERE id = ?)
+			ORDER BY started_at ASC, id ASC LIMIT 1`, id),
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
