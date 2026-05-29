@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,5 +201,119 @@ func TestSplitSession_RejectGapWindow(t *testing.T) {
 	_, err := SplitSession(sess, events, splitAt)
 	if err == nil {
 		t.Fatal("expected gap-window rejection, got nil")
+	}
+}
+
+func TestSplitSession_RejectInsideSleep(t *testing.T) {
+	sess, events, _ := nightSpanningEvents()
+	// Split at Mon 22:30 — inside the SleepingOnMe span (22:00 → Tue 07:00).
+	splitAt := splitBase().Add(90 * time.Minute)
+	_, err := SplitSession(sess, events, splitAt)
+	if err == nil {
+		t.Fatal("expected rejection inside sleep span")
+	}
+	if !strings.Contains(err.Error(), string(SleepingOnMe)) {
+		t.Errorf("error = %q, want it to name %q", err.Error(), SleepingOnMe)
+	}
+}
+
+func TestSplitSession_RejectInsideFeed(t *testing.T) {
+	sess, events, _ := nightSpanningEvents()
+	// Split at Tue 09:30 — inside the Feeding span (09:00 → 10:00).
+	splitAt := splitBase().Add(12*time.Hour + 30*time.Minute)
+	_, err := SplitSession(sess, events, splitAt)
+	if err == nil {
+		t.Fatal("expected rejection inside feed span")
+	}
+	if !strings.Contains(err.Error(), string(Feeding)) {
+		t.Errorf("error = %q, want it to name %q", err.Error(), Feeding)
+	}
+}
+
+func TestSplitSession_RejectOutOfRange(t *testing.T) {
+	sess, events, _ := nightSpanningEvents()
+	if _, err := SplitSession(sess, events, sess.StartedAt.Add(-time.Hour)); err == nil {
+		t.Error("expected rejection before session start")
+	}
+	if _, err := SplitSession(sess, events, sess.EndedAt.Add(time.Hour)); err == nil {
+		t.Error("expected rejection after session end")
+	}
+}
+
+func TestSplitSession_RejectAtOpener(t *testing.T) {
+	b := splitBase()
+	sess := Session{ID: 1, Kind: SessionKindNight, StartedAt: b, EndedAt: ptrTime(b.Add(10 * time.Hour))}
+	events := []Event{
+		mkEvent(1, NightOff, StartNight, Awake, b), // opener
+		mkEvent(2, Awake, StartFeed, Feeding, b.Add(5*time.Hour)),
+	}
+	// Split between the opener and the first real activity — only the opener
+	// would remain in the original. Reject.
+	_, err := SplitSession(sess, events, b.Add(time.Hour))
+	if err == nil {
+		t.Fatal("expected rejection: split lands at/just-after the opener")
+	}
+}
+
+func TestSplitSession_FerberInheritance(t *testing.T) {
+	sess, events, splitAt := nightSpanningEvents()
+	sess.FerberEnabled = true
+	n := 3
+	sess.FerberNightNumber = &n
+	res, err := SplitSession(sess, events, splitAt)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+	if !res.Trailing.FerberEnabled || res.Trailing.FerberNightNumber == nil || *res.Trailing.FerberNightNumber != 3 {
+		t.Errorf("Trailing ferber = (%v, %v), want (true, 3)", res.Trailing.FerberEnabled, res.Trailing.FerberNightNumber)
+	}
+	if res.Degenerate.FerberEnabled || res.Degenerate.FerberNightNumber != nil {
+		t.Error("Degenerate must have Ferber disabled")
+	}
+}
+
+func TestSplitSession_ChairInheritance(t *testing.T) {
+	sess, events, splitAt := nightSpanningEvents()
+	sess.ChairEnabled = true
+	res, err := SplitSession(sess, events, splitAt)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+	if !res.Trailing.ChairEnabled {
+		t.Error("Trailing must inherit ChairEnabled")
+	}
+	if res.Degenerate.ChairEnabled {
+		t.Error("Degenerate must have Chair disabled")
+	}
+}
+
+// Iterative: split a night once, then split its trailing piece again. Both
+// succeed and the second split's planning sees the trailing as a normal night.
+func TestSplitSession_Iterative(t *testing.T) {
+	b := splitBase()
+	end := b.Add(48 * time.Hour) // ran two full days
+	sess := Session{ID: 1, Kind: SessionKindNight, StartedAt: b, EndedAt: ptrTime(end)}
+	events := []Event{
+		mkEvent(1, NightOff, StartNight, Awake, b),                     // Mon 21:00
+		mkEvent(2, SleepingOnMe, BabyWoke, Awake, b.Add(10*time.Hour)), // Tue 07:00
+		mkEvent(3, Awake, StartFeed, Feeding, b.Add(34*time.Hour)),     // Wed 07:00
+		mkEvent(4, Feeding, DislatchAwake, Awake, b.Add(35*time.Hour)), // Wed 08:00
+	}
+	// First split at Tue 07:30.
+	res1, err := SplitSession(sess, events, b.Add(10*time.Hour+30*time.Minute))
+	if err != nil {
+		t.Fatalf("first split: %v", err)
+	}
+	// Build the trailing session + its events (synthetic opener + reparented).
+	trailing := res1.Trailing
+	trailing.ID = 2
+	trailingEvents := append([]Event{res1.TrailingStart}, res1.EventsToReparent...)
+	// Add a later event so there's activity after the second split point.
+	trailingEvents = append(trailingEvents, mkEvent(99, Awake, StartFeed, Feeding, b.Add(40*time.Hour)))
+
+	// Second split of the trailing at Wed 08:30 (Awake, after the 08:00 dislatch).
+	_, err = SplitSession(trailing, trailingEvents, b.Add(35*time.Hour+30*time.Minute))
+	if err != nil {
+		t.Fatalf("second split: %v", err)
 	}
 }
