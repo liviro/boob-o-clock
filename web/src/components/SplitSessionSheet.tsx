@@ -24,9 +24,11 @@ export function SplitSessionSheet({ session, onClose, onSplit }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setValue(fmtLocalYMDHM(nextOccurrence(defaultHour, new Date(session.startedAt))));
+    // Reset to the computed default whenever the target session changes.
+    // Keyed on session.id only — adding defaultTime (a fresh Date each render)
+    // would clobber the user's edits on every render.
+    setValue(fmtLocalYMDHM(defaultTime));
     setError(null);
-    // Recompute the default whenever the target session changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 

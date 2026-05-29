@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"log"
 	"maps"
 	"net/http"
@@ -455,14 +456,16 @@ func (h *Handler) SplitAt(w http.ResponseWriter, r *http.Request) {
 
 	plan, err := domain.SplitSession(*session, events, t)
 	if err != nil {
-		// Domain errors are user-facing validity messages. Phrase the
-		// rest-state case ("baby was <state> at that time") as the spec's
-		// guidance to pick an awake moment.
-		msg := err.Error()
-		if strings.HasPrefix(msg, "baby was ") {
-			msg = friendlySplitState(msg)
+		// The rest-state rejection carries the offending state structurally;
+		// rephrase it as the spec's guidance to pick an awake moment. Other
+		// validity errors are already user-facing.
+		var stateErr *domain.InvalidSplitStateError
+		if errors.As(err, &stateErr) {
+			writeError(w, http.StatusBadRequest,
+				"Baby was "+plainStateName(stateErr.State)+" at that time. Pick a moment when baby was awake.")
+			return
 		}
-		writeError(w, http.StatusBadRequest, msg)
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -475,15 +478,6 @@ func (h *Handler) SplitAt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"newSessionIds": []int64{degID, trailID},
 	})
-}
-
-// friendlySplitState rewrites the domain's "baby was <state> at that time"
-// into the spec's user-facing copy, naming the state in plain language and
-// telling the user to pick a moment when the baby was awake.
-func friendlySplitState(domainMsg string) string {
-	state := strings.TrimPrefix(domainMsg, "baby was ")
-	state = strings.TrimSuffix(state, " at that time")
-	return "Baby was " + plainStateName(domain.State(state)) + " at that time. Pick a moment when baby was awake."
 }
 
 // plainStateName maps a state to human copy for the split error. Falls back to

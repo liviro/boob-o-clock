@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+// InvalidSplitStateError is returned when the split timestamp lands in a
+// non-rest span. State is the derived state at that time, exposed structurally
+// so callers can surface it (e.g. as user copy) without parsing the message.
+type InvalidSplitStateError struct {
+	State State
+}
+
+func (e *InvalidSplitStateError) Error() string {
+	return fmt.Sprintf("baby was %s at that time", e.State)
+}
+
 // SplitResult describes the plan for splitting a session at timestamp t.
 // Symmetric over session kind: Degenerate has the OPPOSITE kind of the
 // original (a single chain event, ~1s long), Trailing has the SAME kind.
@@ -52,14 +63,12 @@ func SplitSession(session Session, events []Event, t time.Time) (SplitResult, er
 
 	// 2. Kind-specific flavors.
 	validityState := Awake
-	openerAction := StartNight
 	degenerateKind := SessionKindDay
 	degenerateAction := StartDay
 	degenerateToState := DayAwake
 	trailingAction := StartNight
 	if session.Kind == SessionKindDay {
 		validityState = DayAwake
-		openerAction = StartDay
 		degenerateKind = SessionKindNight
 		degenerateAction = StartNight
 		degenerateToState = Awake
@@ -79,13 +88,14 @@ func SplitSession(session Session, events []Event, t time.Time) (SplitResult, er
 	if kIdx < 0 {
 		return SplitResult{}, fmt.Errorf("pick a moment after some activity was logged")
 	}
-	// 4. The most-recent event must not be the opener.
-	if events[kIdx].Action == openerAction && kIdx == 0 {
+	// 4. The most-recent event must not be the opener (kIdx == 0 is always the
+	//    session's seq=1 opener; splitting there would leave only the opener).
+	if kIdx == 0 {
 		return SplitResult{}, fmt.Errorf("pick a moment after some activity was logged")
 	}
 	// 5. Rest-state validity.
 	if events[kIdx].ToState != validityState {
-		return SplitResult{}, fmt.Errorf("baby was %s at that time", events[kIdx].ToState)
+		return SplitResult{}, &InvalidSplitStateError{State: events[kIdx].ToState}
 	}
 
 	// 6. Gather events strictly after t (these move to trailing).
