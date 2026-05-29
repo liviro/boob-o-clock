@@ -1348,3 +1348,150 @@ func TestStoreSplitSession_UndoAfterSplitOpen(t *testing.T) {
 		t.Fatalf("after one undo, trailing = %d events, want lone start_night", len(trailEvents))
 	}
 }
+
+// TestStoreSplitSession_MidChainRetro is the integration test from design §6.
+// Scenario: a broken multi-day night N (closed), followed by properly-chained
+// sessions N+1 (day), N+2 (night, open). User retroactively splits N. The
+// split inserts rows with HIGH ids but chronologically-middle started_at.
+func TestStoreSplitSession_MidChainRetro(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+
+	// N: broken night Mon 21:00 → Wed 07:00 (ran through a whole day).
+	nEnd := b.Add(34 * time.Hour) // Wed 07:00
+	nSess := &domain.Session{Kind: domain.SessionKindNight, StartedAt: b, EndedAt: &nEnd}
+	nEvents := []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
+		{FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: b.Add(10 * time.Hour)}, // Tue 07:00
+		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(24 * time.Hour)},      // Tue 21:00
+		{FromState: domain.Feeding, Action: domain.DislatchAwake, ToState: domain.Awake, Timestamp: b.Add(33 * time.Hour)},  // Wed 06:00
+	}
+	nID := seedSessionWithEvents(t, s, nSess, nEvents)
+
+	// N+1: day Wed 07:00 → Wed 19:00.
+	d1End := b.Add(46 * time.Hour)
+	d1 := &domain.Session{Kind: domain.SessionKindDay, StartedAt: nEnd, EndedAt: &d1End}
+	d1ID := seedSessionWithEvents(t, s, d1, []domain.Event{
+		{FromState: domain.Awake, Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: nEnd},
+	})
+
+	// N+2: night Wed 19:00 → open.
+	n2 := &domain.Session{Kind: domain.SessionKindNight, StartedAt: d1End}
+	n2ID := seedSessionWithEvents(t, s, n2, []domain.Event{
+		{FromState: domain.DayAwake, Action: domain.StartNight, ToState: domain.Awake, Timestamp: d1End},
+	})
+
+	// Retro-split N at Tue 07:30 (inside its Awake span).
+	loaded, loadedEvents, _ := s.GetSession(nID)
+	plan, err := domain.SplitSession(*loaded, loadedEvents, b.Add(10*time.Hour+30*time.Minute))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	degID, trailID, err := s.SplitSession(nID, plan)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+	// Sanity: new ids are higher than all pre-existing sessions.
+	if degID <= n2ID || trailID <= n2ID {
+		t.Fatalf("expected split ids > n2ID(%d), got deg=%d trail=%d", n2ID, degID, trailID)
+	}
+
+	// Chain invariant by started_at order across the whole table.
+	all, err := s.ListSessions(b.Add(-24*time.Hour), b.Add(72*time.Hour), "")
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	for i := 0; i+1 < len(all); i++ {
+		a, c := all[i], all[i+1]
+		if a.EndedAt == nil {
+			t.Fatalf("non-final session %d has nil ended_at", a.ID)
+		}
+		if !a.EndedAt.Equal(c.StartedAt) {
+			t.Errorf("chain break: session %d ended_at %v != session %d started_at %v",
+				a.ID, a.EndedAt, c.ID, c.StartedAt)
+		}
+	}
+
+	// §4 exercise: chronological prev of N+1 is the split's trailing night,
+	// not the original N.
+	prev, _ := s.PrevSessionBefore(d1ID)
+	if prev == nil || prev.ID != trailID {
+		t.Errorf("PrevSessionBefore(N+1) = %v, want trailing(%d)", prev, trailID)
+	}
+	// PostUndo's chain-advance detection (handlers.go) reopens prev iff
+	// prev.EndedAt == session.StartedAt. After the split, N+1 chains from the
+	// trailing (which inherited N's original ended_at == nEnd == N+1.StartedAt),
+	// so undoing N+1's opener must reopen the TRAILING, not the original N.
+	if prev != nil && (prev.EndedAt == nil || !prev.EndedAt.Equal(nEnd)) {
+		t.Errorf("trailing.EndedAt = %v, want %v (PostUndo predicate)", prev.EndedAt, nEnd)
+	}
+	// Chronological next of N is the degenerate day.
+	next, _ := s.NextSessionAfter(nID)
+	if next == nil || next.ID != degID {
+		t.Errorf("NextSessionAfter(N) = %v, want degenerate(%d)", next, degID)
+	}
+
+	// N+2 still open; AddEvent continues its seq cleanly.
+	evt := &domain.Event{SessionID: n2ID, FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: d1End.Add(time.Hour)}
+	if err := s.AddEvent(evt); err != nil {
+		t.Fatalf("AddEvent to N+2: %v", err)
+	}
+	if evt.Seq != 2 {
+		t.Errorf("N+2 AddEvent seq = %d, want 2", evt.Seq)
+	}
+}
+
+func TestStoreSplitSession_MidChainRetroDay(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 7, 0, 0, 0, time.Local) // Mon 07:00
+
+	// D: broken day Mon 07:00 → Tue 19:00 (ran through a whole night).
+	dEnd := b.Add(36 * time.Hour) // Tue 19:00
+	dSess := &domain.Session{Kind: domain.SessionKindDay, StartedAt: b, EndedAt: &dEnd}
+	dID := seedSessionWithEvents(t, s, dSess, []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: b},
+		{FromState: domain.DaySleeping, Action: domain.BabyWoke, ToState: domain.DayAwake, Timestamp: b.Add(4 * time.Hour)},  // Mon 11:00
+		{FromState: domain.DayAwake, Action: domain.StartFeed, ToState: domain.DayFeeding, Timestamp: b.Add(30 * time.Hour)}, // Tue 13:00
+		{FromState: domain.DayFeeding, Action: domain.DislatchAwake, ToState: domain.DayAwake, Timestamp: b.Add(31 * time.Hour)},
+	})
+
+	// N+1: night Tue 19:00 → Wed 07:00.
+	n1End := b.Add(48 * time.Hour)
+	n1 := &domain.Session{Kind: domain.SessionKindNight, StartedAt: dEnd, EndedAt: &n1End}
+	n1ID := seedSessionWithEvents(t, s, n1, []domain.Event{
+		{FromState: domain.DayAwake, Action: domain.StartNight, ToState: domain.Awake, Timestamp: dEnd},
+	})
+
+	// N+2: day Wed 07:00 → open.
+	n2 := &domain.Session{Kind: domain.SessionKindDay, StartedAt: n1End}
+	seedSessionWithEvents(t, s, n2, []domain.Event{
+		{FromState: domain.Awake, Action: domain.StartDay, ToState: domain.DayAwake, Timestamp: n1End},
+	})
+
+	// Split D at Mon 20:00 (inside the 11:00→Tue 13:00 DayAwake span).
+	loaded, loadedEvents, _ := s.GetSession(dID)
+	plan, err := domain.SplitSession(*loaded, loadedEvents, b.Add(13*time.Hour))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	degID, trailID, err := s.SplitSession(dID, plan)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+
+	all, _ := s.ListSessions(b.Add(-24*time.Hour), b.Add(96*time.Hour), "")
+	for i := 0; i+1 < len(all); i++ {
+		a, c := all[i], all[i+1]
+		if a.EndedAt == nil || !a.EndedAt.Equal(c.StartedAt) {
+			t.Errorf("chain break at session %d → %d", a.ID, c.ID)
+		}
+	}
+	next, _ := s.NextSessionAfter(dID)
+	if next == nil || next.ID != degID {
+		t.Errorf("NextSessionAfter(D) = %v, want degenerate night(%d)", next, degID)
+	}
+	prev, _ := s.PrevSessionBefore(n1ID)
+	if prev == nil || prev.ID != trailID {
+		t.Errorf("PrevSessionBefore(N+1) = %v, want trailing day(%d)", prev, trailID)
+	}
+}
