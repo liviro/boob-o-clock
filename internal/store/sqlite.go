@@ -426,6 +426,115 @@ func (s *Store) UndoChainAdvance(newSessionID, prevSessionID int64) error {
 	return tx.Commit()
 }
 
+// SplitSession atomically applies a domain.SplitResult, returning the IDs of
+// the two newly-created sessions (degenerate, trailing).
+//
+// Steps, in one transaction:
+//  1. UPDATE original.ended_at = result.OriginalEndedAt  (closes it first, so
+//     the one_open_session partial index never sees two open rows).
+//  2. INSERT degenerate session (always closed) + its synthetic chain event.
+//  3. INSERT trailing session (ended_at inherited from original — possibly
+//     NULL for an open split) + its synthetic chain-back opener.
+//  4. UPDATE each re-parented event's session_id + seq (seq pre-computed by
+//     the domain planner, starting at 2).
+//
+// Concurrent-split safety is NOT handled in v1 (see design §6): two clients
+// splitting the same session at the same instant can race; the second's
+// re-parent UPDATE may affect zero rows. Acknowledged, vanishingly rare.
+func (s *Store) SplitSession(originalID int64, result domain.SplitResult) (degenerateID, trailingID int64, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, 0, fmt.Errorf("split: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now()
+
+	// 1. Shorten the original.
+	if _, err = tx.Exec(
+		"UPDATE sessions SET ended_at = ? WHERE id = ?",
+		result.OriginalEndedAt.Format(time.RFC3339Nano), originalID,
+	); err != nil {
+		return 0, 0, fmt.Errorf("split: shorten original: %w", err)
+	}
+
+	// 2. Degenerate session + event.
+	degenerateID, err = insertSplitSession(tx, result.Degenerate, now)
+	if err != nil {
+		return 0, 0, fmt.Errorf("split: insert degenerate: %w", err)
+	}
+	if err = insertSplitEvent(tx, degenerateID, result.DegenerateEvent, now); err != nil {
+		return 0, 0, fmt.Errorf("split: insert degenerate event: %w", err)
+	}
+
+	// 3. Trailing session + opener.
+	trailingID, err = insertSplitSession(tx, result.Trailing, now)
+	if err != nil {
+		return 0, 0, fmt.Errorf("split: insert trailing: %w", err)
+	}
+	if err = insertSplitEvent(tx, trailingID, result.TrailingStart, now); err != nil {
+		return 0, 0, fmt.Errorf("split: insert trailing opener: %w", err)
+	}
+
+	// 4. Re-parent events (seq already set on each).
+	for _, e := range result.EventsToReparent {
+		if _, err = tx.Exec(
+			"UPDATE events SET session_id = ?, seq = ? WHERE id = ?",
+			trailingID, e.Seq, e.ID,
+		); err != nil {
+			return 0, 0, fmt.Errorf("split: reparent event %d: %w", e.ID, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("split: commit: %w", err)
+	}
+	return degenerateID, trailingID, nil
+}
+
+// insertSplitSession inserts a planned (ID-less) session row, returning its id.
+func insertSplitSession(tx *sql.Tx, sess domain.Session, now time.Time) (int64, error) {
+	var endedArg any
+	if sess.EndedAt != nil {
+		endedArg = sess.EndedAt.Format(time.RFC3339Nano)
+	}
+	var ferberNumArg any
+	ferberEnabledInt := 0
+	if sess.FerberEnabled {
+		ferberEnabledInt = 1
+		if sess.FerberNightNumber != nil {
+			ferberNumArg = *sess.FerberNightNumber
+		}
+	}
+	chairEnabledInt := 0
+	if sess.ChairEnabled {
+		chairEnabledInt = 1
+	}
+	res, err := tx.Exec(
+		`INSERT INTO sessions (kind, started_at, ended_at, created_at, ferber_enabled, ferber_night_number, chair_enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		string(sess.Kind), sess.StartedAt.Format(time.RFC3339Nano), endedArg,
+		now.Format(time.RFC3339Nano), ferberEnabledInt, ferberNumArg, chairEnabledInt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// insertSplitEvent inserts a planned synthetic event (no metadata) into the
+// given session.
+func insertSplitEvent(tx *sql.Tx, sessionID int64, evt domain.Event, now time.Time) error {
+	_, err := tx.Exec(
+		`INSERT INTO events (session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, string(evt.FromState), string(evt.Action), string(evt.ToState),
+		evt.Timestamp.Format(time.RFC3339Nano), nil,
+		now.Format(time.RFC3339Nano), evt.Seq,
+	)
+	return err
+}
+
 // EndSession sets ended_at on the given session. Kind-agnostic.
 func (s *Store) EndSession(sessionID int64, endedAt time.Time) error {
 	_, err := s.db.Exec(

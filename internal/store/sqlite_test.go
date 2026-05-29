@@ -1177,3 +1177,174 @@ func TestPrevNextSessionChronological(t *testing.T) {
 		t.Fatalf("NextSessionAfter(A) = %v, want B (id %d)", next, b.ID)
 	}
 }
+
+// seedSessionWithEvents inserts a session and its events verbatim (caller
+// supplies seq/timestamps). Returns the session ID. Used to construct
+// over-long sessions for split tests without routing through chain advances.
+func seedSessionWithEvents(t *testing.T, s *Store, sess *domain.Session, events []domain.Event) int64 {
+	t.Helper()
+	created, err := s.CreateSession(sess.Kind, sess.StartedAt, sess.FerberEnabled, derefInt(sess.FerberNightNumber), sess.ChairEnabled)
+	if err != nil {
+		t.Fatalf("seed CreateSession: %v", err)
+	}
+	if sess.EndedAt != nil {
+		if err := s.EndSession(created.ID, *sess.EndedAt); err != nil {
+			t.Fatalf("seed EndSession: %v", err)
+		}
+	}
+	for i := range events {
+		events[i].SessionID = created.ID
+		if err := s.AddEvent(&events[i]); err != nil {
+			t.Fatalf("seed AddEvent: %v", err)
+		}
+	}
+	return created.ID
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func TestStoreSplitSession_NightRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	end := b.Add(20 * time.Hour)
+	sess := &domain.Session{Kind: domain.SessionKindNight, StartedAt: b, EndedAt: &end}
+	events := []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
+		{FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: b.Add(10 * time.Hour)},
+		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(12 * time.Hour)},
+		{FromState: domain.Feeding, Action: domain.DislatchAwake, ToState: domain.Awake, Timestamp: b.Add(13 * time.Hour)},
+	}
+	origID := seedSessionWithEvents(t, s, sess, events)
+
+	loaded, loadedEvents, err := s.GetSession(origID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	splitAt := b.Add(10*time.Hour + 30*time.Minute) // 07:30
+	plan, err := domain.SplitSession(*loaded, loadedEvents, splitAt)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	degID, trailID, err := s.SplitSession(origID, plan)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+	if degID == 0 || trailID == 0 || degID == trailID {
+		t.Fatalf("bad new ids: deg=%d trail=%d", degID, trailID)
+	}
+
+	// Original shortened.
+	orig, origEvents, _ := s.GetSession(origID)
+	if orig.EndedAt == nil || !orig.EndedAt.Equal(splitAt) {
+		t.Errorf("orig.EndedAt = %v, want %v", orig.EndedAt, splitAt)
+	}
+	if len(origEvents) != 2 { // start_night + 07:00 wake
+		t.Errorf("orig events = %d, want 2", len(origEvents))
+	}
+
+	// Degenerate: day, 1s, single start_day event.
+	deg, degEvents, _ := s.GetSession(degID)
+	if deg.Kind != domain.SessionKindDay || len(degEvents) != 1 || degEvents[0].Action != domain.StartDay {
+		t.Errorf("degenerate wrong: kind=%s events=%d", deg.Kind, len(degEvents))
+	}
+
+	// Trailing: night, inherits original end, opener + 2 reparented events.
+	trail, trailEvents, _ := s.GetSession(trailID)
+	if trail.Kind != domain.SessionKindNight {
+		t.Errorf("trailing kind = %s, want night", trail.Kind)
+	}
+	if trail.EndedAt == nil || !trail.EndedAt.Equal(end) {
+		t.Errorf("trailing.EndedAt = %v, want %v", trail.EndedAt, end)
+	}
+	if len(trailEvents) != 3 { // start_night + 09:00 feed + 10:00 dislatch
+		t.Fatalf("trailing events = %d, want 3", len(trailEvents))
+	}
+	// Seq is dense 1..3 and the FK points at the trailing session.
+	for i, e := range trailEvents {
+		if e.Seq != i+1 {
+			t.Errorf("trailing event %d seq = %d, want %d", i, e.Seq, i+1)
+		}
+		if e.SessionID != trailID {
+			t.Errorf("trailing event %d session_id = %d, want %d", i, e.SessionID, trailID)
+		}
+	}
+
+	// AddEvent to the trailing continues from MAX(seq)+1.
+	next := &domain.Event{SessionID: trailID, FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: end.Add(-time.Hour)}
+	if err := s.AddEvent(next); err != nil {
+		t.Fatalf("AddEvent post-split: %v", err)
+	}
+	if next.Seq != 4 {
+		t.Errorf("post-split AddEvent seq = %d, want 4", next.Seq)
+	}
+}
+
+func TestStoreSplitSession_OpenPartialIndex(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	sess := &domain.Session{Kind: domain.SessionKindNight, StartedAt: b} // open (EndedAt nil)
+	events := []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
+		{FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: b.Add(10 * time.Hour)},
+		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(12 * time.Hour)},
+	}
+	origID := seedSessionWithEvents(t, s, sess, events)
+	loaded, loadedEvents, _ := s.GetSession(origID)
+	plan, err := domain.SplitSession(*loaded, loadedEvents, b.Add(10*time.Hour+30*time.Minute))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, _, err := s.SplitSession(origID, plan); err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+
+	// Exactly one open session after the split (the trailing).
+	var openCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE ended_at IS NULL`).Scan(&openCount); err != nil {
+		t.Fatalf("count open: %v", err)
+	}
+	if openCount != 1 {
+		t.Errorf("open sessions = %d, want 1", openCount)
+	}
+	cur, _, err := s.CurrentSession()
+	if err != nil || cur == nil || cur.Kind != domain.SessionKindNight {
+		t.Errorf("CurrentSession after split = %v (err %v), want open night", cur, err)
+	}
+}
+
+// Review finding: undoing a split's OPEN trailing pops real events first;
+// reaching the synthetic opener reopens the degenerate, never silently
+// destroying still-present reparented events.
+func TestStoreSplitSession_UndoAfterSplitOpen(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	sess := &domain.Session{Kind: domain.SessionKindNight, StartedAt: b}
+	events := []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
+		{FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: b.Add(10 * time.Hour)},
+		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(12 * time.Hour)},
+	}
+	origID := seedSessionWithEvents(t, s, sess, events)
+	loaded, loadedEvents, _ := s.GetSession(origID)
+	plan, _ := domain.SplitSession(*loaded, loadedEvents, b.Add(10*time.Hour+30*time.Minute))
+	_, trailID, err := s.SplitSession(origID, plan)
+	if err != nil {
+		t.Fatalf("SplitSession: %v", err)
+	}
+
+	// Trailing open session: [start_night(seq1), 09:00 feed(seq2)]. Pop the
+	// one real reparented event — start_night remains, session still open.
+	if _, err := s.PopEvent(trailID); err != nil {
+		t.Fatalf("PopEvent: %v", err)
+	}
+	_, trailEvents, _ := s.GetSession(trailID)
+	if len(trailEvents) != 1 || trailEvents[0].Action != domain.StartNight {
+		t.Fatalf("after one undo, trailing = %d events, want lone start_night", len(trailEvents))
+	}
+}
