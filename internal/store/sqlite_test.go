@@ -1349,8 +1349,8 @@ func TestStoreSplitSession_UndoAfterSplitOpen(t *testing.T) {
 	}
 }
 
-// TestStoreSplitSession_MidChainRetro is the integration test from design §6.
-// Scenario: a broken multi-day night N (closed), followed by properly-chained
+// TestStoreSplitSession_MidChainRetro is the mid-chain retro-split integration
+// test. Scenario: a broken multi-day night N (closed), followed by properly-chained
 // sessions N+1 (day), N+2 (night, open). User retroactively splits N. The
 // split inserts rows with HIGH ids but chronologically-middle started_at.
 func TestStoreSplitSession_MidChainRetro(t *testing.T) {
@@ -1412,8 +1412,8 @@ func TestStoreSplitSession_MidChainRetro(t *testing.T) {
 		}
 	}
 
-	// §4 exercise: chronological prev of N+1 is the split's trailing night,
-	// not the original N.
+	// Chronological-ordering exercise: prev of N+1 is the split's trailing
+	// night, not the original N.
 	prev, _ := s.PrevSessionBefore(d1ID)
 	if prev == nil || prev.ID != trailID {
 		t.Errorf("PrevSessionBefore(N+1) = %v, want trailing(%d)", prev, trailID)

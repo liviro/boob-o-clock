@@ -282,7 +282,7 @@ export interface SplitSessionResponse {
 }
 
 export async function splitSession(sessionId: number, timestamp: Date): Promise<SplitSessionResponse> {
-  const resp = await checkResponse(await fetch(`${API}/session/split-at`, {
+  const resp = await checkResponse(await fetch(`${API}/session/split`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, timestamp: toLocalISO(timestamp) }),

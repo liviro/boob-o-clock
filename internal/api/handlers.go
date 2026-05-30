@@ -83,8 +83,8 @@ type startSessionRequest struct {
 	Chair     bool                 `json:"chair,omitempty"`
 }
 
-// splitAtRequest is the typed body for POST /api/session/split-at.
-type splitAtRequest struct {
+// splitRequest is the typed body for POST /api/session/split.
+type splitRequest struct {
 	SessionID int64  `json:"sessionId"`
 	Timestamp string `json:"timestamp"`
 }
@@ -417,11 +417,11 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, session, remaining))
 }
 
-// SplitAt splits an over-long session into a chained sequence at the given
+// Split carves an over-long session into a chained sequence at the given
 // timestamp. Kind-agnostic: the server reads session.Kind to pick the
-// validity state and synthetic event flavors. See design doc §7.
-func (h *Handler) SplitAt(w http.ResponseWriter, r *http.Request) {
-	var req splitAtRequest
+// validity state and synthetic event flavors.
+func (h *Handler) Split(w http.ResponseWriter, r *http.Request) {
+	var req splitRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {

@@ -438,7 +438,7 @@ func (s *Store) UndoChainAdvance(newSessionID, prevSessionID int64) error {
 //  4. UPDATE each re-parented event's session_id + seq (seq pre-computed by
 //     the domain planner, starting at 2).
 //
-// Concurrent-split safety is NOT handled in v1 (see design §6): two clients
+// Concurrent-split safety is NOT handled in v1: two clients
 // splitting the same session at the same instant can race; the second's
 // re-parent UPDATE may affect zero rows. Acknowledged, vanishingly rare.
 func (s *Store) SplitSession(originalID int64, result domain.SplitResult) (degenerateID, trailingID int64, err error) {

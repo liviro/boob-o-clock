@@ -1497,13 +1497,13 @@ func seedSplittableNight(t *testing.T, s *store.Store, base time.Time) int64 {
 	return sess.ID
 }
 
-func TestSplitAt_HappyPath(t *testing.T) {
+func TestSplit_HappyPath(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 	base := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
 	id := seedSplittableNight(t, s, base)
 
 	splitAt := base.Add(10*time.Hour + 30*time.Minute) // Tue 07:30
-	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+	resp := doPost(t, ts, "/api/session/split", map[string]any{
 		"sessionId": id,
 		"timestamp": splitAt.Format(time.RFC3339),
 	})
@@ -1529,14 +1529,14 @@ func TestSplitAt_HappyPath(t *testing.T) {
 	}
 }
 
-func TestSplitAt_RejectInsideFeed(t *testing.T) {
+func TestSplit_RejectInsideFeed(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 	base := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
 	id := seedSplittableNight(t, s, base)
 
 	// Tue 09:30 — inside the Feeding span (09:00 → 10:00).
 	splitAt := base.Add(12*time.Hour + 30*time.Minute)
-	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+	resp := doPost(t, ts, "/api/session/split", map[string]any{
 		"sessionId": id,
 		"timestamp": splitAt.Format(time.RFC3339),
 	})
@@ -1551,9 +1551,9 @@ func TestSplitAt_RejectInsideFeed(t *testing.T) {
 	}
 }
 
-func TestSplitAt_NotFound(t *testing.T) {
+func TestSplit_NotFound(t *testing.T) {
 	ts := newTestServer(t)
-	resp := doPost(t, ts, "/api/session/split-at", map[string]any{
+	resp := doPost(t, ts, "/api/session/split", map[string]any{
 		"sessionId": 9999,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -1563,12 +1563,12 @@ func TestSplitAt_NotFound(t *testing.T) {
 	}
 }
 
-func TestSplitAt_BadBody(t *testing.T) {
+func TestSplit_BadBody(t *testing.T) {
 	ts, s := newTestServerWithStore(t)
 	id := seedSplittableNight(t, s, time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local))
 
 	// Missing timestamp.
-	resp := doPost(t, ts, "/api/session/split-at", map[string]any{"sessionId": id})
+	resp := doPost(t, ts, "/api/session/split", map[string]any{"sessionId": id})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("missing timestamp: status = %d, want 400", resp.StatusCode)
