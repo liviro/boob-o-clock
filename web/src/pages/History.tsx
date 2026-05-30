@@ -509,6 +509,17 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
 // gestures.
 const TIMELINE_COLLAPSED_COUNT = 10;
 
+// TODO(over-long-rendering): the 24h Cycle Timelines chart renders ONE row per
+// cycle, and CycleTimelineBar clips each row to a fixed 24h window (see
+// CycleTimelineBar.tsx buildSegments: `end = Math.min(segEndMs, cycleEndMs)`).
+// A session longer than 24h (e.g. a forgotten-Start-day night spanning May 22→24)
+// therefore (a) gets its overflow clipped at midnight, and (b) leaves any fully-
+// swallowed calendar day with no row at all, because no session *starts* on that
+// day. Data is intact (correct timestamps) — it just has nowhere to draw.
+// Real fix: generalize synthesizeTodayRow below into "emit one CycleTimelineBar
+// row per calendar day a session spans," so an over-long session paints across
+// multiple day rows instead of one clipped row. Splitting the session is the
+// current workaround (it plants day-anchored sessions → rows appear).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   const [expanded, setExpanded] = useState(false);
   // Night crossed midnight before a new day session opened — give post-midnight events a row.
