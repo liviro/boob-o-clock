@@ -514,6 +514,7 @@ func TestAttachMovingAverages_Window3(t *testing.T) {
 	intraSleepFeeds := []time.Duration{30 * time.Minute, 45 * time.Minute, 60 * time.Minute, 15 * time.Minute, 30 * time.Minute}
 	for i := range sleeps {
 		summaries[i] = CycleSummary{Stats: CycleStats{Night: &NightStats{
+			NightDuration:      8 * time.Hour, // realistic — not a degenerate split artifact
 			TotalSleepTime:     sleeps[i],
 			IntraSleepFeedTime: intraSleepFeeds[i],
 		}}}
@@ -628,7 +629,7 @@ func TestAttachMovingAverages_IntraSleepCareTime(t *testing.T) {
 	for i := range summaries {
 		summaries[i] = CycleSummary{
 			Stats: CycleStats{
-				Night: &NightStats{IntraSleepCareTime: cares[i]},
+				Night: &NightStats{NightDuration: 8 * time.Hour, IntraSleepCareTime: cares[i]},
 			},
 		}
 	}
@@ -642,5 +643,32 @@ func TestAttachMovingAverages_IntraSleepCareTime(t *testing.T) {
 	want := 60 * time.Minute
 	if got != want {
 		t.Errorf("cycle 2 avg IntraSleepCareTime = %v, want %v", got, want)
+	}
+}
+
+// TestAverageCycles_SkipsDegenerateHalves verifies that ~1s session halves
+// (produced by splits) are excluded from moving averages so they don't drag
+// the mean toward zero.
+func TestAverageCycles_SkipsDegenerateHalves(t *testing.T) {
+	real := CycleSummary{Stats: CycleStats{Night: &NightStats{NightDuration: 10 * time.Hour}}}
+	degenerate := CycleSummary{Stats: CycleStats{Night: &NightStats{NightDuration: 1 * time.Second}}}
+
+	avg := averageCycles([]CycleSummary{real, degenerate})
+	if avg.Night == nil {
+		t.Fatal("avg.Night = nil, want the real night to contribute")
+	}
+	// Only the 10h night should count → average is 10h, not 5h0.5s.
+	if avg.Night.NightDuration != 10*time.Hour {
+		t.Errorf("avg NightDuration = %v, want 10h (degenerate excluded)", avg.Night.NightDuration)
+	}
+}
+
+// Symmetric: degenerate DAY halves (day-split artifacts) are also excluded.
+func TestAverageCycles_SkipsDegenerateDayHalves(t *testing.T) {
+	real := CycleSummary{Stats: CycleStats{Day: &DayStats{DayDuration: 12 * time.Hour}}}
+	degenerate := CycleSummary{Stats: CycleStats{Day: &DayStats{DayDuration: 1 * time.Second}}}
+	avg := averageCycles([]CycleSummary{real, degenerate})
+	if avg.Day == nil || avg.Day.DayDuration != 12*time.Hour {
+		t.Errorf("avg DayDuration = %v, want 12h (degenerate excluded)", avg.Day)
 	}
 }

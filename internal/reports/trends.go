@@ -237,8 +237,16 @@ func AttachMovingAverages(summaries []CycleSummary, window int) {
 	}
 }
 
+// degenerateSessionMax is the upper bound below which a session half is
+// treated as a split-created degenerate (~1s) and excluded from moving
+// averages. 60s is a conservative buffer above the 1s degenerate sessions
+// without excluding any plausible real session.
+const degenerateSessionMax = 60 * time.Second
+
 // Means numeric fields across non-nil halves — a day half with only 2 of 3
 // cycles contributing is averaged across 2, not 3 (nil halves skipped).
+// Split-created degenerate halves (<=60s) are also skipped so they don't drag
+// the mean toward zero.
 func averageCycles(cycles []CycleSummary) CycleStats {
 	var avg CycleStats
 	var dayCount, nightCount int
@@ -246,7 +254,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 	var nightAcc NightStats
 
 	for _, c := range cycles {
-		if c.Stats.Day != nil {
+		if c.Stats.Day != nil && c.Stats.Day.DayDuration > degenerateSessionMax {
 			dayCount++
 			dayAcc.DayDuration += c.Stats.Day.DayDuration
 			dayAcc.NapCount += c.Stats.Day.NapCount
@@ -256,7 +264,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 			dayAcc.FeedTimeLeft += c.Stats.Day.FeedTimeLeft
 			dayAcc.FeedTimeRight += c.Stats.Day.FeedTimeRight
 		}
-		if c.Stats.Night != nil {
+		if c.Stats.Night != nil && c.Stats.Night.NightDuration > degenerateSessionMax {
 			nightCount++
 			nightAcc.NightDuration += c.Stats.Night.NightDuration
 			nightAcc.TotalSleepTime += c.Stats.Night.TotalSleepTime

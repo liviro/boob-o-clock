@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"log"
 	"maps"
 	"net/http"
@@ -53,6 +54,10 @@ type sessionResponse struct {
 	State              domain.State        `json:"state"`
 	ValidActions       []domain.Action     `json:"validActions"`
 	SessionID          *int64              `json:"sessionId"`
+	// StartedAt is the current session's start; the frontend uses it to detect
+	// a session running well past its expected transition (the Start-day/night
+	// nudge). Nil when there is no active session.
+	StartedAt          *time.Time          `json:"startedAt,omitempty"`
 	LastEvent          *eventResponse      `json:"lastEvent"`
 	SuggestBreast      string              `json:"suggestBreast,omitempty"`
 	CurrentBreast      string              `json:"currentBreast,omitempty"`
@@ -76,6 +81,12 @@ type startSessionRequest struct {
 	Timestamp string               `json:"timestamp,omitempty"`
 	Ferber    *ferberConfigRequest `json:"ferber,omitempty"`
 	Chair     bool                 `json:"chair,omitempty"`
+}
+
+// splitRequest is the typed body for POST /api/session/split.
+type splitRequest struct {
+	SessionID int64  `json:"sessionId"`
+	Timestamp string `json:"timestamp"`
 }
 
 type eventResponse struct {
@@ -125,6 +136,7 @@ func (h *Handler) buildSessionResponse(state domain.State, session *domain.Sessi
 	if session != nil {
 		resp.Kind = &session.Kind
 		resp.SessionID = &session.ID
+		resp.StartedAt = &session.StartedAt
 		if ferberEnabled && session.FerberNightNumber != nil {
 			resp.Ferber = &ferberNight{NightNumber: *session.FerberNightNumber}
 			if fs := reports.CurrentFerberSession(state, events, *session.FerberNightNumber); fs != nil {
@@ -403,6 +415,95 @@ func (h *Handler) PostUndo(w http.ResponseWriter, r *http.Request) {
 	remaining := events[:len(events)-1]
 	state := domain.DeriveState(remaining)
 	writeJSON(w, http.StatusOK, h.buildSessionResponse(state, session, remaining))
+}
+
+// Split carves an over-long session into a chained sequence at the given
+// timestamp. Kind-agnostic: the server reads session.Kind to pick the
+// validity state and synthetic event flavors.
+func (h *Handler) Split(w http.ResponseWriter, r *http.Request) {
+	var req splitRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.SessionID == 0 {
+		writeError(w, http.StatusBadRequest, "sessionId is required")
+		return
+	}
+	if req.Timestamp == "" {
+		writeError(w, http.StatusBadRequest, "timestamp is required")
+		return
+	}
+	t, err := time.Parse(time.RFC3339, req.Timestamp)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid timestamp format (use RFC3339)")
+		return
+	}
+
+	session, events, err := h.store.GetSession(req.SessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if session == nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	// Open-session upper bound: the domain bounds closed sessions by ended_at;
+	// for an open session, "now" is the effective end and lives at this layer.
+	if session.EndedAt == nil && t.After(time.Now()) {
+		writeError(w, http.StatusBadRequest, "pick a moment within this session")
+		return
+	}
+
+	plan, err := domain.SplitSession(*session, events, t)
+	if err != nil {
+		// The rest-state rejection carries the offending state structurally;
+		// rephrase it as the spec's guidance to pick an awake moment. Other
+		// validity errors are already user-facing.
+		var stateErr *domain.InvalidSplitStateError
+		if errors.As(err, &stateErr) {
+			writeError(w, http.StatusBadRequest,
+				"Baby was "+plainStateName(stateErr.State)+" at that time. Pick a moment when baby was awake.")
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	degID, trailID, err := h.store.SplitSession(req.SessionID, plan)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"newSessionIds": []int64{degID, trailID},
+	})
+}
+
+// plainStateName maps a state to human copy for the split error. Falls back to
+// the raw state string for states without a bespoke phrase.
+func plainStateName(s domain.State) string {
+	switch s {
+	case domain.SleepingCrib:
+		return "sleeping in the crib"
+	case domain.SleepingOnMe:
+		return "sleeping on you"
+	case domain.SleepingStroller:
+		return "sleeping in the stroller"
+	case domain.DaySleeping:
+		return "napping"
+	case domain.Feeding, domain.DayFeeding:
+		return "feeding"
+	case domain.Poop, domain.DayPoop:
+		return "having a diaper change"
+	default:
+		return string(s)
+	}
 }
 
 // --- cycle endpoints ---

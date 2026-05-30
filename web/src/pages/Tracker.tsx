@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { SessionResponse, StartSessionConfig, NightModeChoice, Location } from '../api';
-import { ACTION_INFO, actionLabel } from '../constants';
+import { ACTION_INFO, actionLabel, fmtClockTime, shouldNudgeModeSwitch } from '../constants';
+import { useNow } from '../hooks/useNow';
 import { Mood, moodWord } from '../ferber';
 import { StateDisplay } from '../components/StateDisplay';
 import { ActionGrid } from '../components/ActionGrid';
@@ -37,8 +38,26 @@ type ModalState =
 // than appending an event. Tracker intercepts these and routes to onStartSession.
 const CHAIN_ACTIONS = new Set(['start_day', 'start_night']);
 
+// nudgeFor returns the Start-day/night nudge for the action grid, or null.
+// Fires only when the open session is overrun + in the wrong mode for the clock
+// AND the corresponding chain action is currently available (so it can act).
+function nudgeFor(session: SessionResponse, now: number): { action: string; cue: string } | null {
+  if (!session.kind || !session.startedAt) return null;
+  const isNight = session.kind === 'night';
+  if (!shouldNudgeModeSwitch(isNight, new Date(session.startedAt), new Date(now))) return null;
+  const action = isNight ? 'start_day' : 'start_night';
+  if (!session.validActions.includes(action)) return null;
+  return { action, cue: `it's ${fmtClockTime(new Date(now).toISOString())}` };
+}
+
 export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) {
   const features = useConfig().features;
+  const now = useNow();
+  // Start-day/night nudge: when the open session's mode disagrees with the wall
+  // clock and it has overrun, glow the (already-present) Start-day/night button
+  // with the current time, rather than adding a banner (no room on iPhone SE).
+  // Only when that chain action is actually available (Awake / DayAwake).
+  const nudge = nudgeFor(session, now);
   const showStartNightModal = features.ferber || features.chair;
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,6 +245,7 @@ export function Tracker({ session, onDispatch, onStartSession, onUndo }: Props) 
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
+            nudge={nudge}
           />
         )
       }

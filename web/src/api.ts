@@ -35,6 +35,8 @@ export interface SessionResponse {
   state: State;
   validActions: string[];
   sessionId: number | null;
+  // The current session's start (RFC3339). Drives the Start-day/night nudge.
+  startedAt?: string;
   suggestBreast?: string;
   currentBreast?: string;
   lastFeedStartedAt?: string;
@@ -272,5 +274,18 @@ export async function getCycles(): Promise<{ cycles: CycleSummary[]; window: num
 
 export async function getCycleDetail(sessionId: number): Promise<CycleDetail> {
   const resp = await checkResponse(await fetch(`${API}/cycles/${sessionId}`));
+  return resp.json();
+}
+
+export interface SplitSessionResponse {
+  newSessionIds: number[];
+}
+
+export async function splitSession(sessionId: number, timestamp: Date): Promise<SplitSessionResponse> {
+  const resp = await checkResponse(await fetch(`${API}/session/split`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, timestamp: toLocalISO(timestamp) }),
+  }));
   return resp.json();
 }

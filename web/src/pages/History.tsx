@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats } from '../api';
-import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel } from '../constants';
+import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats, SessionMeta } from '../api';
+import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel, isSessionUnusuallyLong, DEGENERATE_SESSION_MAX_MS } from '../constants';
+import { SplitSessionSheet } from '../components/SplitSessionSheet';
 import { TimelineBar } from '../components/TimelineBar';
 import { CycleTimelineBar } from '../components/CycleTimelineBar';
 import { TrendChart } from '../components/TrendChart';
@@ -16,6 +17,39 @@ type View = 'cycles' | 'trends';
 const DISPLAY_LIMIT = 30;
 
 const nsToMinutes = (ns: number) => Math.round(ns / 1e9 / 60);
+
+const NS_PER_HOUR = 3.6e12;
+
+// sessionUnusuallyLong gates the badge/banner: true when the session ran well
+// past the transition it should have ended on. Open sessions are measured to
+// now. See isSessionUnusuallyLong for why this beats a raw-duration threshold
+// (it spares the degenerate-bounded trailing a split leaves behind).
+function sessionUnusuallyLong(s: SessionMeta | null | undefined): boolean {
+  if (!s) return false;
+  const end = s.endedAt ? new Date(s.endedAt) : new Date();
+  return isSessionUnusuallyLong(s.kind === 'night', new Date(s.startedAt), end);
+}
+
+// isDegenerate reports whether a session is the ~1s boundary marker a split
+// inserts. Its stats are all-zero and its derived pills are nonsensical, so the
+// UI replaces its body with an honest label (SplitMarkerNote) instead.
+function isDegenerate(s: SessionMeta | null | undefined): boolean {
+  if (!s || !s.endedAt) return false; // an open session is never degenerate
+  return new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime() <= DEGENERATE_SESSION_MAX_MS;
+}
+
+// SplitMarkerNote replaces the stats body of a degenerate half. The marker is
+// the opposite kind of the session that was split; its events stayed in that
+// overrun session (they can't cross the day/night subgraphs), so it has none
+// of its own to show.
+function SplitMarkerNote({ kind }: { kind: 'day' | 'night' }) {
+  const overrun = kind === 'day' ? 'night' : 'day';
+  return (
+    <div class="split-marker-note">
+      Split marker from an overrun {overrun}: the {kind}'s events stay logged under the {overrun}, so there's nothing to show here.
+    </div>
+  );
+}
 
 // Sum a per-side feed-time field across a cycle's day + night halves. Returns
 // null when the stats block is absent or both halves are missing; a partial
@@ -75,6 +109,7 @@ function feedSpansFor(c: CycleSummary): FeedSpan[] {
 export function History() {
   const [cycles, setCycles] = useState<CycleSummary[]>([]);
   const [detail, setDetail] = useState<CycleDetail | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [view, setView] = useState<View>('cycles');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,15 +137,36 @@ export function History() {
     try {
       const data = await getCycleDetail(sessionId);
       setDetail(data);
+      setDetailId(sessionId);
     } catch {
       setError('Failed to load cycle details');
+    }
+  }
+
+  async function refetchDetail() {
+    if (detailId == null) return;
+    try {
+      // Refresh the detail in place AND the underlying list, so navigating Back
+      // reflects the split — e.g. a still-over-long trailing surfaces as a new
+      // badged cycle instead of the stale pre-split card.
+      const [d, c] = await Promise.all([getCycleDetail(detailId), getCycles()]);
+      setDetail(d);
+      setCycles((c.cycles || []).slice().reverse());
+    } catch {
+      setError('Failed to reload cycle');
     }
   }
 
   if (loading) return <div class="no-data">Loading...</div>;
 
   if (detail) {
-    return <CycleDetailView detail={detail} onBack={() => setDetail(null)} />;
+    return (
+      <CycleDetailView
+        detail={detail}
+        onBack={() => { setDetail(null); setDetailId(null); }}
+        onSplit={refetchDetail}
+      />
+    );
   }
 
   if (cycles.length === 0) {
@@ -180,31 +236,45 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
         <div class="cycle-section cycle-section-night">
           <div class="cycle-section-header">
             <span>🌙 Night</span>
-            {cycle.night && <span class="cycle-section-time">{fmtClockTime(cycle.night.startedAt)}</span>}
+            <span class="cycle-section-time">
+              {sessionUnusuallyLong(cycle.night) && <span class="long-badge">⚠ unusually long</span>}
+              {cycle.night && fmtClockTime(cycle.night.startedAt)}
+            </span>
           </div>
-          <div class="night-stats">
-            <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
-            <Stat value={String(night.wakeCount)} label="Wakes" />
-            <Stat value={fmtDur(night.totalFeedTime)} label="Feed Time" />
-            <Stat value={fmtDur(night.totalSleepTime)} label="Total Sleep" />
-          </div>
-          <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
-          <FeedTimesPills times={night.feedTimes} />
+          {isDegenerate(cycle.night) ? <SplitMarkerNote kind="night" /> : (
+            <>
+              <div class="night-stats">
+                <Stat value={fmtDur(night.longestSleepBlock)} label="Longest Sleep" />
+                <Stat value={String(night.wakeCount)} label="Wakes" />
+                <Stat value={fmtDur(night.totalFeedTime)} label="Feed Time" />
+                <Stat value={fmtDur(night.totalSleepTime)} label="Total Sleep" />
+              </div>
+              <SleepBlocksPills blocks={night.sleepBlocks} longest={night.longestSleepBlock} active={!cycle.night?.endedAt} />
+              <FeedTimesPills times={night.feedTimes} />
+            </>
+          )}
         </div>
       )}
       {day && (
         <div class="cycle-section cycle-section-day">
           <div class="cycle-section-header">
             <span>☀️ Day</span>
-            {cycle.day && <span class="cycle-section-time">{fmtClockTime(cycle.day.startedAt)}</span>}
+            <span class="cycle-section-time">
+              {sessionUnusuallyLong(cycle.day) && <span class="long-badge">⚠ unusually long</span>}
+              {cycle.day && fmtClockTime(cycle.day.startedAt)}
+            </span>
           </div>
-          <div class="night-stats">
-            <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
-            <Stat value={String(day.napCount)} label="Naps" />
-            <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
-            <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
-          </div>
-          <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
+          {isDegenerate(cycle.day) ? <SplitMarkerNote kind="day" /> : (
+            <>
+              <div class="night-stats">
+                <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
+                <Stat value={String(day.napCount)} label="Naps" />
+                <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
+                <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
+              </div>
+              <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
+            </>
+          )}
         </div>
       )}
     </div>
@@ -439,6 +509,27 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
 // gestures.
 const TIMELINE_COLLAPSED_COUNT = 10;
 
+// TODO(over-long-rendering): the 24h Cycle Timelines chart renders ONE row per
+// cycle, and CycleTimelineBar clips each row to a fixed 24h window (see
+// CycleTimelineBar.tsx buildSegments: `end = Math.min(segEndMs, cycleEndMs)`).
+// A session longer than 24h (e.g. a forgotten-Start-day night spanning May 22→24)
+// therefore (a) gets its overflow clipped at midnight, and (b) leaves any fully-
+// swallowed calendar day with no row at all, because no session *starts* on that
+// day. Data is intact (correct timestamps) — it just has nowhere to draw.
+// Real fix: generalize synthesizeTodayRow below into "emit one CycleTimelineBar
+// row per calendar day a session spans," so an over-long session paints across
+// multiple day rows instead of one clipped row. Splitting the session is the
+// current workaround (it plants day-anchored sessions → rows appear).
+//
+// Two related symptoms the same fix resolves, both visible after iterating
+// splits on an over-long night:
+//   - DUPLICATE DATE ROWS: splitting twice on the same calendar day plants two
+//     degenerate days on that date → two cycles → two rows with the same label.
+//     A per-calendar-day chart would have exactly one row per date.
+//   - OFFSET BARS: split trailings start in the morning (~7am), but each row's
+//     24h track anchors at midnight, so a 7am-start renders ~30% from the left
+//     with empty space before it (its predecessor is a 1s degenerate day, so
+//     there's no prior-night sleep to seed the left edge).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   const [expanded, setExpanded] = useState(false);
   // Night crossed midnight before a new day session opened — give post-midnight events a row.
@@ -527,9 +618,10 @@ function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string;
 
 // --- Cycle detail view ---
 
-function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () => void }) {
+function CycleDetailView({ detail, onBack, onSplit }: { detail: CycleDetail; onBack: () => void; onSplit: () => void }) {
   const ferberVisible = useConfig().features.ferber;
   const { day, night } = detail.cycle;
+  const [splitTarget, setSplitTarget] = useState<SessionMeta | null>(null);
   const anchor = day?.startedAt ?? night?.startedAt;
   const date = anchor ? new Date(anchor) : new Date();
   const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -547,41 +639,60 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           <span>{dateStr}</span>
         </h3>
 
+        {night && nightStats && sessionUnusuallyLong(night) && (
+          <LongSessionBanner
+            kind="night"
+            durationNs={nightStats.nightDuration}
+            onSplit={() => setSplitTarget(night)}
+          />
+        )}
+        {day && dayStats && sessionUnusuallyLong(day) && (
+          <LongSessionBanner
+            kind="day"
+            durationNs={dayStats.dayDuration}
+            onSplit={() => setSplitTarget(day)}
+          />
+        )}
+
         {nightStats && (
           <div class="cycle-section cycle-section-night">
             <div class="cycle-section-header">
               <span>🌙 Night</span>
               <span class="cycle-section-time">{fmtDur(nightStats.nightDuration)}</span>
             </div>
-            <div class="night-stats">
-              <Stat value={fmtDur(nightStats.longestSleepBlock)} label="Longest Sleep" />
-              <Stat value={String(nightStats.wakeCount)} label="Wakes" />
-              <Stat value={fmtDur(nightStats.totalFeedTime)} label="Feed Time" />
-              <Stat value={fmtDur(nightStats.totalSleepTime)} label="Total Sleep" />
-            </div>
-            {ferberVisible && nightStats.ferber && night?.ferberEnabled && (
-              <div class="ferber-stats">
-                <div class="ferber-stats-header">🌱 Night {night.ferberNightNumber}</div>
+            {isDegenerate(night) ? <SplitMarkerNote kind="night" /> : (
+              <>
                 <div class="night-stats">
-                  <Stat value={String(nightStats.ferber.sessions)} label="Sessions" />
-                  <Stat value={fmtDur(nightStats.ferber.avgTimeToSettle)} label="Session average" />
-                  <Stat value={fmtDur(nightStats.ferber.cryTime)} label="Cry time" />
-                  <Stat value={fmtDur(nightStats.ferber.fussTime)} label="Fuss time" />
+                  <Stat value={fmtDur(nightStats.longestSleepBlock)} label="Longest Sleep" />
+                  <Stat value={String(nightStats.wakeCount)} label="Wakes" />
+                  <Stat value={fmtDur(nightStats.totalFeedTime)} label="Feed Time" />
+                  <Stat value={fmtDur(nightStats.totalSleepTime)} label="Total Sleep" />
                 </div>
-                <details class="ferber-details">
-                  <summary>More</summary>
-                  <div class="night-stats">
-                    <Stat value={String(nightStats.ferber.checkIns)} label="Check-ins" />
-                    <Stat value={String(nightStats.ferber.sessionsAbandoned)} label="Abandoned" />
-                    <Stat value={fmtDur(nightStats.ferber.quietTime)} label="Quiet time" />
+                {ferberVisible && nightStats.ferber && night?.ferberEnabled && (
+                  <div class="ferber-stats">
+                    <div class="ferber-stats-header">🌱 Night {night.ferberNightNumber}</div>
+                    <div class="night-stats">
+                      <Stat value={String(nightStats.ferber.sessions)} label="Sessions" />
+                      <Stat value={fmtDur(nightStats.ferber.avgTimeToSettle)} label="Session average" />
+                      <Stat value={fmtDur(nightStats.ferber.cryTime)} label="Cry time" />
+                      <Stat value={fmtDur(nightStats.ferber.fussTime)} label="Fuss time" />
+                    </div>
+                    <details class="ferber-details">
+                      <summary>More</summary>
+                      <div class="night-stats">
+                        <Stat value={String(nightStats.ferber.checkIns)} label="Check-ins" />
+                        <Stat value={String(nightStats.ferber.sessionsAbandoned)} label="Abandoned" />
+                        <Stat value={fmtDur(nightStats.ferber.quietTime)} label="Quiet time" />
+                      </div>
+                    </details>
                   </div>
-                </details>
-              </div>
-            )}
-            <SleepBlocksPills blocks={nightStats.sleepBlocks} longest={nightStats.longestSleepBlock} active={!night?.endedAt} />
-            <FeedTimesPills times={nightStats.feedTimes} />
-            {detail.timeline.length > 0 && (
-              <TimelineBar timeline={detail.timeline} totalDurationNs={nightStats.nightDuration} />
+                )}
+                <SleepBlocksPills blocks={nightStats.sleepBlocks} longest={nightStats.longestSleepBlock} active={!night?.endedAt} />
+                <FeedTimesPills times={nightStats.feedTimes} />
+                {detail.timeline.length > 0 && (
+                  <TimelineBar timeline={detail.timeline} totalDurationNs={nightStats.nightDuration} />
+                )}
+              </>
             )}
           </div>
         )}
@@ -592,18 +703,22 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
               <span>☀️ Day</span>
               <span class="cycle-section-time">{fmtDur(dayStats.dayDuration)}</span>
             </div>
-            <div class="night-stats">
-              <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
-              <Stat value={String(dayStats.napCount)} label="Naps" />
-              <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
-              <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
-            </div>
-            <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
-            {detail.dayTimeline.length > 0 && (
-              <TimelineBar
-                timeline={detail.dayTimeline}
-                totalDurationNs={dayStats.dayDuration}
-              />
+            {isDegenerate(day) ? <SplitMarkerNote kind="day" /> : (
+              <>
+                <div class="night-stats">
+                  <Stat value={fmtDur(dayStats.totalNapTime)} label="Total Nap" />
+                  <Stat value={String(dayStats.napCount)} label="Naps" />
+                  <Stat value={fmtDur(dayStats.dayTotalFeedTime)} label="Feed Time" />
+                  <Stat value={String(dayStats.dayFeedCount)} label="Day Feeds" />
+                </div>
+                <DayRhythmPills segments={dayStats.daySegments} live={!day?.endedAt} />
+                {detail.dayTimeline.length > 0 && (
+                  <TimelineBar
+                    timeline={detail.dayTimeline}
+                    totalDurationNs={dayStats.dayDuration}
+                  />
+                )}
+              </>
             )}
           </div>
         )}
@@ -621,6 +736,28 @@ function CycleDetailView({ detail, onBack }: { detail: CycleDetail; onBack: () =
           })}
         </div>
       </div>
+
+      {splitTarget && (
+        <SplitSessionSheet
+          session={splitTarget}
+          onClose={() => setSplitTarget(null)}
+          onSplit={() => { setSplitTarget(null); onSplit(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// LongSessionBanner is the contextual recovery affordance shown in the detail
+// view above a session-half that exceeds 18h (a forgotten Start day/night). It
+// signals the problem and offers the split in one place.
+function LongSessionBanner({ kind, durationNs, onSplit }: { kind: 'night' | 'day'; durationNs: number; onSplit: () => void }) {
+  const hours = Math.round(durationNs / NS_PER_HOUR);
+  const word = kind === 'night' ? 'night' : 'day';
+  return (
+    <div class="long-banner">
+      <div class="long-banner-text">⚠ This {word} is unusually long ({hours}h).</div>
+      <button class="long-banner-btn" onClick={onSplit}>Split this session</button>
     </div>
   );
 }
