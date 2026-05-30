@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'preact/hooks';
-import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats, SessionMeta } from '../api';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { getCycles, getCycleDetail, CycleStats, CycleSummary, CycleDetail, DayStats, DaySegment, NightStats, SessionMeta, EventEntry } from '../api';
 import { fmtDur, fmtClockTime, toNightHour, ACTION_INFO, actionLabel, isSessionUnusuallyLong, DEGENERATE_SESSION_MAX_MS } from '../constants';
 import { SplitSessionSheet } from '../components/SplitSessionSheet';
 import { TimelineBar } from '../components/TimelineBar';
@@ -509,73 +509,38 @@ function TrendsView({ cycles }: { cycles: CycleSummary[] }) {
 // gestures.
 const TIMELINE_COLLAPSED_COUNT = 10;
 
-// TODO(over-long-rendering): the 24h Cycle Timelines chart renders ONE row per
-// cycle, and CycleTimelineBar clips each row to a fixed 24h window (see
-// CycleTimelineBar.tsx buildSegments: `end = Math.min(segEndMs, cycleEndMs)`).
-// A session longer than 24h (e.g. a forgotten-Start-day night spanning May 22→24)
-// therefore (a) gets its overflow clipped at midnight, and (b) leaves any fully-
-// swallowed calendar day with no row at all, because no session *starts* on that
-// day. Data is intact (correct timestamps) — it just has nowhere to draw.
-// Real fix: generalize synthesizeTodayRow below into "emit one CycleTimelineBar
-// row per calendar day a session spans," so an over-long session paints across
-// multiple day rows instead of one clipped row. Splitting the session is the
-// current workaround (it plants day-anchored sessions → rows appear).
-//
-// Two related symptoms the same fix resolves, both visible after iterating
-// splits on an over-long night:
-//   - DUPLICATE DATE ROWS: splitting twice on the same calendar day plants two
-//     degenerate days on that date → two cycles → two rows with the same label.
-//     A per-calendar-day chart would have exactly one row per date.
-//   - OFFSET BARS: split trailings start in the morning (~7am), but each row's
-//     24h track anchors at midnight, so a 7am-start renders ~30% from the left
-//     with empty space before it (its predecessor is a 1s degenerate day, so
-//     there's no prior-night sleep to seed the left edge).
+// The chart renders one row per CALENDAR DAY rather than per cycle. A cycle
+// (day + night) normally straddles midnight, and with natural drift may run
+// longer or shorter than 24h; an over-long session (forgotten Start day) can
+// span several days. Bucketing events by the day they fall on — and seeding
+// each day's left edge from the prior day's tail — paints all of these
+// uniformly: every day owns its own midnight→midnight track, a multi-day
+// session contributes to each day it touches, and there's exactly one row per
+// date (so split-created degenerate days can't double up).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   const [expanded, setExpanded] = useState(false);
-  // Night crossed midnight before a new day session opened — give post-midnight events a row.
-  const synthetic = synthesizeTodayRow(cycles[0]);
+  const { rows, sessions } = useMemo(() => buildDayRows(cycles), [cycles]);
 
-  const canCollapse = cycles.length > TIMELINE_COLLAPSED_COUNT;
-  const visibleCycles = canCollapse && !expanded
-    ? cycles.slice(0, TIMELINE_COLLAPSED_COUNT)
-    : cycles;
-  const hiddenCount = cycles.length - visibleCycles.length;
+  const canCollapse = rows.length > TIMELINE_COLLAPSED_COUNT;
+  const visibleRows = canCollapse && !expanded
+    ? rows.slice(0, TIMELINE_COLLAPSED_COUNT)
+    : rows;
+  const hiddenCount = rows.length - visibleRows.length;
 
   return (
     <div class="trend-chart">
       <div class="trend-title">24h Cycle Timelines</div>
       <div class="stacked-cycle-list">
-        {synthetic && (
+        {visibleRows.map(row => (
           <CycleTimelineBar
-            key="synthetic-today"
-            day={null}
-            night={cycles[0].night}
-            events={[]}
-            prevEvents={cycles[0].events}
-            anchorDateIso={synthetic.anchorIso}
-            label={synthetic.label}
+            key={row.dayKey}
+            sessions={sessions}
+            events={row.events}
+            prevEvents={row.prevEvents}
+            anchorDateIso={row.anchorIso}
+            label={row.label}
           />
-        )}
-        {visibleCycles.map((c, i) => {
-          const anchor = c.day?.startedAt ?? c.night?.startedAt;
-          if (!anchor) return null;
-          const label = new Date(anchor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-          // Older cycle = next one in the newest-first array. Index into the
-          // full `cycles` list, not `visibleCycles`, so the row at the
-          // collapse boundary still inherits trailing sleep from the cycle
-          // just below it (which is hidden but still in the dataset).
-          const prevCycle = cycles[i + 1];
-          return (
-            <CycleTimelineBar
-              key={cardKey(c, i)}
-              day={c.day}
-              night={c.night}
-              events={c.events}
-              prevEvents={prevCycle?.events}
-              label={label}
-            />
-          );
-        })}
+        ))}
       </div>
       {canCollapse && (
         <button
@@ -594,26 +559,78 @@ function localDayKey(dateLike: string | Date): number {
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
-function synthesizeTodayRow(top: CycleSummary | undefined): { anchorIso: string; label: string } | null {
-  if (!top) return null;
-  const anchor = top.day?.startedAt ?? top.night?.startedAt;
-  if (!anchor) return null;
-  const anchorKey = localDayKey(anchor);
+// midnightOfDayKey decodes a localDayKey back into that day's local midnight.
+function midnightOfDayKey(key: number): Date {
+  const year = Math.floor(key / 10000);
+  const month = Math.floor((key % 10000) / 100);
+  const day = key % 100;
+  return new Date(year, month - 1, day);
+}
 
-  let latestTs: string | null = null;
-  for (let i = top.events.length - 1; i >= 0; i--) {
-    if (localDayKey(top.events[i].timestamp) > anchorKey) {
-      latestTs = top.events[i].timestamp;
-      break;
+interface DayRow {
+  dayKey: number;
+  anchorIso: string;
+  label: string;
+  events: EventEntry[];
+  prevEvents: EventEntry[];
+}
+
+// buildDayRows turns the cycle list into one row per calendar day, newest-first.
+// A day gets a row if any event falls on it OR any session spans it (so a day
+// fully swallowed by an over-long session — no events of its own — still draws
+// its inherited sleep). Each row carries the events of that day plus, as
+// prevEvents, every earlier event (the bar keeps only the most recent as a
+// left-edge seed). `sessions` is shared by all rows to cap final segments.
+function buildDayRows(cycles: CycleSummary[]): { rows: DayRow[]; sessions: SessionMeta[] } {
+  const sessions: SessionMeta[] = [];
+  for (const c of cycles) {
+    if (c.day) sessions.push(c.day);
+    if (c.night) sessions.push(c.night);
+  }
+
+  const allEvents = cycles
+    .flatMap(c => c.events)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  // Bucket events by their calendar day in one pass (allEvents is sorted, so
+  // each bucket stays chronological). The bucket keys seed the row set.
+  const eventsByDay = new Map<number, EventEntry[]>();
+  for (const e of allEvents) {
+    const key = localDayKey(e.timestamp);
+    const bucket = eventsByDay.get(key);
+    if (bucket) bucket.push(e);
+    else eventsByDay.set(key, [e]);
+  }
+
+  const dayKeys = new Set<number>(eventsByDay.keys());
+  // Cover days a session spans even if no event landed on them. Open sessions
+  // run to now; this never reaches into the future.
+  const nowMs = Date.now();
+  for (const s of sessions) {
+    const endMs = s.endedAt ? new Date(s.endedAt).getTime() : nowMs;
+    const cur = new Date(s.startedAt);
+    cur.setHours(0, 0, 0, 0);
+    while (cur.getTime() <= endMs) {
+      dayKeys.add(localDayKey(cur));
+      cur.setDate(cur.getDate() + 1);
     }
   }
-  if (latestTs === null) return null;
 
-  const date = new Date(latestTs);
-  return {
-    anchorIso: date.toISOString(),
-    label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-  };
+  const rows = [...dayKeys]
+    .sort((a, b) => b - a) // newest-first
+    .map(dayKey => {
+      const midnight = midnightOfDayKey(dayKey);
+      const midnightMs = midnight.getTime();
+      return {
+        dayKey,
+        anchorIso: midnight.toISOString(),
+        label: midnight.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        events: eventsByDay.get(dayKey) ?? [],
+        prevEvents: allEvents.filter(e => new Date(e.timestamp).getTime() < midnightMs),
+      };
+    });
+
+  return { rows, sessions };
 }
 
 // --- Cycle detail view ---
