@@ -520,6 +520,16 @@ const TIMELINE_COLLAPSED_COUNT = 10;
 // row per calendar day a session spans," so an over-long session paints across
 // multiple day rows instead of one clipped row. Splitting the session is the
 // current workaround (it plants day-anchored sessions → rows appear).
+//
+// Two related symptoms the same fix resolves, both visible after iterating
+// splits on an over-long night:
+//   - DUPLICATE DATE ROWS: splitting twice on the same calendar day plants two
+//     degenerate days on that date → two cycles → two rows with the same label.
+//     A per-calendar-day chart would have exactly one row per date.
+//   - OFFSET BARS: split trailings start in the morning (~7am), but each row's
+//     24h track anchors at midnight, so a 7am-start renders ~30% from the left
+//     with empty space before it (its predecessor is a 1s degenerate day, so
+//     there's no prior-night sleep to seed the left edge).
 function StackedCycleTimelines({ cycles }: { cycles: CycleSummary[] }) {
   const [expanded, setExpanded] = useState(false);
   // Night crossed midnight before a new day session opened — give post-midnight events a row.
