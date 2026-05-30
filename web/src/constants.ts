@@ -212,6 +212,12 @@ export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = 
 export const NIGHT_TRANSITION_HOUR = 7;  // morning wake-up
 export const DAY_TRANSITION_HOUR = 20;   // bedtime
 
+// The hour a session of this kind is expected to end (a night ends at the
+// morning, a day at bedtime). Single source for the night→7 / day→20 mapping.
+export function transitionHourFor(isNight: boolean): number {
+  return isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
+}
+
 // How long the open session may run past its expected transition before the
 // Start-day/night nudge fires (e.g. in night mode past ~1pm). Absorbs a
 // slept-in or slightly-late morning.
@@ -256,8 +262,7 @@ export function nextOccurrence(hour: number, after: Date): Date {
 // can't recover a clean period, so we don't offer to. Works for open (end=now)
 // and closed sessions alike.
 export function isSessionUnusuallyLong(isNight: boolean, startedAt: Date, end: Date): boolean {
-  const hour = isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
-  const firstT = nextOccurrence(hour, startedAt);
+  const firstT = nextOccurrence(transitionHourFor(isNight), startedAt);
   const oppositePeriodHours = isNight
     ? DAY_TRANSITION_HOUR - NIGHT_TRANSITION_HOUR        // a full daytime (13h)
     : 24 - DAY_TRANSITION_HOUR + NIGHT_TRANSITION_HOUR;  // a full nighttime (11h)
@@ -272,8 +277,7 @@ export function isSessionUnusuallyLong(isNight: boolean, startedAt: Date, end: D
 // keeps the nudge from pointing the wrong way when a session has wrapped back
 // into its own phase (e.g. a night that ate a full day, viewed at 11pm).
 export function shouldNudgeModeSwitch(isNight: boolean, startedAt: Date, now: Date): boolean {
-  const hour = isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
-  const firstT = nextOccurrence(hour, startedAt);
+  const firstT = nextOccurrence(transitionHourFor(isNight), startedAt);
   const overran = now.getTime() - firstT.getTime() > OVERRUN_SLACK_HOURS * 3_600_000;
   if (!overran) return false;
   const isDaytimeNow = now.getHours() >= NIGHT_TRANSITION_HOUR && now.getHours() < DAY_TRANSITION_HOUR;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Modal } from './Modal';
 import { SessionMeta, splitSession } from '../api';
-import { fmtLocalYMDHM, nextOccurrence, NIGHT_TRANSITION_HOUR, DAY_TRANSITION_HOUR } from '../constants';
+import { fmtLocalYMDHM, nextOccurrence, transitionHourFor } from '../constants';
 
 interface Props {
   // The session being split (the >18h half). Drives copy + the default time.
@@ -15,7 +15,7 @@ export function SplitSessionSheet({ session, onClose, onSplit }: Props) {
   const isNight = session.kind === 'night';
   // Night → split at the morning the day should have started (7am).
   // Day   → split at the evening the night should have started (8pm).
-  const defaultHour = isNight ? NIGHT_TRANSITION_HOUR : DAY_TRANSITION_HOUR;
+  const defaultHour = transitionHourFor(isNight);
   const startedAt = new Date(session.startedAt);
   const defaultTime = nextOccurrence(defaultHour, startedAt);
 
