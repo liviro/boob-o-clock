@@ -1363,8 +1363,8 @@ func TestStoreSplitSession_MidChainRetro(t *testing.T) {
 	nEvents := []domain.Event{
 		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
 		{FromState: domain.SleepingOnMe, Action: domain.BabyWoke, ToState: domain.Awake, Timestamp: b.Add(10 * time.Hour)}, // Tue 07:00
-		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(24 * time.Hour)},      // Tue 21:00
-		{FromState: domain.Feeding, Action: domain.DislatchAwake, ToState: domain.Awake, Timestamp: b.Add(33 * time.Hour)},  // Wed 06:00
+		{FromState: domain.Awake, Action: domain.StartFeed, ToState: domain.Feeding, Timestamp: b.Add(24 * time.Hour)},     // Tue 21:00
+		{FromState: domain.Feeding, Action: domain.DislatchAwake, ToState: domain.Awake, Timestamp: b.Add(33 * time.Hour)}, // Wed 06:00
 	}
 	nID := seedSessionWithEvents(t, s, nSess, nEvents)
 
@@ -1493,5 +1493,74 @@ func TestStoreSplitSession_MidChainRetroDay(t *testing.T) {
 	prev, _ := s.PrevSessionBefore(n1ID)
 	if prev == nil || prev.ID != trailID {
 		t.Errorf("PrevSessionBefore(N+1) = %v, want trailing day(%d)", prev, trailID)
+	}
+}
+
+// TestInsertEventAtSeq_RepairThenSplit covers the data-repair flow we hand
+// users whose log jumps straight from sleep into a poop (no AWAKE moment to
+// split on): inject a wake marker mid-stream, then confirm the splitter now
+// accepts that instant.
+func TestInsertEventAtSeq_RepairThenSplit(t *testing.T) {
+	s := newTestStore(t)
+	b := time.Date(2026, 5, 25, 21, 0, 0, 0, time.Local)
+	end := b.Add(50 * time.Hour)
+	sess := &domain.Session{Kind: domain.SessionKindNight, StartedAt: b, EndedAt: &end}
+	events := []domain.Event{
+		{FromState: domain.NightOff, Action: domain.StartNight, ToState: domain.Awake, Timestamp: b},
+		{FromState: domain.Awake, Action: domain.StartResettle, ToState: domain.Resettling, Timestamp: b.Add(30 * time.Minute)},
+		{FromState: domain.Resettling, Action: domain.Settled, ToState: domain.SleepingCrib, Timestamp: b.Add(time.Hour)},
+		// Morning wake logged only as a diaper change — no awake state.
+		{FromState: domain.SleepingCrib, Action: domain.PoopStart, ToState: domain.Poop, Timestamp: b.Add(10 * time.Hour)},
+		{FromState: domain.Poop, Action: domain.PoopDone, ToState: domain.SleepingCrib, Timestamp: b.Add(10*time.Hour + 10*time.Minute)},
+	}
+	origID := seedSessionWithEvents(t, s, sess, events)
+
+	loaded, loadedEvents, err := s.GetSession(origID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	wakeAt := b.Add(10*time.Hour - time.Minute) // just before the poop
+
+	// Splitting here must fail first — the baby was sleeping, not awake.
+	if _, err := domain.SplitSession(*loaded, loadedEvents, wakeAt); err == nil {
+		t.Fatal("expected split to fail before the wake marker is inserted")
+	}
+
+	marker, err := domain.PlanWakeMarker(*loaded, loadedEvents, wakeAt)
+	if err != nil {
+		t.Fatalf("PlanWakeMarker: %v", err)
+	}
+	if err := s.InsertEventAtSeq(&marker); err != nil {
+		t.Fatalf("InsertEventAtSeq: %v", err)
+	}
+
+	// Reload: the marker is spliced in with dense, ordered seqs.
+	_, after, err := s.GetSession(origID)
+	if err != nil {
+		t.Fatalf("GetSession after insert: %v", err)
+	}
+	if len(after) != len(events)+1 {
+		t.Fatalf("event count = %d, want %d", len(after), len(events)+1)
+	}
+	for i, e := range after {
+		if e.Seq != i+1 {
+			t.Errorf("event %d seq = %d, want dense %d", i, e.Seq, i+1)
+		}
+		if i > 0 && e.Timestamp.Before(after[i-1].Timestamp) {
+			t.Errorf("event %d out of time order", i)
+		}
+	}
+	if after[3].ToState != domain.Awake || after[3].Action != domain.BabyWoke {
+		t.Errorf("spliced event = %+v, want baby_woke->awake at index 3", after[3])
+	}
+
+	// Now the split at the same instant succeeds.
+	loaded2, events2, _ := s.GetSession(origID)
+	plan, err := domain.SplitSession(*loaded2, events2, wakeAt)
+	if err != nil {
+		t.Fatalf("split after repair: %v", err)
+	}
+	if _, _, err := s.SplitSession(origID, plan); err != nil {
+		t.Fatalf("store SplitSession after repair: %v", err)
 	}
 }

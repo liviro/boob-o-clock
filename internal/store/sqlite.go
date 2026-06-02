@@ -615,6 +615,54 @@ func (s *Store) AddEvent(evt *domain.Event) error {
 	return tx.Commit()
 }
 
+// InsertEventAtSeq splices evt into its session at evt.Seq, shifting every
+// existing event with seq >= evt.Seq up by one to make room. Unlike AddEvent
+// (which appends at MAX(seq)+1), this inserts mid-stream so a maintenance tool
+// can repair history — e.g. injecting a missed "baby woke" marker so a
+// too-long session gains a valid split point. evt.SessionID and evt.Seq must
+// be set; evt.ID and evt.CreatedAt are filled on success.
+func (s *Store) InsertEventAtSeq(evt *domain.Event) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("insert event at seq: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Shift in one statement. seq is a plain (non-unique) index, so there is no
+	// transient-collision concern during the bulk bump.
+	if _, err := tx.Exec(
+		"UPDATE events SET seq = seq + 1 WHERE session_id = ? AND seq >= ?",
+		evt.SessionID, evt.Seq,
+	); err != nil {
+		return fmt.Errorf("insert event at seq: shift: %w", err)
+	}
+
+	var metadataJSON []byte
+	if evt.Metadata != nil {
+		metadataJSON, err = json.Marshal(evt.Metadata)
+		if err != nil {
+			return fmt.Errorf("insert event at seq: marshal metadata: %w", err)
+		}
+	}
+
+	evt.CreatedAt = time.Now()
+	result, err := tx.Exec(
+		`INSERT INTO events (session_id, from_state, action, to_state, timestamp, metadata, created_at, seq)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		evt.SessionID, string(evt.FromState), string(evt.Action), string(evt.ToState),
+		evt.Timestamp.Format(time.RFC3339Nano), metadataJSON,
+		evt.CreatedAt.Format(time.RFC3339Nano), evt.Seq,
+	)
+	if err != nil {
+		return fmt.Errorf("insert event at seq: %w", err)
+	}
+	evt.ID, err = result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert event at seq: last id: %w", err)
+	}
+	return tx.Commit()
+}
+
 func (s *Store) PopEvent(sessionID int64) (*domain.Event, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
