@@ -64,7 +64,7 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   baby_stirred:           { icon: '🤫', label: 'Baby stirred',        cls: '' },
   // Day-specific.
   start_sleep:            { icon: '😴', label: 'Nap',                 cls: 'sleep full-width', needsLocation: true },
-  start_solids:           { icon: '🥣', label: 'Solids',              cls: 'full-width' },
+  start_solids:           { icon: '🥣', label: 'Solids',              cls: 'feed full-width' },
   end_solids:             { icon: '✅', label: 'Done eating',         cls: 'primary full-width' },
   // Shared poop.
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },

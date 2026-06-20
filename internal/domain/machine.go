@@ -222,7 +222,7 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 var actionOrder = func() map[Action]int {
 	all := []Action{
 		// Feeding cluster.
-		StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
+		StartFeed, StartSolids, DislatchAwake, DislatchAsleep, SwitchBreast,
 		// Transfer / resettle / crib cluster.
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
 		PutDownAwake, PutDownAwakeFerber, SitChair,
@@ -231,8 +231,6 @@ var actionOrder = func() map[Action]int {
 		StartStrolling, FellAsleep, GiveUp,
 		// Day-specific sleep entry (parallel to StartStrolling).
 		StartSleep,
-		// Day-specific solids entry.
-		StartSolids,
 		// Crib-stirring cluster.
 		BabyStirred, BabyStirredFerber,
 		// Ferber cluster.

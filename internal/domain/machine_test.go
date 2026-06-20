@@ -195,7 +195,7 @@ func TestValidActions(t *testing.T) {
 		{Poop, []Action{PoopDone}},
 		{Chair, []Action{Settled, ExitChair}},
 		// Day subgraph: start_night is last (chain-advance).
-		{DayAwake, []Action{StartFeed, StartSleep, StartSolids, PoopStart, StartNight}},
+		{DayAwake, []Action{StartFeed, StartSolids, StartSleep, PoopStart, StartNight}},
 		{DayFeeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast, PoopStart}},
 		{DaySleeping, []Action{BabyWoke, PoopStart}},
 		{DayPoop, []Action{PoopDone}},
