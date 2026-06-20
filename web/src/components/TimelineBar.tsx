@@ -25,6 +25,7 @@ const LEGEND_GROUPS: { key: string; label: string }[][] = [
   [
     { key: 'feeding', label: 'Feed' },
     { key: 'day_feeding', label: 'Feed' },
+    { key: 'day_solids', label: 'Solids' },
     { key: 'awake', label: 'Awake' },
     { key: 'day_awake', label: 'Awake' },
   ],

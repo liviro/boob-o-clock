@@ -11,8 +11,11 @@ interface Props {
 }
 
 // States with <= this many actions render every button full-width.
-// Denser states (Awake has 6) use per-action cls so Stroller/Poop can pair.
-const FULL_WIDTH_THRESHOLD = 4;
+// Day-awake has 5 (Feed, Nap, Solids, Poop, Start night) and its lone
+// half-width action (Poop) has nothing to pair with, so it reads best all
+// full-width. Denser states (Awake has 6) stay below the threshold so their
+// two half-width actions (Stroller/Poop) can pair into one row.
+const FULL_WIDTH_THRESHOLD = 5;
 
 export function ActionGrid({ actions, onPointerDown, onPointerUp, onPointerCancel, nudge }: Props) {
   const allFull = actions.length <= FULL_WIDTH_THRESHOLD;

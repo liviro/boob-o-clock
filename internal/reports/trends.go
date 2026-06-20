@@ -30,6 +30,7 @@ type DayStats struct {
 	NapCount         int             `json:"napCount"`
 	TotalNapTime     time.Duration   `json:"totalNapTime"`
 	DayFeedCount     int             `json:"dayFeedCount"`
+	DaySolidsCount   int             `json:"daySolidsCount"`
 	DayTotalFeedTime time.Duration   `json:"dayTotalFeedTime"`
 	FeedTimeLeft     time.Duration   `json:"feedTimeLeft"`
 	FeedTimeRight    time.Duration   `json:"feedTimeRight"`
@@ -125,6 +126,8 @@ func ComputeDayStats(day *domain.Session, dayEvents []domain.Event, night *domai
 				feedStart = &t
 				currentSide = e.Metadata["breast"]
 			}
+		case e.Action == domain.StartSolids:
+			stats.DaySolidsCount++
 		case e.Action == domain.SwitchBreast && feedStart != nil:
 			attribute(e.Timestamp)
 			t := e.Timestamp
@@ -260,6 +263,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 			dayAcc.NapCount += c.Stats.Day.NapCount
 			dayAcc.TotalNapTime += c.Stats.Day.TotalNapTime
 			dayAcc.DayFeedCount += c.Stats.Day.DayFeedCount
+			dayAcc.DaySolidsCount += c.Stats.Day.DaySolidsCount
 			dayAcc.DayTotalFeedTime += c.Stats.Day.DayTotalFeedTime
 			dayAcc.FeedTimeLeft += c.Stats.Day.FeedTimeLeft
 			dayAcc.FeedTimeRight += c.Stats.Day.FeedTimeRight
@@ -285,6 +289,7 @@ func averageCycles(cycles []CycleSummary) CycleStats {
 		d.NapCount = dayAcc.NapCount / dayCount
 		d.TotalNapTime = dayAcc.TotalNapTime / time.Duration(dayCount)
 		d.DayFeedCount = dayAcc.DayFeedCount / dayCount
+		d.DaySolidsCount = dayAcc.DaySolidsCount / dayCount
 		d.DayTotalFeedTime = dayAcc.DayTotalFeedTime / time.Duration(dayCount)
 		d.FeedTimeLeft = dayAcc.FeedTimeLeft / time.Duration(dayCount)
 		d.FeedTimeRight = dayAcc.FeedTimeRight / time.Duration(dayCount)

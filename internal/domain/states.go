@@ -31,6 +31,7 @@ const (
 	DayFeeding  State = "day_feeding"
 	DaySleeping State = "day_sleeping"
 	DayPoop     State = "day_poop"
+	DaySolids   State = "day_solids"
 )
 
 // AllStates is the complete set of valid states.
@@ -40,7 +41,7 @@ var AllStates = []State{
 	Resettling, SleepingCrib, Strolling, SleepingStroller, SelfSoothing, Poop,
 	Learning, CheckIn,
 	Chair,
-	DayAwake, DayFeeding, DaySleeping, DayPoop,
+	DayAwake, DayFeeding, DaySleeping, DayPoop, DaySolids,
 }
 
 // SleepingStates: states where the baby is asleep (night subgraph + day nap).
@@ -78,6 +79,10 @@ const (
 
 	// Day-specific action.
 	StartSleep Action = "start_sleep"
+
+	// Day-specific solids actions (enter from DayAwake, exit back to DayAwake).
+	StartSolids Action = "start_solids"
+	EndSolids   Action = "end_solids"
 
 	// Shared wake / poop actions.
 	BabyWoke  Action = "baby_woke"

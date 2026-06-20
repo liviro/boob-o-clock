@@ -96,6 +96,7 @@ export interface DayStats {
   napCount: number;
   totalNapTime: number;          // ns
   dayFeedCount: number;
+  daySolidsCount: number;
   dayTotalFeedTime: number;       // ns
   feedTimeLeft: number;           // ns
   feedTimeRight: number;          // ns

@@ -151,6 +151,11 @@ var transitions = map[transitionKey]State{
 
 	// 53: DAY_POOP → DAY_AWAKE
 	{DayPoop, PoopDone}: DayAwake,
+
+	// 57: DAY_AWAKE → DAY_SOLIDS
+	{DayAwake, StartSolids}: DaySolids,
+	// 58: DAY_SOLIDS → DAY_AWAKE
+	{DaySolids, EndSolids}: DayAwake,
 }
 
 // actionsRequiringBreast is the set of actions that need breast metadata.
@@ -217,7 +222,7 @@ func Transition(from State, action Action, metadata map[string]string) (State, e
 var actionOrder = func() map[Action]int {
 	all := []Action{
 		// Feeding cluster.
-		StartFeed, DislatchAwake, DislatchAsleep, SwitchBreast,
+		StartFeed, StartSolids, DislatchAwake, DislatchAsleep, SwitchBreast,
 		// Transfer / resettle / crib cluster.
 		StartTransfer, TransferSuccess, TransferNeedResettle, TransferFailed,
 		PutDownAwake, PutDownAwakeFerber, SitChair,
@@ -229,7 +234,7 @@ var actionOrder = func() map[Action]int {
 		// Crib-stirring cluster.
 		BabyStirred, BabyStirredFerber,
 		// Ferber cluster.
-		MoodChange, CheckInStart, EndCheckIn, ExitFerber, ExitChair,
+		MoodChange, CheckInStart, EndCheckIn, ExitFerber, ExitChair, EndSolids,
 		// Poop cluster.
 		PoopStart, PoopDone,
 		// Session-creation actions (chain-advance) sort LAST.
