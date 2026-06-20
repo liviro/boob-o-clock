@@ -21,6 +21,7 @@ export const STATE_INFO: Record<string, { icon: string; label: string }> = {
   day_feeding:       { icon: '🍼', label: 'Feeding' },
   day_sleeping:      { icon: '💤', label: 'Napping' },
   day_poop:          { icon: '💩', label: 'Diaper Change' },
+  day_solids:        { icon: '🥣', label: 'Eating Solids' },
 };
 
 export interface ActionDef {
@@ -63,6 +64,8 @@ export const ACTION_INFO: Record<string, ActionDef> = {
   baby_stirred:           { icon: '🤫', label: 'Baby stirred',        cls: '' },
   // Day-specific.
   start_sleep:            { icon: '😴', label: 'Nap',                 cls: 'sleep full-width', needsLocation: true },
+  start_solids:           { icon: '🥣', label: 'Solids',              cls: 'full-width' },
+  end_solids:             { icon: '✅', label: 'Done eating',         cls: 'primary full-width' },
   // Shared poop.
   poop_start:             { icon: '💩', label: 'Poop!',               cls: '' },
   poop_done:              { icon: '✅', label: 'Diaper change done',  cls: 'primary full-width' },
@@ -197,6 +200,7 @@ export const STATE_COLORS: Record<string, string> = {
   day_feeding: '#a09020',
   day_sleeping: '#408080',
   day_poop: '#8a6030',
+  day_solids: '#d2691e',
 };
 
 export const LOCATION_LABELS: Record<string, { icon: string; label: string }> = {
