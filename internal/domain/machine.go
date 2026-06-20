@@ -151,6 +151,11 @@ var transitions = map[transitionKey]State{
 
 	// 53: DAY_POOP → DAY_AWAKE
 	{DayPoop, PoopDone}: DayAwake,
+
+	// 57: DAY_AWAKE → DAY_SOLIDS
+	{DayAwake, StartSolids}: DaySolids,
+	// 58: DAY_SOLIDS → DAY_AWAKE
+	{DaySolids, EndSolids}: DayAwake,
 }
 
 // actionsRequiringBreast is the set of actions that need breast metadata.
@@ -226,10 +231,12 @@ var actionOrder = func() map[Action]int {
 		StartStrolling, FellAsleep, GiveUp,
 		// Day-specific sleep entry (parallel to StartStrolling).
 		StartSleep,
+		// Day-specific solids entry.
+		StartSolids,
 		// Crib-stirring cluster.
 		BabyStirred, BabyStirredFerber,
 		// Ferber cluster.
-		MoodChange, CheckInStart, EndCheckIn, ExitFerber, ExitChair,
+		MoodChange, CheckInStart, EndCheckIn, ExitFerber, ExitChair, EndSolids,
 		// Poop cluster.
 		PoopStart, PoopDone,
 		// Session-creation actions (chain-advance) sort LAST.

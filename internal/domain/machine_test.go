@@ -18,7 +18,7 @@ func TestLearningAndCheckInStatesExist(t *testing.T) {
 }
 
 func TestDayStatesExist(t *testing.T) {
-	wantPresent := []State{DayAwake, DayFeeding, DaySleeping, DayPoop}
+	wantPresent := []State{DayAwake, DayFeeding, DaySleeping, DayPoop, DaySolids}
 	present := make(map[State]bool, len(AllStates))
 	for _, s := range AllStates {
 		present[s] = true
@@ -98,6 +98,8 @@ func TestAllValidTransitions(t *testing.T) {
 		{"day: baby woke from nap", DaySleeping, BabyWoke, DayAwake, nil},
 		{"day: poop from nap", DaySleeping, PoopStart, DayPoop, nil},
 		{"day: poop done", DayPoop, PoopDone, DayAwake, nil},
+		{"day: start solids", DayAwake, StartSolids, DaySolids, nil},
+		{"day: end solids", DaySolids, EndSolids, DayAwake, nil},
 	}
 
 	for _, tt := range tests {
@@ -152,6 +154,11 @@ func TestInvalidTransitions(t *testing.T) {
 		// start_sleep only valid from DayAwake
 		{"start sleep from awake (night)", Awake, StartSleep},
 		{"start sleep from day feeding", DayFeeding, StartSleep},
+		// start_solids only valid from DayAwake
+		{"start solids from day feeding", DayFeeding, StartSolids},
+		{"start solids from day sleeping", DaySleeping, StartSolids},
+		// end_solids only valid from DaySolids
+		{"end solids from day awake", DayAwake, EndSolids},
 		// end_night action is removed post-change; its string "end_night" is
 		// invalid in all states.
 		{"end_night string is rejected", Awake, Action("end_night")},
@@ -188,10 +195,11 @@ func TestValidActions(t *testing.T) {
 		{Poop, []Action{PoopDone}},
 		{Chair, []Action{Settled, ExitChair}},
 		// Day subgraph: start_night is last (chain-advance).
-		{DayAwake, []Action{StartFeed, StartSleep, PoopStart, StartNight}},
+		{DayAwake, []Action{StartFeed, StartSleep, StartSolids, PoopStart, StartNight}},
 		{DayFeeding, []Action{DislatchAwake, DislatchAsleep, SwitchBreast, PoopStart}},
 		{DaySleeping, []Action{BabyWoke, PoopStart}},
 		{DayPoop, []Action{PoopDone}},
+		{DaySolids, []Action{EndSolids}},
 	}
 
 	for _, tt := range tests {
