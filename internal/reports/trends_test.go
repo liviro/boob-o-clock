@@ -328,6 +328,57 @@ func TestComputeDayStats_DayFeedCountIgnoresSwitchBreast(t *testing.T) {
 	}
 }
 
+// TestComputeDayStats_SolidsCount verifies that DaySolidsCount counts
+// start_solids events and that solids do NOT inflate DayFeedCount (breastfeeds).
+func TestComputeDayStats_SolidsCount(t *testing.T) {
+	start := dayStart()
+	feed := start.Add(1 * time.Hour)
+	solids1 := start.Add(4 * time.Hour)
+	solids2 := start.Add(8 * time.Hour)
+	dayEnd := start.Add(12 * time.Hour)
+
+	day := mkSession(1, domain.SessionKindDay, start, ptrTime(dayEnd))
+	dayEvents := []domain.Event{
+		mkEvent(1, domain.NightOff, domain.StartDay, domain.DayAwake, start, nil),
+		mkEvent(2, domain.DayAwake, domain.StartFeed, domain.DayFeeding, feed, map[string]string{"breast": "L"}),
+		mkEvent(3, domain.DayFeeding, domain.DislatchAwake, domain.DayAwake, feed.Add(15*time.Minute), nil),
+		mkEvent(4, domain.DayAwake, domain.StartSolids, domain.DaySolids, solids1, nil),
+		mkEvent(5, domain.DaySolids, domain.EndSolids, domain.DayAwake, solids1.Add(20*time.Minute), nil),
+		mkEvent(6, domain.DayAwake, domain.StartSolids, domain.DaySolids, solids2, nil),
+		mkEvent(7, domain.DaySolids, domain.EndSolids, domain.DayAwake, solids2.Add(25*time.Minute), nil),
+	}
+
+	stats := ComputeDayStats(day, dayEvents, nil, nil)
+
+	if stats.DaySolidsCount != 2 {
+		t.Errorf("DaySolidsCount = %d, want 2 (two start_solids events)", stats.DaySolidsCount)
+	}
+	if stats.DayFeedCount != 1 {
+		t.Errorf("DayFeedCount = %d, want 1 (solids must not count as breastfeeds)", stats.DayFeedCount)
+	}
+	// Solids spans are non-nap, so they must not create naps.
+	if stats.NapCount != 0 {
+		t.Errorf("NapCount = %d, want 0 (solids is awake-time, not a nap)", stats.NapCount)
+	}
+}
+
+// TestAverageCycles_SolidsCount verifies DaySolidsCount is averaged across
+// contributing day halves like the other day count metrics. Both halves clear
+// the degenerateSessionMax (60s) guard via DayDuration, so both contribute.
+func TestAverageCycles_SolidsCount(t *testing.T) {
+	cycles := []CycleSummary{
+		{Stats: CycleStats{Day: &DayStats{DayDuration: 12 * time.Hour, DaySolidsCount: 2}}},
+		{Stats: CycleStats{Day: &DayStats{DayDuration: 12 * time.Hour, DaySolidsCount: 4}}},
+	}
+	avg := averageCycles(cycles)
+	if avg.Day == nil {
+		t.Fatal("avg.Day = nil, want non-nil")
+	}
+	if avg.Day.DaySolidsCount != 3 {
+		t.Errorf("avg DaySolidsCount = %d, want 3 (mean of 2 and 4)", avg.Day.DaySolidsCount)
+	}
+}
+
 // In-progress day feed: end clamps to time.Now(), so the side accumulator
 // captures the elapsed time on the active side.
 func TestComputeDayStats_FeedSidesInProgress(t *testing.T) {

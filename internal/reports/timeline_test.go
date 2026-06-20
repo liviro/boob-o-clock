@@ -501,6 +501,7 @@ func TestEveryStateClassified(t *testing.T) {
 		domain.DayFeeding:  true,
 		domain.DaySleeping: true,
 		domain.DayPoop:     true,
+		domain.DaySolids:   true,
 	}
 
 	for _, state := range domain.AllStates {
