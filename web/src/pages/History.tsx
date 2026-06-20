@@ -268,9 +268,9 @@ function CycleCard({ cycle, onClick }: { cycle: CycleSummary; onClick: () => voi
             <>
               <div class="night-stats">
                 <Stat value={fmtDur(day.totalNapTime)} label="Total Nap" />
-                <Stat value={String(day.napCount)} label="Naps" />
-                <Stat value={fmtDur(day.dayTotalFeedTime)} label="Feed Time" />
-                <Stat value={String(day.dayFeedCount)} label="Day Feeds" />
+                <Stat value={String(day.daySolidsCount)} label="Solid Feeds" />
+                <Stat value={fmtDur(day.dayTotalFeedTime)} label="Breastfeed Time" />
+                <Stat value={String(day.dayFeedCount + day.daySolidsCount)} label="Total Day Feeds" />
               </div>
               <DayRhythmPills segments={day.daySegments} live={!cycle.day?.endedAt} />
             </>
